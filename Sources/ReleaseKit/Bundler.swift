@@ -61,10 +61,8 @@ public struct Bundler: Sendable {
             }
         }
 
-        for framework in manifest.build.embedFrameworks ?? [] {
-            let source = try locateFramework(framework, binDir: binDir)
-            try Shell.run(["ditto", source.path, frameworks.appending(path: "\(framework).framework").path])
-        }
+        let sparkle = try locateFramework("Sparkle", binDir: binDir)
+        try Shell.run(["ditto", sparkle.path, frameworks.appending(path: "Sparkle.framework").path])
 
         try installIcons(resources: resources)
 

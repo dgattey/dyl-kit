@@ -31,7 +31,6 @@ struct DylAppManifestTests {
         #expect(manifest.app.bundleId == "com.example.Demo")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
         #expect(manifest.release.checkInterval == 3600)
-        #expect(manifest.release.notesMaxVersions == nil)
         #expect(manifest.launchPrefix == "DEMO")
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
         #expect(manifest.ios == nil)
@@ -123,7 +122,6 @@ struct DylAppManifestTests {
         let manifest = try DylAppManifest.load(root: root)
         #expect(manifest.app.name == "Sconeos")
         #expect(manifest.launchPrefix == "SCONEOS")
-        #expect(manifest.release.notesMaxVersions == nil)
         #expect(manifest.ios?.simulator == "iPhone 17 Pro")
     }
 

@@ -364,12 +364,11 @@ public struct ReleaseChecks: Sendable {
     /// Ad-hoc signed apps load embedded frameworks only with library validation off: without the entitlement, dyld
     /// rejects Sparkle.framework at launch because it isn't signed by the same team.
     private func checkLibraryValidation(_ findings: inout [CheckFinding]) {
-        guard !(manifest.build.embedFrameworks ?? []).isEmpty else { return }
         let file = manifest.build.entitlements
         let entitlements = InfoPlist.read(workspace.url(file))
         if entitlements?[Self.libraryValidationKey] != .boolean(true) {
             findings.append(
-                error("library_validation", file, "embeds frameworks but doesn't set \(Self.libraryValidationKey)"))
+                error("library_validation", file, "embeds Sparkle.framework but doesn't set \(Self.libraryValidationKey)"))
         }
     }
 

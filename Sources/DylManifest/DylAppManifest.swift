@@ -31,8 +31,6 @@ public struct DylAppManifest: Equatable, Sendable {
         public var entitlements: String
         /// Swift script that writes `build/AppIcon.icon` and `build/AppIcon*.icns` when run with the repo root.
         public var iconGenerator: String?
-        /// Frameworks SwiftPM builds next to the product that the bundle must embed and sign.
-        public var embedFrameworks: [String]?
     }
 
     /// Info.plist content beyond what the bundler derives from `[app]` and `[release]`.
@@ -53,7 +51,6 @@ public struct DylAppManifest: Equatable, Sendable {
         public var siteUrl: String
         public var artifactsDir: String
         public var checkInterval: Int?
-        public var notesMaxVersions: Int?
         /// Repo globs whose changes produce a release. Everything else merges without one.
         public var inputs: [String]
 
@@ -108,8 +105,7 @@ extension DylAppManifest {
             build: Build(
                 product: try toml.required("build.product"),
                 entitlements: try toml.required("build.entitlements"),
-                iconGenerator: try toml.string("build.icon-generator"),
-                embedFrameworks: try toml.strings("build.embed-frameworks")
+                iconGenerator: try toml.string("build.icon-generator")
             ),
             bundle: Bundle(
                 urlSchemes: try toml.strings("bundle.url-schemes"),
@@ -124,7 +120,6 @@ extension DylAppManifest {
                 siteUrl: try toml.required("release.site-url"),
                 artifactsDir: try toml.required("release.artifacts-dir"),
                 checkInterval: try toml.integer("release.check-interval"),
-                notesMaxVersions: try toml.integer("release.notes-max-versions"),
                 inputs: try toml.strings("release.inputs") ?? []
             )
         )

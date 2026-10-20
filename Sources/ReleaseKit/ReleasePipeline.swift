@@ -200,8 +200,7 @@ public struct ReleasePipeline: Sendable {
             build: String(state.build),
             newNotes: formatter.html(markdown, version: state.version),
             history: [local] + history,
-            knownBuilds: try committedBuilds(),
-            maxVersions: workspace.manifest.release.notesMaxVersions ?? 10
+            knownBuilds: try committedBuilds()
         )
     }
 

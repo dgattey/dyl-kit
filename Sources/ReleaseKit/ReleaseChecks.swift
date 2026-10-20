@@ -246,7 +246,7 @@ public struct ReleaseChecks: Sendable {
 
     private func checkTriggerDrift(_ findings: inout [CheckFinding]) {
         for workflow in workflows where workflow.runsRelease {
-            let expected = Set(workspace.manifest.release.inputs + [workflow.path])
+            let expected = Set(workspace.manifest.release.inputs)
             guard let paths = workflow.pushPaths else {
                 findings.append(
                     error("release_trigger_drift", workflow.path, "release runs on every push; add `paths:`"))

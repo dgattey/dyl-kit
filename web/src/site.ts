@@ -37,6 +37,8 @@ export type Site = {
   tagline: string;
   siteUrl: string;
   accent: { light: string; dark: string } | null;
+  /** The home-screen icon: the artifacts dir's full-bleed `apple-icon.png`, else the rounded `app-icon.png`. */
+  appleIcon: string;
   screenshots: Screenshot[];
   release: Release | null;
 };
@@ -58,6 +60,7 @@ export function loadSite(root: string = findRoot(process.cwd())): Site {
     tagline: requireString(manifest, "site.tagline"),
     siteUrl,
     accent: isRecord(accent) ? { light: String(accent.light), dark: String(accent.dark) } : null,
+    appleIcon: fs.existsSync(path.join(artifactsDir, "apple-icon.png")) ? "/apple-icon.png" : "/app-icon.png",
     screenshots: screenshotsFrom(lookup(manifest, "site.screenshots"), artifactsDir),
     release: fs.existsSync(appcastPath)
       ? parseAppcast(fs.readFileSync(appcastPath, "utf8"), siteUrl, (zipPath) => zipSize(artifactsDir, zipPath))

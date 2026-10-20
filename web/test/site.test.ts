@@ -119,6 +119,9 @@ screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dar
     assert.equal(site.release?.version, "2.0.0");
     assert.equal(site.release?.sizeBytes, 3);
     assert.equal(site.release?.downloadReady, true);
+    assert.equal(site.appleIcon, "/app-icon.png");
+    fs.writeFileSync(path.join(root, "server", "public", "apple-icon.png"), "png");
+    assert.equal(loadSite(root).appleIcon, "/apple-icon.png");
 
     const cwd = process.cwd();
     process.chdir(path.join(root, "server", "app"));

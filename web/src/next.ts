@@ -22,7 +22,7 @@ export function siteMetadata(site: Site): Metadata {
     metadataBase: new URL(site.siteUrl),
     title: site.name,
     description,
-    icons: { icon: "/app-icon.png", apple: "/app-icon.png" },
+    icons: { icon: "/app-icon.png", apple: site.appleIcon },
     alternates: { types: { "application/rss+xml": "/appcast.xml" } },
     openGraph: {
       title: site.name,

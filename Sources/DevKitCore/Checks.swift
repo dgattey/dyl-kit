@@ -23,7 +23,7 @@ public struct Checks: Sendable {
         var passed = true
         Log.step("manifest: \(DylAppManifest.fileName) OK")
 
-        if let swiftlint = Shell.which("swiftlint") {
+        if let swiftlint = Self.swiftLint {
             let status = try? Shell.run(
                 [swiftlint, "lint", "--strict", "--quiet", "--config", workspace.url(".swiftlint.yml").path],
                 cwd: workspace.root, allowFailure: true)
@@ -56,6 +56,14 @@ public struct Checks: Sendable {
         if !staleAssets.isEmpty { passed = false }
         Log.step("skills: \(staleAssets.isEmpty ? "OK" : "\(staleAssets.count) out of date")")
         return passed
+    }
+
+    /// A `swiftlint` on `PATH` that runs. Version-manager shims with no version selected are on `PATH` but fail.
+    ///
+    /// - Blocking: runs `which` and `swiftlint version`.
+    static var swiftLint: String? {
+        guard let path = Shell.which("swiftlint"), (try? Shell.capture([path, "version"])) != nil else { return nil }
+        return path
     }
 
     /// `checks`, then build and test the app and DylKit, then the site's typecheck and tests.
@@ -96,7 +104,7 @@ public struct Bootstrap: Sendable {
         try Data("#!/bin/sh\nexec ./run dev checks\n".utf8).write(to: hook)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
         Log.step("installed \(hook.path)")
-        if Shell.which("swiftlint") == nil { Log.warn("install SwiftLint for tier 1: brew install swiftlint") }
+        if Checks.swiftLint == nil { Log.warn("install SwiftLint for tier 1: brew install swiftlint") }
     }
 }
 

@@ -22,8 +22,6 @@ public final class AppUpdater {
     @ObservationIgnored private let updaterDelegate: UpdaterDelegate
     @ObservationIgnored private let userDriverDelegate: UserDriverDelegate
     @ObservationIgnored private var canCheckObservation: NSKeyValueObservation?
-    @ObservationIgnored private var didRequestLaunchCheck = false
-    @ObservationIgnored private var launchCheckPending = false
 
     private init() {
         let configured = AppInfo.main.isReleaseConfigured
@@ -58,9 +56,8 @@ public final class AppUpdater {
 
     /// Call once the main window is on screen, so a launch check can't close the last window and quit the app.
     public func mainWindowDidAppear() {
-        guard isReleaseConfigured, !didRequestLaunchCheck else { return }
-        didRequestLaunchCheck = true
-        launchCheckPending = true
+        guard isReleaseConfigured else { return }
+        presenter.requestLaunchCheck()
         checkOnLaunchIfReady()
     }
 
@@ -69,14 +66,9 @@ public final class AppUpdater {
         checkOnLaunchIfReady()
     }
 
-    /// Once per launch, in the background. A check Sparkle's scheduler already started counts as this one.
     private func checkOnLaunchIfReady() {
-        guard launchCheckPending else { return }
         let updater = controller.updater
-        if updater.sessionInProgress {
-            launchCheckPending = false
-        } else if updater.canCheckForUpdates {
-            launchCheckPending = false
+        if presenter.takeLaunchCheck(canCheck: updater.canCheckForUpdates, sessionInProgress: updater.sessionInProgress) {
             updater.checkForUpdatesInBackground()
         }
     }

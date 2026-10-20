@@ -38,6 +38,31 @@ import Sparkle
         #expect(presenter.blocksQuit)
     }
 
+    @Test func launchCheckWaitsForSparkleAndRunsOnce() {
+        let presenter = UpdatePresenter(activateApp: {}, showUpdateInFocus: {})
+        #expect(!presenter.takeLaunchCheck(canCheck: true, sessionInProgress: false), "not before the window appears")
+
+        presenter.requestLaunchCheck()
+        #expect(!presenter.takeLaunchCheck(canCheck: false, sessionInProgress: false), "Sparkle isn't ready yet")
+        #expect(presenter.takeLaunchCheck(canCheck: true, sessionInProgress: false))
+        #expect(!presenter.takeLaunchCheck(canCheck: true, sessionInProgress: false))
+
+        presenter.requestLaunchCheck()
+        #expect(!presenter.takeLaunchCheck(canCheck: true, sessionInProgress: false), "a second window doesn't re-check")
+    }
+
+    @Test func checksAlreadyUnderwayCountAsTheLaunchCheck() {
+        let scheduled = UpdatePresenter(activateApp: {}, showUpdateInFocus: {})
+        scheduled.requestLaunchCheck()
+        #expect(!scheduled.takeLaunchCheck(canCheck: false, sessionInProgress: true))
+        #expect(!scheduled.takeLaunchCheck(canCheck: true, sessionInProgress: false))
+
+        let shown = UpdatePresenter(activateApp: {}, showUpdateInFocus: {})
+        shown.willShowUpdate(handledBySparkle: false)
+        shown.requestLaunchCheck()
+        #expect(!shown.takeLaunchCheck(canCheck: true, sessionInProgress: false))
+    }
+
     #if os(macOS)
     @Test func sparkleHandsScheduledUpdatesToThePresenter() {
         let delegate = UserDriverDelegate()
@@ -47,6 +72,28 @@ import Sparkle
                 !delegate.standardUserDriverShouldHandleShowingScheduledUpdate(
                     .empty(), andInImmediateFocus: immediateFocus))
         }
+    }
+
+    /// Photos #12: a `checkForUpdates` made while Sparkle is still finding the update is dropped, so only the
+    /// deferred `willShowUpdate` may re-run it, and an aborted session must not leave quit blocked.
+    @Test func onlyTheDeferredShowReRunsTheCheck() {
+        var shownInFocus = 0
+        let presenter = UpdatePresenter(activateApp: {}, showUpdateInFocus: { shownInFocus += 1 })
+        let updaterDelegate = UpdaterDelegate()
+        updaterDelegate.presenter = presenter
+        let updater = SPUStandardUpdaterController(
+            startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil
+        ).updater
+
+        updaterDelegate.updater(updater, didFindValidUpdate: .empty())
+        #expect(shownInFocus == 0)
+        presenter.willShowUpdate(handledBySparkle: false)
+        #expect(shownInFocus == 1)
+        #expect(presenter.blocksQuit)
+
+        updaterDelegate.updater(updater, didAbortWithError: NSError(domain: "SparkleTest", code: 1))
+        #expect(!presenter.blocksQuit)
+        #expect(shownInFocus == 1)
     }
     #endif
 }

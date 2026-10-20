@@ -132,7 +132,7 @@ private let sconeosModules = [
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-        let (manifest, _) = try DylAppManifest.load(root: root)
+        let manifest = try DylAppManifest.load(root: root)
         let key = try fixture("sparkle-public-key.txt").trimmingCharacters(in: .whitespacesAndNewlines)
         let generated = InfoPlist.contents(
             manifest: manifest, shortVersion: "1.2.3", build: "45", sparklePublicKey: key)

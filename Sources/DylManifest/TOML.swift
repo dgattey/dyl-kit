@@ -1,384 +1,182 @@
 import Foundation
 
-/// A parsed TOML value. Covers the subset `DylApp.toml` uses: tables, dotted keys, inline tables, arrays,
-/// basic and literal strings, integers, floats, and booleans.
+/// A TOML value, limited to what `DylApp.toml` uses.
 public enum TOMLValue: Equatable, Sendable {
     case string(String)
     case integer(Int)
-    case float(Double)
     case boolean(Bool)
     case array([TOMLValue])
-    case table(TOMLTable)
-
-    public var stringValue: String? {
-        if case .string(let value) = self { return value }
-        return nil
-    }
-
-    /// Renders the value the way `devkit manifest get` prints it: scalars bare, arrays one item per line.
-    public var plainText: String {
-        switch self {
-        case .string(let value): value
-        case .integer(let value): String(value)
-        case .float(let value): String(value)
-        case .boolean(let value): String(value)
-        case .array(let items): items.map(\.plainText).joined(separator: "\n")
-        case .table(let table): table.keys.sorted().joined(separator: "\n")
-        }
-    }
-}
-
-public struct TOMLTable: Equatable, Sendable {
-    public private(set) var entries: [String: TOMLValue] = [:]
-    /// 1-based line where each key was defined, keyed by its dotted path from the document root.
-    public private(set) var lines: [String: Int] = [:]
-
-    public init() {}
-
-    public var keys: Dictionary<String, TOMLValue>.Keys { entries.keys }
-
-    public subscript(key: String) -> TOMLValue? { entries[key] }
-
-    /// Looks up a dotted path such as `release.site-url`.
-    public func value(at path: String) -> TOMLValue? {
-        var current: TOMLValue = .table(self)
-        for component in path.split(separator: ".").map(String.init) {
-            guard case .table(let table) = current, let next = table[component] else { return nil }
-            current = next
-        }
-        return current
-    }
-
-    public func line(of path: String) -> Int? { lines[path] }
-
-    fileprivate mutating func set(
-        _ value: TOMLValue, at path: [String], line: Int, fullPath: [String]
-    ) throws(TOMLError) {
-        guard let head = path.first else { return }
-        if path.count == 1 {
-            if entries[head] != nil {
-                throw TOMLError(line: line, message: "duplicate key `\(fullPath.joined(separator: "."))`")
-            }
-            entries[head] = value
-            return
-        }
-        var child: TOMLTable
-        switch entries[head] {
-        case nil:
-            child = TOMLTable()
-        case .table(let existing):
-            child = existing
-        default:
-            throw TOMLError(line: line, message: "`\(head)` is not a table")
-        }
-        try child.set(value, at: Array(path.dropFirst()), line: line, fullPath: fullPath)
-        entries[head] = .table(child)
-    }
-
-    fileprivate mutating func ensureTable(at path: [String], line: Int) throws(TOMLError) {
-        guard let head = path.first else { return }
-        var child: TOMLTable
-        switch entries[head] {
-        case nil:
-            child = TOMLTable()
-        case .table(let existing):
-            child = existing
-        default:
-            throw TOMLError(line: line, message: "`\(head)` is already a value, not a table")
-        }
-        try child.ensureTable(at: Array(path.dropFirst()), line: line)
-        entries[head] = .table(child)
-    }
-
-    fileprivate mutating func recordLine(_ line: Int, for path: [String]) {
-        lines[path.joined(separator: ".")] = line
-    }
+    case table([String: TOMLValue])
 }
 
 public struct TOMLError: Error, Equatable, CustomStringConvertible, Sendable {
     public let line: Int
     public let message: String
 
-    public init(line: Int, message: String) {
-        self.line = line
-        self.message = message
-    }
-
     public var description: String { "line \(line): \(message)" }
 }
 
-public enum TOML {
-    public static func parse(_ text: String) throws(TOMLError) -> TOMLTable {
-        var parser = Parser(text)
-        return try parser.document()
+/// A parsed document as dotted keys (`app.platforms.macos`) with the line each key or table header is on. Inline
+/// tables are stored whole and flattened, so both `bundle.usage` and `app.platforms.macos` resolve.
+public struct TOMLDocument: Sendable {
+    public fileprivate(set) var values: [String: TOMLValue] = [:]
+    public fileprivate(set) var lines: [String: Int] = [:]
+
+    public subscript(key: String) -> TOMLValue? { values[key] }
+
+    fileprivate mutating func set(_ key: String, _ value: TOMLValue, line: Int) throws(TOMLError) {
+        guard values[key] == nil else { throw TOMLError(line: line, message: "duplicate key `\(key)`") }
+        values[key] = value
+        lines[key] = line
+        if case .table(let entries) = value {
+            for (child, childValue) in entries { try set("\(key).\(child)", childValue, line: line) }
+        }
     }
 }
 
-private struct Parser {
-    private let scalars: [Unicode.Scalar]
-    private var index = 0
-    private var line = 1
-
-    init(_ text: String) {
-        scalars = Array(text.unicodeScalars)
-    }
-
-    mutating func document() throws(TOMLError) -> TOMLTable {
-        var root = TOMLTable()
-        var currentTable: [String] = []
+/// The TOML subset `DylApp.toml` needs: `[table]` headers, bare and dotted keys, basic and literal strings,
+/// integers, booleans, multi-line arrays and inline tables, with `#` comments.
+public enum TOML {
+    public static func parse(_ text: String) throws(TOMLError) -> TOMLDocument {
+        var scanner = Scanner(characters: Array(text))
+        var document = TOMLDocument()
+        var table = ""
         while true {
-            skipWhitespaceAndComments(newlines: true)
-            guard let scalar = peek() else { break }
-            if scalar == "[" {
-                advance()
-                if peek() == "[" {
-                    throw TOMLError(line: line, message: "arrays of tables are not supported")
-                }
-                skipWhitespaceAndComments(newlines: false)
-                let headerLine = line
-                currentTable = try key()
-                skipWhitespaceAndComments(newlines: false)
-                try expect("]")
-                try root.ensureTable(at: currentTable, line: headerLine)
-                root.recordLine(headerLine, for: currentTable)
+            scanner.skip(newlines: true)
+            guard let next = scanner.peek else { return document }
+            let line = scanner.line
+            if next == "[" {
+                scanner.index += 1
+                table = try scanner.key()
+                try scanner.expect("]")
+                document.lines[table] = document.lines[table] ?? line
             } else {
-                let keyLine = line
-                let path = try key()
-                skipWhitespaceAndComments(newlines: false)
-                try expect("=")
-                skipWhitespaceAndComments(newlines: false)
-                let parsed = try value(prefix: currentTable + path, into: &root)
-                let fullPath = currentTable + path
-                try root.set(parsed, at: fullPath, line: keyLine, fullPath: fullPath)
-                root.recordLine(keyLine, for: fullPath)
+                let key = try scanner.key()
+                try scanner.expect("=")
+                try document.set(table.isEmpty ? key : "\(table).\(key)", try scanner.value(), line: line)
             }
-            try endOfLine()
-        }
-        return root
-    }
-
-    // MARK: Keys
-
-    private mutating func key() throws(TOMLError) -> [String] {
-        var parts = [try simpleKey()]
-        while true {
-            skipWhitespaceAndComments(newlines: false)
-            guard peek() == "." else { break }
-            advance()
-            skipWhitespaceAndComments(newlines: false)
-            parts.append(try simpleKey())
-        }
-        return parts
-    }
-
-    private mutating func simpleKey() throws(TOMLError) -> String {
-        switch peek() {
-        case "\"": return try basicString()
-        case "'": return try literalString()
-        default:
-            var result = ""
-            while let scalar = peek(), isBareKey(scalar) {
-                result.unicodeScalars.append(scalar)
-                advance()
-            }
-            guard !result.isEmpty else { throw TOMLError(line: line, message: "expected a key") }
-            return result
+            scanner.skip(newlines: false)
+            if let extra = scanner.peek, extra != "\n" { throw scanner.error("unexpected `\(extra)`") }
         }
     }
+}
 
-    private func isBareKey(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.properties.isASCIIHexDigit || ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar)
-            || scalar == "_" || scalar == "-"
-    }
+private struct Scanner {
+    let characters: [Character]
+    var index = 0
+    var line = 1
 
-    // MARK: Values
+    var peek: Character? { index < characters.count ? characters[index] : nil }
 
-    private mutating func value(prefix: [String], into root: inout TOMLTable) throws(TOMLError) -> TOMLValue {
-        guard let scalar = peek() else { throw TOMLError(line: line, message: "expected a value") }
-        switch scalar {
-        case "\"":
-            if lookahead("\"\"\"") { throw TOMLError(line: line, message: "multi-line strings are not supported") }
-            return .string(try basicString())
-        case "'":
-            return .string(try literalString())
-        case "[":
-            return .array(try array(prefix: prefix, into: &root))
-        case "{":
-            return .table(try inlineTable(prefix: prefix, into: &root))
-        case "t", "f":
-            if consume("true") { return .boolean(true) }
-            if consume("false") { return .boolean(false) }
-            throw TOMLError(line: line, message: "expected `true` or `false`")
-        default:
-            return try number()
-        }
-    }
+    func error(_ message: String) -> TOMLError { TOMLError(line: line, message: message) }
 
-    private mutating func basicString() throws(TOMLError) -> String {
-        try expect("\"")
-        var result = ""
-        while true {
-            guard let scalar = peek(), scalar != "\n" else {
-                throw TOMLError(line: line, message: "unterminated string")
-            }
-            advance()
-            if scalar == "\"" { return result }
-            if scalar == "\\" {
-                guard let escaped = peek() else { throw TOMLError(line: line, message: "unterminated escape") }
-                advance()
-                switch escaped {
-                case "n": result.append("\n")
-                case "t": result.append("\t")
-                case "r": result.append("\r")
-                case "\"": result.append("\"")
-                case "\\": result.append("\\")
-                case "u", "U":
-                    let count = escaped == "u" ? 4 : 8
-                    var hex = ""
-                    for _ in 0..<count {
-                        guard let digit = peek(), digit.properties.isASCIIHexDigit else {
-                            throw TOMLError(line: line, message: "invalid unicode escape")
-                        }
-                        hex.unicodeScalars.append(digit)
-                        advance()
-                    }
-                    guard let code = UInt32(hex, radix: 16), let unicode = Unicode.Scalar(code) else {
-                        throw TOMLError(line: line, message: "invalid unicode escape")
-                    }
-                    result.unicodeScalars.append(unicode)
-                default:
-                    throw TOMLError(line: line, message: "unknown escape `\\\(escaped)`")
-                }
-            } else {
-                result.unicodeScalars.append(scalar)
-            }
-        }
-    }
-
-    private mutating func literalString() throws(TOMLError) -> String {
-        try expect("'")
-        var result = ""
-        while true {
-            guard let scalar = peek(), scalar != "\n" else {
-                throw TOMLError(line: line, message: "unterminated string")
-            }
-            advance()
-            if scalar == "'" { return result }
-            result.unicodeScalars.append(scalar)
-        }
-    }
-
-    private mutating func array(prefix: [String], into root: inout TOMLTable) throws(TOMLError) -> [TOMLValue] {
-        try expect("[")
-        var items: [TOMLValue] = []
-        while true {
-            skipWhitespaceAndComments(newlines: true)
-            if peek() == "]" {
-                advance()
-                return items
-            }
-            items.append(try value(prefix: prefix, into: &root))
-            skipWhitespaceAndComments(newlines: true)
-            if peek() == "," {
-                advance()
-            } else if peek() != "]" {
-                throw TOMLError(line: line, message: "expected `,` or `]` in array")
-            }
-        }
-    }
-
-    private mutating func inlineTable(prefix: [String], into root: inout TOMLTable) throws(TOMLError) -> TOMLTable {
-        try expect("{")
-        var table = TOMLTable()
-        skipWhitespaceAndComments(newlines: false)
-        if peek() == "}" {
-            advance()
-            return table
-        }
-        while true {
-            skipWhitespaceAndComments(newlines: false)
-            let keyLine = line
-            let path = try key()
-            skipWhitespaceAndComments(newlines: false)
-            try expect("=")
-            skipWhitespaceAndComments(newlines: false)
-            let parsed = try value(prefix: prefix + path, into: &root)
-            try table.set(parsed, at: path, line: keyLine, fullPath: prefix + path)
-            root.recordLine(keyLine, for: prefix + path)
-            skipWhitespaceAndComments(newlines: false)
-            if peek() == "," {
-                advance()
-            } else if peek() == "}" {
-                advance()
-                return table
-            } else {
-                throw TOMLError(line: line, message: "expected `,` or `}` in inline table")
-            }
-        }
-    }
-
-    private mutating func number() throws(TOMLError) -> TOMLValue {
-        var text = ""
-        while let scalar = peek(), scalar.properties.isASCIIHexDigit || "+-._eE".unicodeScalars.contains(scalar) {
-            text.unicodeScalars.append(scalar)
-            advance()
-        }
-        let cleaned = text.replacingOccurrences(of: "_", with: "")
-        if let integer = Int(cleaned) { return .integer(integer) }
-        if let double = Double(cleaned), cleaned.contains(where: { $0 == "." || $0 == "e" || $0 == "E" }) {
-            return .float(double)
-        }
-        throw TOMLError(line: line, message: text.isEmpty ? "expected a value" : "invalid value `\(text)`")
-    }
-
-    // MARK: Scanning
-
-    private func peek() -> Unicode.Scalar? {
-        index < scalars.count ? scalars[index] : nil
-    }
-
-    private mutating func advance() {
-        if scalars[index] == "\n" { line += 1 }
-        index += 1
-    }
-
-    private func lookahead(_ literal: String) -> Bool {
-        let wanted = Array(literal.unicodeScalars)
-        guard index + wanted.count <= scalars.count else { return false }
-        return Array(scalars[index..<index + wanted.count]) == wanted
-    }
-
-    private mutating func consume(_ literal: String) -> Bool {
-        guard lookahead(literal) else { return false }
-        for _ in literal.unicodeScalars { advance() }
-        return true
-    }
-
-    private mutating func expect(_ scalar: Unicode.Scalar) throws(TOMLError) {
-        guard peek() == scalar else {
-            throw TOMLError(line: line, message: "expected `\(scalar)`")
-        }
-        advance()
-    }
-
-    private mutating func skipWhitespaceAndComments(newlines: Bool) {
-        while let scalar = peek() {
-            if scalar == " " || scalar == "\t" || scalar == "\r" || (newlines && scalar == "\n") {
-                advance()
-            } else if scalar == "#" {
-                while let next = peek(), next != "\n" { advance() }
+    /// Skips spaces, tabs and comments, and newlines too when `newlines` is set.
+    mutating func skip(newlines: Bool) {
+        while let character = peek {
+            if character == "#" {
+                while let next = peek, next != "\n" { index += 1 }
+            } else if character == " " || character == "\t" || character == "\r" || (newlines && character == "\n") {
+                if character == "\n" { line += 1 }
+                index += 1
             } else {
                 return
             }
         }
     }
 
-    private mutating func endOfLine() throws(TOMLError) {
-        skipWhitespaceAndComments(newlines: false)
-        guard let scalar = peek() else { return }
-        guard scalar == "\n" else {
-            throw TOMLError(line: line, message: "unexpected `\(scalar)` after value")
+    mutating func expect(_ character: Character) throws(TOMLError) {
+        skip(newlines: false)
+        guard peek == character else { throw error("expected `\(character)`") }
+        index += 1
+    }
+
+    mutating func key() throws(TOMLError) -> String {
+        var parts: [String] = []
+        repeat {
+            if !parts.isEmpty { index += 1 }
+            skip(newlines: false)
+            if peek == "\"" || peek == "'" {
+                parts.append(try string())
+            } else {
+                var bare = ""
+                while let character = peek, character.isLetter || character.isNumber || "-_".contains(character) {
+                    bare.append(character)
+                    index += 1
+                }
+                guard !bare.isEmpty else { throw error("expected a key") }
+                parts.append(bare)
+            }
+            skip(newlines: false)
+        } while peek == "."
+        return parts.joined(separator: ".")
+    }
+
+    mutating func value() throws(TOMLError) -> TOMLValue {
+        skip(newlines: false)
+        switch peek {
+        case "\"", "'":
+            return .string(try string())
+        case "[":
+            index += 1
+            var items: [TOMLValue] = []
+            while true {
+                skip(newlines: true)
+                if peek == "]" { break }
+                items.append(try value())
+                skip(newlines: true)
+                guard peek == "," else { break }
+                index += 1
+            }
+            try expect("]")
+            return .array(items)
+        case "{":
+            index += 1
+            var entries: [String: TOMLValue] = [:]
+            skip(newlines: false)
+            while peek != "}" {
+                let key = try key()
+                try expect("=")
+                guard entries[key] == nil else { throw error("duplicate key `\(key)`") }
+                entries[key] = try value()
+                skip(newlines: false)
+                guard peek == "," else { break }
+                index += 1
+                skip(newlines: false)
+            }
+            try expect("}")
+            return .table(entries)
+        default:
+            var word = ""
+            while let character = peek, character.isLetter || character.isNumber || character == "-" {
+                word.append(character)
+                index += 1
+            }
+            if word == "true" || word == "false" { return .boolean(word == "true") }
+            guard let integer = Int(word) else { throw error("unsupported value `\(word)`") }
+            return .integer(integer)
         }
-        advance()
+    }
+
+    /// A basic (`"…"`, with `\"`, `\\`, `\n` and `\t` escapes) or literal (`'…'`) single-line string.
+    mutating func string() throws(TOMLError) -> String {
+        let quote = characters[index]
+        index += 1
+        var result = ""
+        while let character = peek, character != "\n" {
+            index += 1
+            if character == quote { return result }
+            guard quote == "\"", character == "\\", let escaped = peek else {
+                result.append(character)
+                continue
+            }
+            index += 1
+            switch escaped {
+            case "n": result.append("\n")
+            case "t": result.append("\t")
+            case "\"", "\\": result.append(escaped)
+            default: throw error("unsupported escape `\\\(escaped)`")
+            }
+        }
+        throw error("unterminated string")
     }
 }

@@ -1,35 +1,27 @@
 import Foundation
 
-/// The schema of an app's `DylApp.toml`. Host tools, CI wrappers (through `devkit manifest get`), and the
-/// app's site all read this one file.
-public struct DylAppManifest: Codable, Equatable, Sendable {
+/// The schema of an app's `DylApp.toml`, which devkit and release-kit read.
+public struct DylAppManifest: Equatable, Sendable {
     public var app: App
     public var build: Build
     public var bundle: Bundle
     public var ios: IOS?
     public var release: Release
     public var launch: Launch?
-    public var site: Site?
 
-    public struct App: Codable, Equatable, Sendable {
+    public struct App: Equatable, Sendable {
         public var name: String
         public var bundleId: String
         public var platforms: Platforms
         public var category: String
     }
 
-    public struct Platforms: Codable, Equatable, Sendable {
+    public struct Platforms: Equatable, Sendable {
         public var macos: String
         public var ios: String?
     }
 
-    public struct Build: Codable, Equatable, Sendable {
-        public enum Kind: String, Codable, Sendable {
-            case swiftpm
-            case xcodeproj
-        }
-
-        public var kind: Kind
+    public struct Build: Equatable, Sendable {
         /// Executable product passed to `swift build --product`.
         public var product: String
         public var entitlements: String
@@ -40,19 +32,19 @@ public struct DylAppManifest: Codable, Equatable, Sendable {
     }
 
     /// Info.plist content beyond what the bundler derives from `[app]` and `[release]`.
-    public struct Bundle: Codable, Equatable, Sendable {
+    public struct Bundle: Equatable, Sendable {
         public var urlSchemes: [String]?
         public var urlName: String?
         public var bonjourServices: [String]?
         public var usage: [String: String]?
     }
 
-    public struct IOS: Codable, Equatable, Sendable {
+    public struct IOS: Equatable, Sendable {
         public var bundleId: String?
         public var simulator: String?
     }
 
-    public struct Release: Codable, Equatable, Sendable {
+    public struct Release: Equatable, Sendable {
         public var sparklePublicKey: String
         public var siteUrl: String
         public var artifactsDir: String
@@ -65,13 +57,8 @@ public struct DylAppManifest: Codable, Equatable, Sendable {
     }
 
     /// Prefix for the launch-override environment variables (`<PREFIX>_INITIAL_VIEW`, `<PREFIX>_APPEARANCE`, ...).
-    public struct Launch: Codable, Equatable, Sendable {
+    public struct Launch: Equatable, Sendable {
         public var envPrefix: String
-    }
-
-    public struct Site: Codable, Equatable, Sendable {
-        public var tagline: String?
-        public var gatekeeperNote: Bool?
     }
 }
 
@@ -90,7 +77,9 @@ extension DylAppManifest {
     public static let fileName = "DylApp.toml"
 
     /// Reads and validates `DylApp.toml` from `root`.
-    public static func load(root: URL) throws(ManifestError) -> (DylAppManifest, TOMLTable) {
+    ///
+    /// - Blocking: reads the file.
+    public static func load(root: URL) throws(ManifestError) -> DylAppManifest {
         let url = root.appending(path: fileName)
         let text: String
         do {
@@ -102,128 +91,123 @@ extension DylAppManifest {
         return try decode(text, path: url.path)
     }
 
-    public static func decode(
-        _ text: String, path: String = fileName
-    ) throws(ManifestError) -> (DylAppManifest, TOMLTable) {
-        let table: TOMLTable
+    public static func decode(_ text: String, path: String = fileName) throws(ManifestError) -> DylAppManifest {
+        let document: TOMLDocument
         do {
-            table = try TOML.parse(text)
+            document = try TOML.parse(text)
         } catch {
             throw ManifestError(path: path, line: error.line, message: error.message)
         }
-        let data: Data
-        do {
-            data = try JSONEncoder().encode(CamelCased(.table(table)))
-        } catch {
-            throw ManifestError(path: path, line: nil, message: "cannot convert manifest: \(error)")
-        }
-        do {
-            let manifest = try JSONDecoder().decode(DylAppManifest.self, from: data)
-            try manifest.validate(table: table, path: path)
-            return (manifest, table)
-        } catch let error as ManifestError {
-            throw error
-        } catch let error as DecodingError {
-            throw describe(error, table: table, path: path)
-        } catch {
-            throw ManifestError(path: path, line: nil, message: "\(error)")
-        }
+        let toml = Reader(document: document, path: path)
+        let manifest = DylAppManifest(
+            app: App(
+                name: try toml.required("app.name"),
+                bundleId: try toml.required("app.bundle-id"),
+                platforms: Platforms(macos: try toml.required("app.platforms.macos"), ios: try toml.string("app.platforms.ios")),
+                category: try toml.required("app.category")
+            ),
+            build: Build(
+                product: try toml.required("build.product"),
+                entitlements: try toml.required("build.entitlements"),
+                iconGenerator: try toml.string("build.icon-generator"),
+                embedFrameworks: try toml.strings("build.embed-frameworks")
+            ),
+            bundle: Bundle(
+                urlSchemes: try toml.strings("bundle.url-schemes"),
+                urlName: try toml.string("bundle.url-name"),
+                bonjourServices: try toml.strings("bundle.bonjour-services"),
+                usage: try toml.stringMap("bundle.usage")
+            ),
+            ios: document.lines["ios"] == nil
+                ? nil : IOS(bundleId: try toml.string("ios.bundle-id"), simulator: try toml.string("ios.simulator")),
+            release: Release(
+                sparklePublicKey: try toml.required("release.sparkle-public-key"),
+                siteUrl: try toml.required("release.site-url"),
+                artifactsDir: try toml.required("release.artifacts-dir"),
+                checkInterval: try toml.integer("release.check-interval"),
+                notesMaxVersions: try toml.integer("release.notes-max-versions"),
+                inputs: try toml.strings("release.inputs") ?? []
+            ),
+            launch: try toml.string("launch.env-prefix").map(Launch.init)
+        )
+        try manifest.validate(toml)
+        return manifest
     }
 
-    private func validate(table: TOMLTable, path: String) throws(ManifestError) {
-        func fail(_ key: String, _ message: String) -> ManifestError {
-            ManifestError(path: path, line: table.line(of: key), message: message)
-        }
+    private func validate(_ toml: Reader) throws(ManifestError) {
         if !app.bundleId.contains(".") {
-            throw fail("app.bundle-id", "`app.bundle-id` must be reverse-DNS, got `\(app.bundleId)`")
+            throw toml.fail("app.bundle-id", "`app.bundle-id` must be reverse-DNS, got `\(app.bundleId)`")
         }
         guard release.siteUrl.hasPrefix("https://") else {
-            throw fail("release.site-url", "`release.site-url` must be an https URL")
+            throw toml.fail("release.site-url", "`release.site-url` must be an https URL")
         }
         if release.inputs.isEmpty {
-            throw fail("release.inputs", "`release.inputs` must list at least one glob")
+            throw toml.fail("release.inputs", "`release.inputs` must list at least one glob")
         }
         for (key, version) in [("app.platforms.macos", app.platforms.macos), ("app.platforms.ios", app.platforms.ios)] {
             guard let version else { continue }
             if version.split(separator: ".").contains(where: { Int($0) == nil }) {
-                throw fail(key, "`\(key)` must be a dotted version, got `\(version)`")
+                throw toml.fail(key, "`\(key)` must be a dotted version, got `\(version)`")
             }
-        }
-    }
-
-    private static func describe(_ error: DecodingError, table: TOMLTable, path: String) -> ManifestError {
-        func key(_ codingPath: [any CodingKey]) -> String {
-            codingPath.map { kebabCase($0.stringValue) }.joined(separator: ".")
-        }
-        func nearestLine(_ dotted: String) -> Int? {
-            var components = dotted.split(separator: ".").map(String.init)
-            while !components.isEmpty {
-                if let line = table.line(of: components.joined(separator: ".")) { return line }
-                components.removeLast()
-            }
-            return nil
-        }
-        switch error {
-        case .keyNotFound(let missing, let context):
-            let parent = key(context.codingPath)
-            let full = parent.isEmpty ? kebabCase(missing.stringValue) : "\(parent).\(kebabCase(missing.stringValue))"
-            return ManifestError(path: path, line: nearestLine(parent), message: "missing required key `\(full)`")
-        case .typeMismatch(let type, let context), .valueNotFound(let type, let context):
-            let dotted = key(context.codingPath)
-            return ManifestError(path: path, line: nearestLine(dotted), message: "`\(dotted)` must be \(type)")
-        case .dataCorrupted(let context):
-            let dotted = key(context.codingPath)
-            return ManifestError(
-                path: path, line: nearestLine(dotted), message: "`\(dotted)`: \(context.debugDescription)")
-        @unknown default:
-            return ManifestError(path: path, line: nil, message: "\(error)")
         }
     }
 }
 
-func camelCase(_ kebab: String) -> String {
-    let parts = kebab.split(separator: "-")
-    guard let first = parts.first else { return kebab }
-    return String(first) + parts.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
-}
+/// Typed lookups that report the line of the key, or of its nearest enclosing table when the key is missing.
+private struct Reader {
+    let document: TOMLDocument
+    let path: String
 
-func kebabCase(_ camel: String) -> String {
-    var result = ""
-    for character in camel {
-        if character.isUppercase {
-            result += "-" + character.lowercased()
-        } else {
-            result.append(character)
+    func fail(_ key: String, _ message: String) -> ManifestError {
+        var components = key.split(separator: ".")
+        var line: Int?
+        while line == nil, !components.isEmpty {
+            line = document.lines[components.joined(separator: ".")]
+            components.removeLast()
         }
-    }
-    return result
-}
-
-/// Encodes a TOML tree as JSON with table keys converted to camelCase so `JSONDecoder` can fill the schema.
-/// Free-form string maps (`bundle.usage`) keep their keys.
-private struct CamelCased: Encodable {
-    let value: TOMLValue
-    let convertKeys: Bool
-
-    init(_ value: TOMLValue, convertKeys: Bool = true) {
-        self.value = value
-        self.convertKeys = convertKeys
+        return ManifestError(path: path, line: line, message: message)
     }
 
-    func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch value {
-        case .string(let string): try container.encode(string)
-        case .integer(let integer): try container.encode(integer)
-        case .float(let double): try container.encode(double)
-        case .boolean(let bool): try container.encode(bool)
-        case .array(let items): try container.encode(items.map { CamelCased($0) })
-        case .table(let table):
-            var converted: [String: CamelCased] = [:]
-            for (key, child) in table.entries {
-                converted[convertKeys ? camelCase(key) : key] = CamelCased(child, convertKeys: key != "usage")
-            }
-            try container.encode(converted)
+    func required(_ key: String) throws(ManifestError) -> String {
+        guard let value = try string(key) else { throw fail(key, "missing required key `\(key)`") }
+        return value
+    }
+
+    func string(_ key: String) throws(ManifestError) -> String? {
+        switch document[key] {
+        case nil: return nil
+        case .string(let value): return value
+        default: throw fail(key, "`\(key)` must be a string")
         }
+    }
+
+    func integer(_ key: String) throws(ManifestError) -> Int? {
+        switch document[key] {
+        case nil: return nil
+        case .integer(let value): return value
+        default: throw fail(key, "`\(key)` must be an integer")
+        }
+    }
+
+    func strings(_ key: String) throws(ManifestError) -> [String]? {
+        guard let value = document[key] else { return nil }
+        guard case .array(let items) = value else { throw fail(key, "`\(key)` must be an array of strings") }
+        var result: [String] = []
+        for item in items {
+            guard case .string(let string) = item else { throw fail(key, "`\(key)` must be an array of strings") }
+            result.append(string)
+        }
+        return result
+    }
+
+    func stringMap(_ key: String) throws(ManifestError) -> [String: String]? {
+        guard let value = document[key] else { return nil }
+        guard case .table(let entries) = value else { throw fail(key, "`\(key)` must be an inline table") }
+        var result: [String: String] = [:]
+        for (name, entry) in entries {
+            guard case .string(let string) = entry else { throw fail(key, "`\(key).\(name)` must be a string") }
+            result[name] = string
+        }
+        return result
     }
 }

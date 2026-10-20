@@ -5,12 +5,10 @@ import Foundation
 public struct Workspace: Sendable {
     public let root: URL
     public let manifest: DylAppManifest
-    public let table: TOMLTable
 
-    public init(root: URL, manifest: DylAppManifest, table: TOMLTable) {
+    public init(root: URL, manifest: DylAppManifest) {
         self.root = root
         self.manifest = manifest
-        self.table = table
     }
 
     /// Loads the manifest from `explicitRoot`, then `DYLKIT_ROOT` (set by `./run`), then the
@@ -33,8 +31,7 @@ public struct Workspace: Sendable {
             root = candidate
         }
         do {
-            let (manifest, table) = try DylAppManifest.load(root: root)
-            return Workspace(root: root, manifest: manifest, table: table)
+            return Workspace(root: root, manifest: try DylAppManifest.load(root: root))
         } catch {
             throw ToolError(error.description)
         }

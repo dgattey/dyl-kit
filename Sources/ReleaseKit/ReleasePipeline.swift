@@ -43,6 +43,7 @@ public struct ReleasePipeline: Sendable {
         let liveFeed = await LiveFeed.fetch(workspace.manifest.release.feedURL)
         let planner = VersionPlanner(workspace: workspace)
         let head = try planner.headCommitMessage()
+        try fastForwardToRemote()
         if prBody == nil { Log.warn("no PR body from the forge; reading `# Release info` from the merge commit") }
         let commit: CommitMessage
         let bump: AppVersion.Bump
@@ -174,6 +175,18 @@ public struct ReleasePipeline: Sendable {
 
     // MARK: Helpers
 
+    /// A queued release job checks out its own merge commit, behind the release an earlier job pushed, so `publish`
+    /// would push a non-fast-forward. Catch up before planning, so tags and the committed appcast are current too.
+    /// Branches that aren't on `origin` are left alone.
+    private func fastForwardToRemote() throws {
+        let root = workspace.root
+        let branch = try Shell.capture(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
+        guard branch != "HEAD" else { return }
+        let lookup = ["git", "ls-remote", "--quiet", "--exit-code", "--heads", "origin", branch]
+        guard try Shell.run(lookup, cwd: root, allowFailure: true) == 0 else { return }
+        try Shell.run(["git", "pull", "--ff-only", "--quiet", "origin", branch], cwd: root)
+    }
+
     private var stagedApp: URL { stageDir.appending(path: "\(workspace.manifest.app.name).app") }
 
     private func archiveURL(_ state: State) -> URL {
@@ -264,10 +277,7 @@ public struct ReleasePipeline: Sendable {
             return URL(fileURLWithPath: path)
         }
         if let encoded = environment["SPARKLE_ED_PRIVATE_KEY_BASE64"] {
-            let compact = encoded.filter { !$0.isWhitespace }
-            guard let key = Data(base64Encoded: compact) else {
-                throw ToolError("SPARKLE_ED_PRIVATE_KEY_BASE64 isn't valid base64")
-            }
+            let key = try Self.edKeyFile(fromSecret: encoded)
             let file = FileManager.default.temporaryDirectory.appending(path: "dylkit-sparkle-\(UUID().uuidString).key")
             try key.write(to: file)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
@@ -285,5 +295,15 @@ public struct ReleasePipeline: Sendable {
             )
         }
         return found
+    }
+
+    /// `sign_update --ed-key-file` reads the base64 text that `generate_keys -x` exports. The CI secret holds either
+    /// that text or that text base64-encoded again; an Ed25519 key is 32 or 64 bytes, which tells them apart.
+    static func edKeyFile(fromSecret secret: String) throws -> Data {
+        let compact = secret.filter { !$0.isWhitespace }
+        guard let decoded = Data(base64Encoded: compact) else {
+            throw ToolError("SPARKLE_ED_PRIVATE_KEY_BASE64 isn't valid base64")
+        }
+        return [32, 64].contains(decoded.count) ? Data(compact.utf8) : decoded
     }
 }

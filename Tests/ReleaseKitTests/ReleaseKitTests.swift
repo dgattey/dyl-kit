@@ -61,6 +61,16 @@ private let sconeosModules = [
         #expect(ReleaseInfo.notesMarkdown(body: empty, fallbackTitle: "Fix the map") == "- Fix the map")
     }
 
+    /// Saga #45: the secret may hold the exported key text or that text base64-encoded again.
+    @Test func sparkleKeySecretAcceptsSingleOrDoubleBase64() throws {
+        let exported = Data(repeating: 7, count: 32).base64EncodedString()
+        let doubled = Data(exported.utf8).base64EncodedString()
+        #expect(try ReleasePipeline.edKeyFile(fromSecret: exported) == Data(exported.utf8))
+        let wrapped = "\(doubled.prefix(20))\n\(doubled.dropFirst(20))"
+        #expect(try ReleasePipeline.edKeyFile(fromSecret: wrapped) == Data(exported.utf8))
+        #expect(throws: ToolError.self) { try ReleasePipeline.edKeyFile(fromSecret: "not base64!") }
+    }
+
     /// Saga #52: `## Summary` with `### Changes` under it was cut at the subheading, and reviewer sections leaked in.
     @Test func notesKeepDeeperSubheadingsButSkipReviewerSections() {
         let body = """

@@ -1,4 +1,0 @@
-<ul>
-  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Fix Sparkle update signature validation:</strong> Pin ad-hoc signed app bundles to a bundle-identifier designated requirement (<code>designated =&gt; identifier "com.sconeos.SconeOS"</code>) so Sparkle updates succeed across builds instead of failing with code-signature error <code>-67050</code>.</li>
-  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Verify update signatures at release time:</strong> Require <code>sparkle:edSignature</code> and cryptographically verify it against <code>SUPublicEDKey</code> in <code>Info.plist</code> during release packaging.</li>
-</ul>

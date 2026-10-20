@@ -42,10 +42,10 @@ public final class AppUpdater {
         self.presenter = presenter
         self.updaterDelegate = updaterDelegate
         self.userDriverDelegate = userDriverDelegate
-        canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) {
-            [weak self] updater, _ in
-            let canCheck = updater.canCheckForUpdates
-            Task { @MainActor in self?.canCheckDidChange(canCheck) }
+        // SPUUpdater is main-actor isolated, so read canCheckForUpdates on the main actor, not in the KVO callback.
+        canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial]) {
+            [weak self] _, _ in
+            Task { @MainActor in self?.canCheckDidChange() }
         }
     }
 
@@ -64,8 +64,8 @@ public final class AppUpdater {
         checkOnLaunchIfReady()
     }
 
-    private func canCheckDidChange(_ canCheck: Bool) {
-        canCheckForUpdates = canCheck
+    private func canCheckDidChange() {
+        canCheckForUpdates = controller.updater.canCheckForUpdates
         checkOnLaunchIfReady()
     }
 

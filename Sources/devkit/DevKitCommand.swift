@@ -12,7 +12,7 @@ struct DevKitCommand: AsyncParsableCommand {
         discussion: "Nothing here touches /Applications, steals focus or changes the system appearance.",
         subcommands: [
             Build.self, Relaunch.self, Capture.self, IOS.self, Checks.self, Verify.self, Bootstrap.self, Clean.self,
-            Manifest.self, CI.self, Skills.self,
+            Manifest.self, Skills.self,
         ]
     )
 }
@@ -194,31 +194,6 @@ extension DevKitCommand {
                 throw ToolError("DylApp.toml has no \(key)")
             }
             print(value.plainText)
-        }
-    }
-
-    struct CI: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "ci", abstract: "Forge CI wrappers.", subcommands: [CISyncCommand.self])
-    }
-
-    struct CISyncCommand: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "sync", abstract: "Write the forge wrappers from DylKit's templates.")
-
-        @OptionGroup var root: RootOption
-        @Option(help: "The forge.") var forge: String = CIWrappers.Forge.github.rawValue
-        @Flag(help: "Only report wrappers that differ from the templates.") var check = false
-
-        func run() throws {
-            guard let forge = CIWrappers.Forge(rawValue: forge) else { throw ToolError("unknown forge \(forge)") }
-            let stale = try CISync.run(workspace: try root.workspace(), forge: forge, check: check)
-            if check, !stale.isEmpty {
-                for path in stale {
-                    FileHandle.standardError.write(Data("\(path) differs; run `./run dev ci sync`\n".utf8))
-                }
-                throw ExitCode.failure
-            }
         }
     }
 

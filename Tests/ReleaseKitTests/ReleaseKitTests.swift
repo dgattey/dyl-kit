@@ -165,7 +165,9 @@ private let sconeosModules = [
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
 
-    private func scratchWorkspace(workflows: (Workspace) -> [String: String]) throws -> Workspace {
+    private static let committedWorkflows = ["release", "verify", "pr-check"].map { ".github/workflows/\($0).yml" }
+
+    private func scratchWorkspace(workflows: [String: String]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         for path in [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
@@ -177,14 +179,19 @@ private let sconeosModules = [
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: Self.repoRoot.appending(path: path), to: destination)
         }
-        let workspace = try Workspace.locate(root.path)
-        for (path, text) in workflows(workspace) {
+        for (path, text) in workflows {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(text.utf8).write(to: destination)
         }
-        return workspace
+        return try Workspace.locate(root.path)
+    }
+
+    private func committed() throws -> [String: String] {
+        try Dictionary(uniqueKeysWithValues: Self.committedWorkflows.map {
+            ($0, try String(contentsOf: Self.repoRoot.appending(path: $0), encoding: .utf8))
+        })
     }
 
     private func errors(_ report: CheckReport) -> [String: [String]] {
@@ -192,39 +199,31 @@ private let sconeosModules = [
             .mapValues { $0.map(\.message) }
     }
 
-    @Test func syncedWrappersPass() throws {
-        let workspace = try scratchWorkspace { workspace in
-            Dictionary(
-                uniqueKeysWithValues: CIWrappers.render(.github, workspace: workspace).map { ($0.path, $0.contents) })
-        }
+    @Test func committedWorkflowsPass() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
     }
 
     @Test func legacyWorkflowFails() throws {
         let legacy = try fixture("legacy-release-macos.yml")
-        let workspace = try scratchWorkspace { _ in [".github/workflows/release-macos.yml": legacy] }
+        let workspace = try scratchWorkspace(workflows: [".github/workflows/release-macos.yml": legacy])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let found = errors(ReleaseChecks(workspace: workspace).run())
         #expect(found["forge_neutral"]?.contains { $0.contains("gh CLI") } == true)
         #expect(found["forge_neutral"]?.contains { $0.contains("github-script") } == true)
         #expect(found["unused_ci_secret"]?.contains { $0.contains("GH_TOKEN") } == true)
-        #expect(found["ci_wrappers_current"]?.count == 3)
         #expect(found["release_trigger_drift"] != nil)
     }
 
-    @Test func handEditedWrapperDrifts() throws {
-        let workspace = try scratchWorkspace { workspace in
-            var files = Dictionary(
-                uniqueKeysWithValues: CIWrappers.render(.github, workspace: workspace).map { ($0.path, $0.contents) })
-            files[CIWrappers.releaseWorkflowPath] = files[CIWrappers.releaseWorkflowPath]?
-                .replacingOccurrences(of: "      - 'DylApp.toml'\n", with: "")
-            return files
-        }
+    @Test func droppedReleaseInputDrifts() throws {
+        var workflows = try committed()
+        workflows[".github/workflows/release.yml"] = workflows[".github/workflows/release.yml"]?
+            .replacingOccurrences(of: "      - 'DylApp.toml'\n", with: "")
+        let workspace = try scratchWorkspace(workflows: workflows)
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let found = errors(ReleaseChecks(workspace: workspace).run())
         #expect(found["release_trigger_drift"]?.first?.contains("DylApp.toml") == true)
-        #expect(found["ci_wrappers_current"]?.count == 1)
     }
 }
 

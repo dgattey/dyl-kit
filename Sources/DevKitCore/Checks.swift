@@ -161,24 +161,3 @@ public enum AgentAssets {
         return stale
     }
 }
-
-public enum CISync {
-    /// Writes the forge wrappers from `CIWrappers`, or with `check` only reports which differ. Returns the paths
-    /// that differ (before writing).
-    ///
-    /// - Blocking: reads and writes workflow files.
-    public static func run(workspace: Workspace, forge: CIWrappers.Forge, check: Bool) throws -> [String] {
-        var stale: [String] = []
-        for wrapper in CIWrappers.render(forge, workspace: workspace) {
-            let url = workspace.url(wrapper.path)
-            if (try? String(contentsOf: url, encoding: .utf8)) == wrapper.contents { continue }
-            stale.append(wrapper.path)
-            guard !check else { continue }
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data(wrapper.contents.utf8).write(to: url)
-            Log.step("wrote \(wrapper.path)")
-        }
-        return stale
-    }
-}

@@ -51,7 +51,6 @@ public struct ReleaseChecks: Sendable {
         check("min_os_consistency", checkMinimumOS)
         check("appcast_signature", checkCommittedAppcast)
         check("release_trigger_drift", checkTriggerDrift)
-        check("ci_wrappers_current", checkWrappersCurrent)
         check("unused_ci_secret", checkSecrets)
         check("forge_neutral", checkForgeNeutral)
         check("workflow_hygiene", checkWorkflowHygiene)
@@ -246,8 +245,8 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkTriggerDrift(_ findings: inout [CheckFinding]) {
-        let expected = Set(CIWrappers.releaseTriggerPaths(workspace: workspace))
         for workflow in workflows where workflow.runsRelease {
+            let expected = Set(workspace.manifest.release.inputs + [workflow.path])
             guard let paths = workflow.pushPaths else {
                 findings.append(
                     error("release_trigger_drift", workflow.path, "release runs on every push; add `paths:`"))
@@ -269,13 +268,6 @@ public struct ReleaseChecks: Sendable {
                         "triggers on \(extra.joined(separator: ", ")), which DylApp.toml's release.inputs doesn't list")
                 )
             }
-        }
-    }
-
-    private func checkWrappersCurrent(_ findings: inout [CheckFinding]) {
-        for wrapper in CIWrappers.render(.github, workspace: workspace) where read(wrapper.path) != wrapper.contents {
-            findings.append(
-                error("ci_wrappers_current", wrapper.path, "missing or edited by hand; run `./run dev ci sync`"))
         }
     }
 

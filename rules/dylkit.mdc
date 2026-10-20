@@ -1,0 +1,8 @@
+---
+description: DylKit app workflow — checks before a PR and where the conventions live
+alwaysApply: true
+---
+
+Before opening or updating a PR, run `./run dev checks` (SwiftLint, `dyl-lint`, and `release-kit check`) and fix what it reports. Don't restate lint rules in code or docs; the findings explain themselves. Use `// lint:allow <rule>: <reason>` only for a verified benign hit.
+
+Conventions live in the DylKit skills: `apple-dev-loop`, `apple-release`, `swift-concurrency-io`, `liquid-glass-chrome`, `swiftui-views`, `swiftui-viewmodels`, `app-logging`, `ui-screenshot-tests` and `whats-ready`. Edit them in `Packages/DylKit/skills/` and run `./run dev skills sync`; the copies under `.cursor/` are generated.

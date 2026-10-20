@@ -38,7 +38,9 @@ public struct ReleaseChecks: Sendable {
     private var manifest: DylAppManifest { workspace.manifest }
 
     /// - Blocking: reads repo files and, for a bundle, runs `codesign`, `otool` and `xattr`.
-    public func run(bundle: URL? = nil, stagedAppcast: URL? = nil, stagedArchive: URL? = nil) -> CheckReport {
+    public func run(
+        bundle: URL? = nil, stagedAppcast: URL? = nil, stagedArchive: URL? = nil, liveFeed: [AppcastItem] = []
+    ) -> CheckReport {
         var report = CheckReport()
         func check(_ rule: String, _ body: (inout [CheckFinding]) -> Void) {
             report.checked.append(rule)
@@ -55,8 +57,11 @@ public struct ReleaseChecks: Sendable {
         check("forge_neutral", checkForgeNeutral)
         check("workflow_hygiene", checkWorkflowHygiene)
         check("pr_template_contract", checkPRTemplate)
+        check("library_validation", checkLibraryValidation)
         if let stagedAppcast, let stagedArchive {
-            check("staged_release") { checkStaged(appcast: stagedAppcast, archive: stagedArchive, into: &$0) }
+            check("staged_release") {
+                checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
+            }
         }
         if let bundle {
             check("bundle") { checkBundle(bundle, into: &$0) }
@@ -151,6 +156,16 @@ public struct ReleaseChecks: Sendable {
                     error("min_os_consistency", "Package.swift", ".iOS(.v\(declared.1)) but DylApp.toml says \(iOS)"))
             }
         }
+        for project in projectFiles() {
+            guard let text = read(project) else { continue }
+            var mismatches: Set<String> = []
+            for match in text.matches(of: /(MACOSX|IPHONEOS)_DEPLOYMENT_TARGET = "?([\d.]+)/) {
+                let expected = match.1 == "MACOSX" ? macOS : manifest.app.platforms.ios
+                guard let expected, !sameVersion(String(match.2), expected) else { continue }
+                mismatches.insert("\(match.1)_DEPLOYMENT_TARGET is \(match.2) but DylApp.toml says \(expected)")
+            }
+            findings += mismatches.sorted().map { error("min_os_consistency", project, $0) }
+        }
         let appcastPath = "\(manifest.release.artifactsDir)/appcast.xml"
         if let item = Appcast.items(at: workspace.url(appcastPath)).first, let published = item.minimumSystemVersion,
             published != macOS
@@ -160,6 +175,10 @@ public struct ReleaseChecks: Sendable {
                     "min_os_consistency", appcastPath, "minimumSystemVersion is \(published), DylApp.toml says \(macOS)"
                 ))
         }
+    }
+
+    private func sameVersion(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.trimmingSuffix(".0") == rhs.trimmingSuffix(".0")
     }
 
     private func checkCommittedAppcast(_ findings: inout [CheckFinding]) {
@@ -371,9 +390,24 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    /// Ad-hoc signed apps load embedded frameworks only with library validation off: without the entitlement, dyld
+    /// rejects Sparkle.framework at launch because it isn't signed by the same team.
+    private func checkLibraryValidation(_ findings: inout [CheckFinding]) {
+        guard !(manifest.build.embedFrameworks ?? []).isEmpty else { return }
+        let file = manifest.build.entitlements
+        let entitlements = InfoPlist.read(workspace.url(file))
+        if entitlements?[Self.libraryValidationKey] != .boolean(true) {
+            findings.append(
+                error("library_validation", file, "embeds frameworks but doesn't set \(Self.libraryValidationKey)"))
+        }
+    }
+
+    static let libraryValidationKey = "com.apple.security.cs.disable-library-validation"
+
     // MARK: - Staged release and bundle
 
-    private func checkStaged(appcast: URL, archive: URL, into findings: inout [CheckFinding]) {
+    /// The build must beat both the committed feed and the live one, which can be ahead of a stale checkout.
+    private func checkStaged(appcast: URL, archive: URL, liveFeed: [AppcastItem], into findings: inout [CheckFinding]) {
         let file = appcast.path
         guard let item = Appcast.items(at: appcast).first else {
             findings.append(error("staged_release", file, "has no items"))
@@ -386,9 +420,9 @@ public struct ReleaseChecks: Sendable {
                     "minimumSystemVersion is \(item.minimumSystemVersion ?? "missing"), expected \(manifest.app.platforms.macos)"
                 ))
         }
-        let committed = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml")).first
-        if let newBuild = item.build.flatMap({ Int($0) }), let oldBuild = committed?.build.flatMap({ Int($0) }),
-            newBuild <= oldBuild
+        let published = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml")) + liveFeed
+        if let newBuild = item.build.flatMap({ Int($0) }),
+            let oldBuild = published.compactMap({ $0.build.flatMap { Int($0) } }).max(), newBuild <= oldBuild
         {
             findings.append(
                 error("build_number_monotonic", file, "build \(newBuild) isn't above the published build \(oldBuild)"))
@@ -443,6 +477,12 @@ public struct ReleaseChecks: Sendable {
             if !rpaths.contains("@executable_path/../Frameworks") {
                 findings.append(error("rpath_strip", file, "is missing the @executable_path/../Frameworks rpath"))
             }
+        }
+        if !(manifest.build.embedFrameworks ?? []).isEmpty,
+            let signed = try? Shell.capture(["codesign", "-d", "--entitlements", "-", "--xml", app.path], allowFailure: true),
+            !signed.contains(Self.libraryValidationKey)
+        {
+            findings.append(error("library_validation", file, "isn't signed with \(Self.libraryValidationKey)"))
         }
         for framework in manifest.build.embedFrameworks ?? [] {
             let path = app.appending(path: "Contents/Frameworks/\(framework).framework")

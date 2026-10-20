@@ -129,13 +129,14 @@ public struct ReleasePipeline: Sendable {
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
         let appcast = try generateAppcast(edKeyFile: edKeyFile)
         try verifySignature(appcast: appcast, archive: archive, app: stagedApp)
-        try install(state: state, archive: archive, appcast: appcast)
+        try install(archive: archive, appcast: appcast, liveFeed: liveFeed)
         return appcast
     }
 
     /// Release checks against the staged feed, then copies the archive and feed into the artifacts directory.
-    private func install(state: State, archive: URL, appcast: URL) throws {
-        let report = ReleaseChecks(workspace: workspace).run(stagedAppcast: appcast, stagedArchive: archive)
+    private func install(archive: URL, appcast: URL, liveFeed: [AppcastItem]) throws {
+        let report = ReleaseChecks(workspace: workspace)
+            .run(stagedAppcast: appcast, stagedArchive: archive, liveFeed: liveFeed)
         report.print()
         guard report.passed else { throw ToolError("release checks failed") }
 

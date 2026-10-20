@@ -261,6 +261,7 @@ private let sconeosModules = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
             "server/public", "Packages/DylKit/Package.swift",
             "Packages/DylKit/Sources/ReleaseKit/ReleasePipeline.swift", "ci/github/pr-body.sh",
+            "Sconeos.local.entitlements",
         ] {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
@@ -291,6 +292,24 @@ private let sconeosModules = [
         let workspace = try scratchWorkspace(workflows: try committed())
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
+    }
+
+    /// Photos #9 and Saga #50: library validation must be off to load Sparkle ad-hoc, and an Xcode project's
+    /// deployment target must match DylApp.toml.
+    @Test func entitlementsAndXcodeProjectsMatchTheManifest() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let entitlements = workspace.url("Sconeos.local.entitlements")
+        let text = try String(contentsOf: entitlements, encoding: .utf8)
+        try Data(text.replacing("disable-library-validation", with: "allow-jit").utf8).write(to: entitlements)
+        let project = workspace.url("Sconeos.xcodeproj/project.pbxproj")
+        try FileManager.default.createDirectory(at: project.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let settings = "MACOSX_DEPLOYMENT_TARGET = 15.0;\nMACOSX_DEPLOYMENT_TARGET = 14.0;\nMACOSX_DEPLOYMENT_TARGET = 15.0;"
+        try Data(settings.utf8).write(to: project)
+
+        let found = errors(ReleaseChecks(workspace: workspace).run())
+        #expect(found["library_validation"]?.count == 1)
+        #expect(found["min_os_consistency"] == ["MACOSX_DEPLOYMENT_TARGET is 15.0 but DylApp.toml says 14.0"])
     }
 
     @Test func legacyWorkflowFails() throws {

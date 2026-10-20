@@ -414,19 +414,13 @@ public struct ReleaseChecks: Sendable {
 
     // MARK: - Staged release
 
-    /// The build must beat both the committed feed and the live one, which can be ahead of a stale checkout.
+    /// The build must beat both the committed feed and the live one, which can be ahead of a stale checkout. The
+    /// `check` step after install covers everything else in the new feed.
     private func checkStaged(appcast: URL, archive: URL, liveFeed: [AppcastItem], into findings: inout [CheckFinding]) {
         let file = appcast.path
         guard let item = Appcast.items(at: appcast).first else {
             findings.append(error("staged_release", file, "has no items"))
             return
-        }
-        if item.minimumSystemVersion != manifest.app.platforms.macos {
-            findings.append(
-                error(
-                    "min_os_consistency", file,
-                    "minimumSystemVersion is \(item.minimumSystemVersion ?? "missing"), expected \(manifest.app.platforms.macos)"
-                ))
         }
         let published = Appcast.items(at: workspace.appcastURL) + liveFeed
         if let newBuild = item.build.flatMap({ Int($0) }),

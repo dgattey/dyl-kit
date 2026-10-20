@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Sconeos</title>
+        <item>
+            <title>1.0.9</title>
+            <pubDate>Fri, 16 Oct 2026 22:42:54 +0000</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>1.0.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3 style="margin: 0 0 6px 0; font-size: 13px;">1.0.9</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Catch up on skipped updates.</li>
+</ul>
+]]></description>
+            <enclosure url="https://sconeos.gattey.com/Sconeos-1.0.9.zip" length="9559195" type="application/octet-stream" sparkle:edSignature="c2ln"/>
+        </item>
+    </channel>
+</rss>

@@ -16,7 +16,7 @@ public struct DevBuild: Sendable {
     @discardableResult
     public func build(configuration: Bundler.Configuration) throws -> URL {
         let manifest = workspace.manifest
-        let version = try VersionPlanner(workspace: workspace).shippedVersion().description
+        let version = try ReleasePipeline(workspace: workspace).shippedVersion().description
         let build = (try? Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? "1"
         try FileManager.default.createDirectory(at: workspace.buildDir, withIntermediateDirectories: true)
         let app = try Bundler(workspace: workspace)

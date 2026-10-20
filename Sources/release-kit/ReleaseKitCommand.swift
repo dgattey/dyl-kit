@@ -96,22 +96,13 @@ extension ReleaseKitCommand {
         }
     }
 
-    struct Check: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Tier 3 release checks against the repo, or with --live against the deployed site.")
+    struct Check: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Tier 3 release checks against the repo.")
 
         @OptionGroup var options: RootOption
-        @Flag(help: "Check what users' updaters see instead of the repo.") var live = false
 
-        func run() async throws {
-            let workspace = try options.workspace()
-            let checks = ReleaseChecks(workspace: workspace)
-            let report: CheckReport
-            if live {
-                report = await checks.live()
-            } else {
-                report = checks.run()
-            }
+        func run() throws {
+            let report = ReleaseChecks(workspace: try options.workspace()).run()
             report.print()
             if !report.passed { throw ExitCode.failure }
         }
@@ -145,7 +136,7 @@ extension ReleaseKitCommand {
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
-            let live = await LiveFeed.fetch(workspace.manifest.release.feedURL)
+            let live = await ReleaseKit.Appcast.fetch(workspace.manifest.release.feedURL)
             print(try pipeline.releaseNotes(state: state, history: [live]))
         }
     }

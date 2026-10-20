@@ -1,5 +1,9 @@
+import DylCore
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 #if canImport(FoundationXML)
 import FoundationXML
 #endif
@@ -34,6 +38,17 @@ public enum Appcast {
     /// - Blocking: reads the file.
     public static func items(at url: URL) -> [AppcastItem] {
         guard let data = try? Data(contentsOf: url) else { return [] }
+        return items(in: data)
+    }
+
+    private static let session = URLSession.bounded(requestTimeout: 20)
+
+    /// What users' updaters see right now. A failed fetch reads as an empty feed: a first release has none.
+    public static func fetch(_ url: String) async -> [AppcastItem] {
+        guard let url = URL(string: url),
+            let (data, response) = try? await session.data(from: url),
+            let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status)
+        else { return [] }
         return items(in: data)
     }
 

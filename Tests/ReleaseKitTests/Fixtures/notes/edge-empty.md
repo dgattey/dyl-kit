@@ -1,7 +1,0 @@
-# Release notes
-
-- 
-
-# What changed?
-
-- 

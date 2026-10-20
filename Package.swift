@@ -70,7 +70,9 @@ let package = Package(
                 "DevKit",
                 "DylToolSupport",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
+            ],
+            // "Sources/devkit" would collide with "Sources/DevKit" on case-insensitive macOS volumes.
+            path: "Sources/devkit-cli"
         ),
 
         // SwiftPM plugins.

@@ -244,9 +244,11 @@ public struct ReleasePipeline: Sendable {
         }
         let site = workspace.manifest.release.siteUrl
         let prefix = site.hasSuffix("/") ? site : site + "/"
+        // The site's notes section lists every version the appcast carries, so it's the dialog's "full notes" link.
         try Shell.run([
             tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", prefix,
-            "--link", site, "--ed-key-file", edKeyFile.path, feed.path,
+            "--link", site, "--full-release-notes-url", prefix + "#release-notes", "--ed-key-file", edKeyFile.path,
+            feed.path,
         ])
         let appcast = stagingDir.appending(path: "appcast.xml")
         try? FileManager.default.removeItem(at: appcast)

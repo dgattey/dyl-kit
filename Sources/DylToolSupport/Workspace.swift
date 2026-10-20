@@ -13,7 +13,7 @@ public struct Workspace: Sendable {
         self.table = table
     }
 
-    /// Loads the manifest from `explicitRoot`, then `DYLKIT_ROOT` (set by `./run` and the SwiftPM plugins), then the
+    /// Loads the manifest from `explicitRoot`, then `DYLKIT_ROOT` (set by `./run`), then the
     /// nearest ancestor of the current directory that has one.
     ///
     /// - Blocking: reads the file system.

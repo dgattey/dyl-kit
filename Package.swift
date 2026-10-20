@@ -11,9 +11,6 @@ let package = Package(
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
         .plugin(name: "DylLintPlugin", targets: ["DylLintPlugin"]),
-        .plugin(name: "LintCommand", targets: ["LintCommand"]),
-        .plugin(name: "DevCommand", targets: ["DevCommand"]),
-        .plugin(name: "ReleaseCommand", targets: ["ReleaseCommand"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
@@ -59,32 +56,8 @@ let package = Package(
             ]
         ),
 
-        // SwiftPM plugins.
+        // Runs dyl-lint during app builds.
         .plugin(name: "DylLintPlugin", capability: .buildTool(), dependencies: ["dyl-lint"]),
-        .plugin(
-            name: "LintCommand",
-            capability: .command(
-                intent: .custom(verb: "lint", description: "Run SwiftLint with the shared config, then dyl-lint")
-            ),
-            dependencies: ["dyl-lint"]
-        ),
-        .plugin(
-            name: "DevCommand",
-            capability: .command(
-                intent: .custom(verb: "dev", description: "Run devkit (build, relaunch, capture, checks)"),
-                permissions: [.writeToPackageDirectory(reason: "devkit writes app builds into build/")]
-            ),
-            dependencies: ["devkit"]
-        ),
-        .plugin(
-            name: "ReleaseCommand",
-            capability: .command(
-                intent: .custom(
-                    verb: "release", description: "Run release-kit (version, bundle, sign, appcast, check)"),
-                permissions: [.writeToPackageDirectory(reason: "release-kit writes bundles and release artifacts")]
-            ),
-            dependencies: ["release-kit"]
-        ),
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),

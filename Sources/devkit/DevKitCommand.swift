@@ -10,10 +10,7 @@ struct DevKitCommand: AsyncParsableCommand {
         commandName: "devkit",
         abstract: "Build, relaunch and capture the app in build/, and run every check a PR needs.",
         discussion: "Nothing here touches /Applications, steals focus or changes the system appearance.",
-        subcommands: [
-            Build.self, Relaunch.self, Capture.self, IOS.self, Checks.self, Verify.self, Bootstrap.self, Clean.self,
-            Manifest.self,
-        ]
+        subcommands: [Build.self, Relaunch.self, Capture.self, IOS.self, Checks.self, Verify.self]
     )
 }
 
@@ -139,61 +136,6 @@ extension DevKitCommand {
 
         func run() throws {
             try DevKitCore.Checks(workspace: try root.workspace()).verify()
-        }
-    }
-
-    struct Bootstrap: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Resolve packages, generate icons and install the pre-push hook.")
-
-        @OptionGroup var root: RootOption
-
-        func run() throws {
-            try DevKitCore.Bootstrap(workspace: try root.workspace()).run()
-        }
-    }
-
-    struct Clean: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Remove build/ (and .build with --all).")
-
-        @OptionGroup var root: RootOption
-        @Flag(help: "Also remove SwiftPM's .build directories.") var all = false
-
-        func run() throws {
-            try DevKitCore.Clean.run(workspace: try root.workspace(), all: all)
-        }
-    }
-
-    struct Manifest: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Validate DylApp.toml, or print one value for scripts and CI wrappers.",
-            subcommands: [ManifestCheck.self, ManifestGet.self]
-        )
-    }
-
-    struct ManifestCheck: ParsableCommand {
-        static let configuration = CommandConfiguration(commandName: "check", abstract: "Validate DylApp.toml.")
-
-        @OptionGroup var root: RootOption
-
-        func run() throws {
-            let workspace = try root.workspace()
-            print("\(workspace.url("DylApp.toml").path): OK")
-        }
-    }
-
-    struct ManifestGet: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "get", abstract: "Print a value by dotted key, e.g. app.name or release.site-url.")
-
-        @OptionGroup var root: RootOption
-        @Argument(help: "The dotted key.") var key: String
-
-        func run() throws {
-            guard let value = try root.workspace().table.value(at: key) else {
-                throw ToolError("DylApp.toml has no \(key)")
-            }
-            print(value.plainText)
         }
     }
 }

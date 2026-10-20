@@ -10,10 +10,10 @@ struct ReleaseKitCommand: AsyncParsableCommand {
         abstract: "Version, bundle, sign and publish a Sparkle release, and check the release invariants.",
         discussion: """
             CI runs the steps in order: version, bundle, sign, appcast, check, publish, check --live. Each step reads \
-            what the earlier ones left in build/release/. `release` runs them all locally.
+            what the earlier ones left in build/release/.
             """,
         subcommands: [
-            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Release.self, Notes.self,
+            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self,
             PRCheck.self,
         ]
     )
@@ -132,32 +132,6 @@ extension ReleaseKitCommand {
 
         func run() throws {
             try ReleasePipeline(workspace: try options.workspace()).publish(push: !noPush)
-        }
-    }
-
-    struct Release: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Run version, bundle, sign, appcast and check in one go; --publish also commits and tags.")
-
-        @OptionGroup var options: RootOption
-        @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
-        @Option(help: "The codesign identity; ad-hoc by default.") var identity: String = Signer.adHoc
-        @Option(help: "The Sparkle private key.") var edKeyFile: String?
-        @Flag(help: "Commit, tag and push the release.") var publish = false
-
-        func run() async throws {
-            let workspace = try options.workspace()
-            var pipeline = ReleasePipeline(workspace: workspace)
-            pipeline.identity = identity
-            let key = try pipeline.resolveEdKey(explicit: edKeyFile)
-            _ = try await pipeline.version(explicitBump: type.bump)
-            try pipeline.bundle()
-            try pipeline.sign()
-            try await pipeline.appcast(edKeyFile: key)
-            let report = ReleaseChecks(workspace: workspace).run()
-            report.print()
-            guard report.passed else { throw ExitCode.failure }
-            if publish { try pipeline.publish(push: true) }
         }
     }
 

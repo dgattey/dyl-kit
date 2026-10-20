@@ -81,39 +81,3 @@ public struct Checks: Sendable {
         }
     }
 }
-
-/// One-time setup for a fresh clone: packages, icons and a pre-push hook that runs `checks`.
-public struct Bootstrap: Sendable {
-    public let workspace: Workspace
-
-    public init(workspace: Workspace) { self.workspace = workspace }
-
-    /// - Blocking: runs git and SwiftPM, and writes the hook.
-    public func run() throws {
-        try Shell.run(["swift", "package", "resolve"], cwd: workspace.root)
-        _ = try Bundler(workspace: workspace).generateIcons()
-        let hooks = URL(
-            fileURLWithPath: try Shell.capture(["git", "rev-parse", "--git-path", "hooks"], cwd: workspace.root),
-            relativeTo: workspace.root)
-        try FileManager.default.createDirectory(at: hooks, withIntermediateDirectories: true)
-        let hook = hooks.appending(path: "pre-push")
-        try Data("#!/bin/sh\nexec ./run dev checks\n".utf8).write(to: hook)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
-        Log.step("installed \(hook.path)")
-        if Checks.swiftLint == nil { Log.warn("install SwiftLint for tier 1: brew install swiftlint") }
-    }
-}
-
-public enum Clean {
-    /// Removes `build/`, and with `all` SwiftPM's `.build` too.
-    ///
-    /// - Blocking: deletes directories.
-    public static func run(workspace: Workspace, all: Bool) throws {
-        var targets = [workspace.buildDir]
-        if all { targets += [workspace.url(".build"), workspace.url("Packages/DylKit/.build")] }
-        for target in targets where FileManager.default.fileExists(atPath: target.path) {
-            try FileManager.default.removeItem(at: target)
-            Log.step("removed \(target.path)")
-        }
-    }
-}

@@ -1,0 +1,11 @@
+<p style="margin: 0 0 8px 0; line-height: 1.45;">Sets up <strong><code>sconeos.gattey.com</code></strong> for macOS app downloads and Sparkle 2 auto-updates, matching the <code>photos.gattey.com</code> setup in <code>gattey-photos</code>, alongside the iOS top bar and Settings polish:</p>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Next.js download site</strong>:</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Serves the Midnight Glass landing page at <code>/</code> with the live version/build read from <code>server/public/appcast.xml</code>, app preview screenshot, 5-crest waveform icon, and expandable macOS *Privacy &amp; Security → Open Anyway* instructions.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Serves <code>/download/macos</code> (302 redirect to <code>/Sconeos-&lt;version&gt;.zip</code>) and <code>/appcast.xml</code> for Sparkle 2 updates.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Initial signed release <code>Sconeos-1.0.0.zip</code> (build <code>8</code>, EdDSA signed) committed in <code>server/public/</code>.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Automated release workflow</strong>:</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Updated <code>package-release.sh</code>, <code>next-release-version.sh</code>, <code>fetch-live-macos-release.sh</code>, <code>macos-release-inputs-changed.sh</code>, and <code>export-ci-secrets.sh</code> so merged PRs to <code>main</code> build, sign, update <code>server/public/appcast.xml</code> + <code>server/public/Sconeos-&lt;version&gt;.zip</code>, and commit back to <code>main</code> to trigger Vercel Production deployment.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>iOS top bar &amp; Settings deduplication</strong>:</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Restores top-left Scone emblem and top-right speaker count badge in the iOS navigation bar without double borders, removes the duplicate speaker list in Settings, and shares <code>SpotifySidebarCard</code> across macOS and iOS.</li>
+</ul>

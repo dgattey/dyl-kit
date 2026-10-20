@@ -1,0 +1,5 @@
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Strip absolute build-machine / Xcode toolchain <code>LC_RPATH</code> entries (such as <code>/Applications/Xcode_26.5.app/.../usr/lib/swift-6.2/macosx</code>) from <code>Contents/MacOS/Sconeos</code> in <code>scripts/build-macos.sh</code> before signing, so <code>XprotectService</code> does not fail on missing CI runner rpaths when assessing the bundle on user Macs.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Clear extended attributes (<code>xattr -cr</code>) on the staged <code>Sconeos.app</code> bundle before inside-out Sparkle/app signing.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Add the <code>xattr -cr /Applications/Sconeos.app</code> fallback snippet to the download page's first-run instructions for MDM-managed Macs where <code>com.apple.systempolicy.managed</code> sets <code>DisableOverride = true</code> (which blocks System Settings → "Open Anyway" with <code>Error -60005 creating authorization</code>).</li>
+</ul>

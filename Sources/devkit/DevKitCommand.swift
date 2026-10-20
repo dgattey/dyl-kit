@@ -1,5 +1,5 @@
 import ArgumentParser
-import DevKit
+import DevKitCore
 import DylToolSupport
 import Foundation
 import ReleaseKit
@@ -127,7 +127,7 @@ extension DevKitCommand {
         @OptionGroup var root: RootOption
 
         func run() throws {
-            guard DevKit.Checks(workspace: try root.workspace()).run() else { throw ExitCode.failure }
+            guard DevKitCore.Checks(workspace: try root.workspace()).run() else { throw ExitCode.failure }
         }
     }
 
@@ -138,7 +138,7 @@ extension DevKitCommand {
         @OptionGroup var root: RootOption
 
         func run() throws {
-            try DevKit.Checks(workspace: try root.workspace()).verify()
+            try DevKitCore.Checks(workspace: try root.workspace()).verify()
         }
     }
 
@@ -149,7 +149,7 @@ extension DevKitCommand {
         @OptionGroup var root: RootOption
 
         func run() throws {
-            try DevKit.Bootstrap(workspace: try root.workspace()).run()
+            try DevKitCore.Bootstrap(workspace: try root.workspace()).run()
         }
     }
 
@@ -160,7 +160,7 @@ extension DevKitCommand {
         @Flag(help: "Also remove SwiftPM's .build directories.") var all = false
 
         func run() throws {
-            try DevKit.Clean.run(workspace: try root.workspace(), all: all)
+            try DevKitCore.Clean.run(workspace: try root.workspace(), all: all)
         }
     }
 

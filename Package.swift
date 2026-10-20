@@ -63,16 +63,14 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .target(name: "DevKit", dependencies: ["DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]),
+        .target(name: "DevKitCore", dependencies: ["DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]),
         .executableTarget(
             name: "devkit",
             dependencies: [
-                "DevKit",
+                "DevKitCore",
                 "DylToolSupport",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            // "Sources/devkit" would collide with "Sources/DevKit" on case-insensitive macOS volumes.
-            path: "Sources/devkit-cli"
+            ]
         ),
 
         // SwiftPM plugins.

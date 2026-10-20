@@ -52,7 +52,7 @@ custom_rules:
   swallowed_decode:
     name: "Swallowed decode error"
     regex: '\btry\?\s*[A-Za-z_][A-Za-z0-9_.()]*\.decode\((?![^\n]*// lint:allow swallowed_decode:)'
-    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit-cli|release-kit|dyl-lint|DevKit|ReleaseKit|DylToolSupport|DylLintRules)/'
+    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit|release-kit|dyl-lint|DevKitCore|ReleaseKit|DylToolSupport|DylLintRules)/'
     message: "try? on decode hides schema drift as nil. Use do/catch and log the DecodingError."
     severity: warning
 
@@ -78,7 +78,7 @@ custom_rules:
     name: "print() in app code"
     regex: '(?<![\w.])print\((?![^\n]*// lint:allow print_in_app:)'
     match_kinds: [identifier]
-    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit-cli|release-kit|dyl-lint|DevKit|ReleaseKit|DylToolSupport|DylLintRules)/'
+    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit|release-kit|dyl-lint|DevKitCore|ReleaseKit|DylToolSupport|DylLintRules)/'
     message: "Use os.Logger instead of print() in app code."
     severity: error
 

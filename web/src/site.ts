@@ -16,7 +16,6 @@ export type ReleaseNotes = { version: string; html: string };
 
 export type Release = {
   version: string;
-  build: string;
   minimumSystemVersion: string;
   appleSiliconOnly: boolean;
   /** ISO 8601. */
@@ -59,7 +58,7 @@ export function loadSite(root: string = findRoot(process.cwd())): Site {
     name,
     tagline: requireString(manifest, "site.tagline"),
     siteUrl,
-    accent: isRecord(accent) ? { light: String(accent.light), dark: String(accent.dark) } : null,
+    accent: isRecord(accent) ? { light: requireString(manifest, "site.accent.light"), dark: requireString(manifest, "site.accent.dark") } : null,
     appleIcon: fs.existsSync(path.join(artifactsDir, "apple-icon.png")) ? "/apple-icon.png" : "/app-icon.png",
     screenshots: screenshotsFrom(lookup(manifest, "site.screenshots"), artifactsDir),
     release: fs.existsSync(appcastPath)
@@ -91,7 +90,6 @@ export function parseAppcast(
   const published = tag(newest, "pubDate");
   return {
     version,
-    build: tag(newest, "sparkle:version") ?? "",
     minimumSystemVersion: tag(newest, "sparkle:minimumSystemVersion") ?? "",
     appleSiliconOnly: tag(newest, "sparkle:hardwareRequirements")?.includes("arm64") ?? false,
     publishedAt: published ? new Date(published).toISOString() : null,

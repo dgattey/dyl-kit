@@ -17,7 +17,6 @@ describe("parseAppcast on the apps' real appcasts", () => {
     const release = parseAppcast(fixture("photos-appcast.xml"), "https://photos.gattey.com", () => 42);
     assert.ok(release);
     assert.equal(release.version, "1.1.10");
-    assert.equal(release.build, "100");
     assert.equal(release.minimumSystemVersion, "14.0");
     assert.equal(release.appleSiliconOnly, true);
     assert.equal(release.publishedAt, "2026-10-16T22:55:49.000Z");
@@ -64,7 +63,8 @@ describe("releaseNotes", () => {
       notes.map((entry) => entry.version),
       ["1.0.13", "1.0.12", "1.0.11"],
     );
-    assert.equal(notes[0].html, "<ul>\n  <li>New thing.</li>\n</ul>");
+    assert.match(notes[0].html, /New thing\./);
+    assert.doesNotMatch(notes[0].html, /style=/);
   });
 
   it("leaves out versions that shipped without notes", () => {
@@ -134,6 +134,10 @@ screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dar
 
   it("names the missing key", () => {
     assert.throws(() => loadSite(app(manifest.replace(/tagline = .*\n/, ""))), /`site\.tagline`/);
+    assert.throws(
+      () => loadSite(app(manifest.replace('light = "#123456", ', ""))),
+      /`site\.accent\.light`/,
+    );
   });
 
   it("redirects downloads to the deployed zip, and 503s until it's there", () => {

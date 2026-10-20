@@ -1,13 +1,12 @@
-import type { ReactNode } from "react";
 import openAnyway from "./open-anyway.png";
 import type { Release, Screenshot, Site } from "./site";
 import styles from "./DownloadPage.module.css";
 
 /**
  * An app's download page: icon, name, tagline, download button, the Gatekeeper and MDM steps for an ad-hoc signed
- * app, screenshots and cumulative release notes. `children` renders between the hero and the notes.
+ * app, screenshots and cumulative release notes.
  */
-export function DownloadPage({ site, children }: { site: Site; children?: ReactNode }) {
+export function DownloadPage({ site }: { site: Site }) {
   const [hero, ...gallery] = site.screenshots;
   const release = site.release;
   return (
@@ -29,8 +28,6 @@ export function DownloadPage({ site, children }: { site: Site; children?: ReactN
           )}
         </div>
       </section>
-
-      {children}
 
       {gallery.length ? (
         <section className={styles.gallery} aria-label="Screenshots">

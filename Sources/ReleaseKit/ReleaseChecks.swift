@@ -408,6 +408,10 @@ public struct ReleaseChecks: Sendable {
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy release commits, which only touch the artifacts dir, and changes to what the
     /// site builds from outside its root: `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45).
+    private struct VercelConfig: Decodable {
+        var ignoreCommand: String?
+    }
+
     private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
         var siteRoot = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
         while !siteRoot.isEmpty, read("\(siteRoot)/package.json") == nil {
@@ -415,8 +419,8 @@ public struct ReleaseChecks: Sendable {
         }
         guard !siteRoot.isEmpty, let package = read("\(siteRoot)/package.json") else { return }
         let file = "\(siteRoot)/vercel.json"
-        let config = read(file).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [String: Any]
-        let command = (config?["ignoreCommand"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
+        let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
         let prefix = "git diff --quiet HEAD^ HEAD -- "
         guard command.hasPrefix(prefix) else {
             findings.append(

@@ -42,16 +42,6 @@ private let sconeosModules = [
         #expect(ReleaseInfo.releaseType(in: "- [ ] Major\n- [ ] Minor") == nil)
     }
 
-    @Test func validatesExactlyOneCheckbox() {
-        let template = "# Release info\n\n- [ ] Major\n- [ ] Minor\n- [ ] Patch"
-        #expect(ReleaseInfo.validate(template)?.contains("check one") == true)
-        #expect(ReleaseInfo.validate(template.replacingOccurrences(of: "[ ] Patch", with: "[x] Patch")) == nil)
-        let two = template.replacingOccurrences(of: "[ ] Major", with: "[x] Major")
-            .replacingOccurrences(of: "[ ] Patch", with: "[x] Patch")
-        #expect(ReleaseInfo.validate(two)?.contains("only one") == true)
-        #expect(ReleaseInfo.validate("- [x] Patch")?.contains("Release info") == true)
-    }
-
     @Test func notesComeFromTheFirstNonEmptySectionElseTheTitle() throws {
         let body = try fixture("notes/pr-13.md")
         let notes = ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "Title")

@@ -14,7 +14,6 @@ struct ReleaseKitCommand: AsyncParsableCommand {
             """,
         subcommands: [
             Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self,
-            PRCheck.self,
         ]
     )
 }
@@ -154,21 +153,6 @@ extension ReleaseKitCommand {
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
             let live = await LiveFeed.fetch(workspace.manifest.release.feedURL)
             print(try pipeline.releaseNotes(state: state, history: [live]))
-        }
-    }
-
-    struct PRCheck: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "pr-check", abstract: "Fail unless a PR body checks exactly one Release info box.")
-
-        @Option(help: "The PR body, written out of the forge's event payload.") var bodyFile: String
-
-        func run() throws {
-            if let problem = ReleaseInfo.validate(try readBody(bodyFile) ?? "") {
-                FileHandle.standardError.write(Data("pr-check: \(problem)\n".utf8))
-                throw ExitCode.failure
-            }
-            print("pr-check: release info OK")
         }
     }
 }

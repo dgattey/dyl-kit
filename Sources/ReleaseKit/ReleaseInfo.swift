@@ -15,21 +15,6 @@ public enum ReleaseInfo {
         return nil
     }
 
-    /// An error message when `body` doesn't check exactly one of Major, Minor and Patch.
-    public static func validate(_ body: String) -> String? {
-        guard body.matches(pattern: #"(?im)^#+\s*Release info\s*$"#) else {
-            return "the PR body has no `# Release info` section; restore it from the PR template"
-        }
-        let checkedBumps = AppVersion.Bump.allCases.filter { checked($0, in: body) }
-        switch checkedBumps.count {
-        case 1: return nil
-        case 0: return "check one of Major, Minor or Patch under `# Release info`"
-        default:
-            let names = checkedBumps.map { $0.rawValue.capitalized }.joined(separator: ", ")
-            return "check only one release type under `# Release info` (found \(names))"
-        }
-    }
-
     /// Markdown for the update dialog: the first non-empty notes section, else `- <title>`.
     public static func notesMarkdown(body: String, fallbackTitle: String) -> String {
         for heading in notesHeadings {

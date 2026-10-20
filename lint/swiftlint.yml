@@ -1,0 +1,110 @@
+# DylKit tier 1: regex rules for pitfalls that shipped in Dylan's apps. Apps inherit this with
+#   parent_config: Packages/DylKit/lint/swiftlint.yml
+# and add their own `included` paths. Run through `swift package lint` or `./run dev lint`.
+#
+# The only escape hatch is a same-line `// lint:allow <rule>: <reason>` for a verified false positive or benign hit.
+# Every regex ends with a lookahead for it. SwiftLint compiles custom regexes with dotMatchesLineSeparators, so
+# classes use [^\n] explicitly to stay on one line.
+only_rules:
+  - custom_rules
+
+excluded:
+  - .build
+  - "**/.build"
+
+custom_rules:
+  untyped_json:
+    name: "Untyped JSON"
+    regex: '(?:\bJSONSerialization\b|\[\s*String\s*:\s*Any(?:Object)?\s*\])(?![^\n]*infoDictionary)(?![^\n]*// lint:allow untyped_json:)'
+    match_kinds: [identifier, typeidentifier, keyword]
+    excluded: '/Tests/'
+    message: "Decode into a Codable model instead of JSONSerialization or [String: Any]."
+    severity: error
+
+  bundle_module_in_app:
+    name: "Bundle.module in shipped targets"
+    regex: '\bBundle\.module\b(?![^\n]*// lint:allow bundle_module_in_app:)'
+    match_kinds: [identifier]
+    excluded: '/Tests/'
+    message: "Bundle.module traps when the SwiftPM resource bundle isn't where SwiftPM expects, as in a hand-assembled .app. Locate the bundle explicitly."
+    severity: error
+
+  lock_or_unchecked_sendable:
+    name: "Unchecked Sendable escape hatch"
+    regex: '(?:@unchecked\s+Sendable|\bnonisolated\(unsafe\)|\bNSLock\b|\bNSRecursiveLock\b)(?![^\n]*// SAFETY:)(?![^\n]*// lint:allow lock_or_unchecked_sendable:)'
+    message: "Prefer an actor, Mutex or a real Sendable value. If the escape hatch is sound, say why in a same-line `// SAFETY:` comment."
+    severity: warning
+
+  legacy_regex:
+    name: "NSRegularExpression"
+    regex: '(?:\bNSRegularExpression\b|\.regularExpression\b)(?![^\n]*// lint:allow legacy_regex:)'
+    match_kinds: [identifier, typeidentifier]
+    message: "Use a Swift Regex literal (/.../) instead of NSRegularExpression or .regularExpression."
+    severity: error
+
+  gcd_main_hop:
+    name: "DispatchQueue.main hop"
+    regex: '\bDispatchQueue\.main\.(?:async|asyncAfter|sync)\b(?![^\n]*// lint:allow gcd_main_hop:)'
+    match_kinds: [identifier]
+    message: "Use structured concurrency (@MainActor, MainActor.assumeIsolated, Task.sleep) instead of GCD main-queue hops."
+    severity: warning
+
+  swallowed_decode:
+    name: "Swallowed decode error"
+    regex: '\btry\?\s*[A-Za-z_][A-Za-z0-9_.()]*\.decode\((?![^\n]*// lint:allow swallowed_decode:)'
+    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit|release-kit|dyl-lint|DevKit|ReleaseKit|DylToolSupport|DylLintRules)/'
+    message: "try? on decode hides schema drift as nil. Use do/catch and log the DecodingError."
+    severity: warning
+
+  task_in_defer:
+    name: "Fire-and-forget Task in defer"
+    regex: '\bdefer\s*\{[^{}]*\bTask\s*(?:\(|\{)(?![^\n]*// lint:allow task_in_defer:)'
+    message: "A Task started in defer runs after the function returns, so state it resets is still stale for the next caller. Await the update instead."
+    severity: error
+
+  assign_to_published:
+    name: "assign(to: &$published)"
+    regex: '\.assign\(\s*to:\s*&\$(?![^\n]*// lint:allow assign_to_published:)'
+    message: "assign(to: &$x) subscriptions live as long as the property and can't be cancelled. Use sink with a stored AnyCancellable."
+    severity: warning
+
+  iso8601_strategy:
+    name: "ISO 8601 strategy without fractional seconds"
+    regex: '\.dateDecodingStrategy\s*=\s*\.iso8601\b(?![^\n]*// lint:allow iso8601_strategy:)'
+    message: ".iso8601 rejects fractional seconds and fails the whole decode. Use a custom strategy with Date.ISO8601FormatStyle(includingFractionalSeconds: true)."
+    severity: warning
+
+  print_in_app:
+    name: "print() in app code"
+    regex: '(?<![\w.])print\((?![^\n]*// lint:allow print_in_app:)'
+    match_kinds: [identifier]
+    excluded: '/(Tests|Plugins|scripts)/|/Sources/(devkit|release-kit|dyl-lint|DevKit|ReleaseKit|DylToolSupport|DylLintRules)/'
+    message: "Use os.Logger instead of print() in app code."
+    severity: error
+
+  urlsession_shared:
+    name: "URLSession.shared"
+    regex: '\bURLSession\.shared\b(?![^\n]*// lint:allow urlsession_shared:)'
+    excluded_match_kinds: [comment, comment.mark, comment.url, doccomment, doccomment.field, string]
+    message: "URLSession.shared has 60-second request timeouts and the shared cache, so a stalled host blocks callers for a minute. Use URLSession.bounded() from DylCore."
+    severity: warning
+
+  forced_toolbar_background:
+    name: "Forced toolbar background"
+    regex: '\.toolbarBackground(?:Visibility)?\(\s*\.visible(?![^\n]*// lint:allow forced_toolbar_background:)'
+    message: "A visible toolbar background overrides Liquid Glass and suppresses the macOS 26 scroll edge effect. Gate it to pre-26 only."
+    severity: warning
+
+  polling_timer:
+    name: "Polling timer"
+    regex: '\bTimer\.(?:publish|scheduledTimer)\b(?![^\n]*repeats:\s*false)(?![^\n]*// lint:allow polling_timer:)'
+    match_kinds: [identifier]
+    message: "Repeating timers poll forever. React to a real event (NotificationCenter, AsyncSequence) or use a cancellable Task loop bound to the view's lifetime."
+    severity: warning
+
+  blocking_semaphore:
+    name: "Blocking semaphore"
+    regex: '\bDispatchSemaphore\b(?![^\n]*// lint:allow blocking_semaphore:)'
+    match_kinds: [identifier, typeidentifier]
+    message: "DispatchSemaphore.wait() blocks a thread and deadlocks on the main thread or the cooperative pool. Use async/await."
+    severity: warning

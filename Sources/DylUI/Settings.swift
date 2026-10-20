@@ -26,7 +26,10 @@ public struct SettingsView: View {
     private let pages: [SettingsPage]
     @State private var selection: String?
 
-    public init(pages: [SettingsPage]) { self.pages = pages }
+    public init(pages: [SettingsPage]) {
+        self.pages = pages
+        _selection = State(initialValue: pages.first?.id)
+    }
 
     public var body: some View {
         #if os(macOS)

@@ -74,7 +74,8 @@ let package = Package(
         .plugin(name: "DylLintPlugin", capability: .buildTool(), dependencies: ["dyl-lint"]),
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
-        .testTarget(name: "DylUpdatesTests", dependencies: ["DylUpdates"]),
+        .testTarget(name: "DylUpdatesTests", dependencies: ["DylCore", "DylUpdates"]),
+        .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",

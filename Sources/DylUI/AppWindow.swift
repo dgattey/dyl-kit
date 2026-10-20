@@ -56,7 +56,7 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     }
 
     private func windowDidAppear() {
-        AppUpdater.shared.mainWindowDidAppear()
+        AppUpdater.shared.mainWindowDidAppear(launch: launch)
         #if os(macOS)
         // Menus and alerts follow NSApp, not the SwiftUI color scheme.
         if let appearance = launch.appearance {

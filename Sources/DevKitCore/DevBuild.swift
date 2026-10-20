@@ -34,7 +34,8 @@ public struct DevBuild: Sendable {
     }
 }
 
-/// Launch-time options passed to the app as `<PREFIX>_<NAME>` environment variables.
+/// Launch-time options passed to the app as `<PREFIX>_<NAME>` environment variables. Every launch also sets
+/// `<PREFIX>_BACKGROUND=1`, so the app never activates itself on top of whatever Dylan is doing.
 public struct LaunchOptions: Sendable {
     public var appearance: String?
     public var initialView: String?
@@ -49,6 +50,7 @@ public struct LaunchOptions: Sendable {
 
     func environment(prefix: String) -> [String: String] {
         var values = extra
+        values["BACKGROUND"] = "1"
         values["APPEARANCE"] = appearance
         values["INITIAL_VIEW"] = initialView
         values["WINDOW_SIZE"] = windowSize
@@ -82,7 +84,8 @@ public struct Launcher: Sendable {
         }
     }
 
-    /// `open -g` keeps focus where it is. Returns the new process id once it's running.
+    /// Always `open -g`, never a foreground launch: focus stays where it is. Returns the new process id once it's
+    /// running.
     ///
     /// - Blocking: runs `open` and polls `pgrep`.
     @discardableResult

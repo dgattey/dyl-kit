@@ -1,3 +1,5 @@
+import DylCore
+import Foundation
 import Testing
 
 @testable import DylUpdates
@@ -8,12 +10,45 @@ import Sparkle
 
 @MainActor
 @Suite struct UpdatePresenterTests {
+    @Test func onlyAnInstalledReleaseMayTakeFocus() {
+        let release = AppInfo { ["SUFeedURL": "https://example.com/appcast.xml", "SUPublicEDKey": "key"][$0] }
+        let dev = AppInfo { _ in nil }
+        let installed = URL(filePath: "/Applications/Sconeos.app")
+        let userInstalled = URL(filePath: "/Users/dylan/Applications/Sconeos.app")
+        let devBuild = URL(filePath: "/Users/dylan/repos/scone-os/build/Sconeos.app")
+        let quiet = LaunchOverrides(prefix: "SCONEOS", environment: [:], arguments: [])
+        let devkit = LaunchOverrides(prefix: "SCONEOS", environment: ["SCONEOS_BACKGROUND": "1"], arguments: [])
+        let agentArgs = LaunchOverrides(prefix: "SCONEOS", environment: [:], arguments: ["--background"])
+
+        #expect(UpdatePresenter.mayActivate(app: release, bundleURL: installed, launch: quiet))
+        #expect(UpdatePresenter.mayActivate(app: release, bundleURL: userInstalled, launch: quiet))
+        #expect(!UpdatePresenter.mayActivate(app: release, bundleURL: devBuild, launch: quiet))
+        #expect(!UpdatePresenter.mayActivate(app: dev, bundleURL: installed, launch: quiet))
+        #expect(!UpdatePresenter.mayActivate(app: release, bundleURL: installed, launch: devkit))
+        #expect(!UpdatePresenter.mayActivate(app: release, bundleURL: installed, launch: agentArgs))
+        // This test process is a runner, not an installed release.
+        #expect(!UpdatePresenter.mayActivate(app: .main, bundleURL: Bundle.main.bundleURL, launch: quiet))
+    }
+
+    @Test func aFoundUpdateNeverActivatesUntilAllowed() {
+        var calls: [String] = []
+        let presenter = UpdatePresenter(
+            activateApp: { calls.append("activate") },
+            showUpdateInFocus: { calls.append("showInFocus") }
+        )
+        presenter.willShowUpdate(handledBySparkle: false)
+        presenter.sessionEnded()
+        presenter.willShowUpdate(handledBySparkle: true)
+        #expect(calls == ["showInFocus"])
+    }
+
     @Test func foundUpdatesComeForwardInFocusAndUpToDateChecksStaySilent() {
         var calls: [String] = []
         let presenter = UpdatePresenter(
             activateApp: { calls.append("activate") },
             showUpdateInFocus: { calls.append("showInFocus") }
         )
+        presenter.mayActivate = true
         #expect(!UpdatePresenter.sparkleShowsScheduledUpdates)
 
         // A background check that finds nothing only ends its session.

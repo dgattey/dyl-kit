@@ -61,7 +61,9 @@ public final class AppUpdater {
     }
 
     /// Call once the main window is on screen, so a launch check can't close the last window and quit the app.
-    public func mainWindowDidAppear() {
+    public func mainWindowDidAppear(launch: LaunchOverrides) {
+        presenter.mayActivate = UpdatePresenter.mayActivate(
+            app: .main, bundleURL: Bundle.main.bundleURL, launch: launch)
         guard isReleaseConfigured else { return }
         presenter.requestLaunchCheck()
         checkOnLaunchIfReady()
@@ -85,6 +87,6 @@ public final class AppUpdater {
 
     public var blocksQuitOnLastWindowClosed: Bool { false }
     public func checkForUpdates() {}
-    public func mainWindowDidAppear() {}
+    public func mainWindowDidAppear(launch: LaunchOverrides) {}
     #endif
 }

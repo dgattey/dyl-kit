@@ -48,6 +48,9 @@ public struct LaunchOverrides: Sendable {
 
     public var initialView: String? { value("initial-view") }
 
+    /// Set by every devkit launch: the app must never take focus (no `NSApp.activate`, no raised windows).
+    public var staysInBackground: Bool { flag("background") }
+
     /// `<width>x<height>` in points.
     public var windowSize: CGSize? {
         let parts = value("window-size")?.split(separator: "x").compactMap { Double($0) } ?? []

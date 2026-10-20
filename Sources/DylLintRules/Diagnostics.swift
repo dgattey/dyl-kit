@@ -1,10 +1,8 @@
 import Foundation
 import SwiftSyntax
 
-public enum Severity: String, Comparable, Sendable {
+public enum Severity: String, Sendable {
     case warning, error
-
-    public static func < (lhs: Severity, rhs: Severity) -> Bool { lhs == .warning && rhs == .error }
 }
 
 public struct Finding: Hashable, Sendable, CustomStringConvertible {
@@ -19,13 +17,12 @@ public struct Finding: Hashable, Sendable, CustomStringConvertible {
     public var description: String { "\(file):\(line):\(column): \(severity.rawValue): \(message) [\(rule)]" }
 }
 
-/// `// lint:allow <rule>: <reason>` on the finding's line or the line above silences that rule there. The reason is
-/// required; an allow without one is itself an error.
+/// `// lint:allow <rule>: <reason>` on the finding's line or the line above silences that rule there.
+/// An allow without a reason does not.
 struct Suppressions {
     struct Allow {
         let line: Int
         let rule: String
-        let hasReason: Bool
     }
 
     let allows: [Allow]
@@ -35,18 +32,17 @@ struct Suppressions {
         for token in tree.tokens(viewMode: .sourceAccurate) {
             for piece in token.leadingTrivia + token.trailingTrivia {
                 guard case .lineComment(let text) = piece,
-                    let match = text.firstMatch(of: /\/\/\s*lint:allow\s+([a-z_]+)(:\s*(.*))?/)
+                    let match = text.firstMatch(of: /\/\/\s*lint:allow\s+([a-z_]+):\s*\S/)
                 else { continue }
                 let line = Self.line(of: piece, in: token, converter: converter)
-                let reason = match.output.3.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-                allows.append(Allow(line: line, rule: String(match.output.1), hasReason: !reason.isEmpty))
+                allows.append(Allow(line: line, rule: String(match.output.1)))
             }
         }
         self.allows = allows
     }
 
     func allows(_ rule: String, at line: Int) -> Bool {
-        allows.contains { $0.rule == rule && $0.hasReason && ($0.line == line || $0.line == line - 1) }
+        allows.contains { $0.rule == rule && ($0.line == line || $0.line == line - 1) }
     }
 
     private static func line(of piece: TriviaPiece, in token: TokenSyntax, converter: SourceLocationConverter) -> Int {

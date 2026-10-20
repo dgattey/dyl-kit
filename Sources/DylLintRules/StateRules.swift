@@ -281,8 +281,7 @@ enum PublishedWriteOffMain {
     static let rule = "published_write_off_main"
     static let transitionalRule = "observable_not_main_actor"
 
-    static func run(_ files: [ParsedFile]) -> [Finding] {
-        let types = collectStateTypes(files)
+    static func run(_ files: [ParsedFile], types: [String: StateTypeInfo]) -> [Finding] {
         var findings: [Finding] = []
         for file in files {
             let walker = Walker(file: file, types: types)
@@ -347,8 +346,7 @@ enum HotCallbackStateWrite {
     ]
     static let coarseValueTypes: Set<String> = ["Bool.self", "Int.self", "String.self"]
 
-    static func run(_ files: [ParsedFile]) -> [Finding] {
-        let types = collectStateTypes(files)
+    static func run(_ files: [ParsedFile], types: [String: StateTypeInfo]) -> [Finding] {
         var publishedNames: Set<String> = []
         for info in types.values { publishedNames.formUnion(info.published) }
         var findings: [Finding] = []

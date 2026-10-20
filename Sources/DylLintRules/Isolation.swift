@@ -47,12 +47,9 @@ class IsolationWalker: SyntaxVisitor {
     var isMain: Bool { isolation.last ?? false }
     var currentType: String? { typeNames.last }
 
-    private func pushType(_ name: String, _ attributes: AttributeListSyntax, _ clause: InheritanceClauseSyntax?) {
+    private func pushType(_ name: String) {
         typeNames.append(name)
-        isolation.append(
-            mainTypes.contains(name) || hasAttribute(attributes, "MainActor")
-                || inherits(clause, fromAnyOf: mainActorProtocols)
-        )
+        isolation.append(mainTypes.contains(name))
     }
 
     private func popType() {
@@ -67,25 +64,25 @@ class IsolationWalker: SyntaxVisitor {
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node.attributes, node.inheritanceClause)
+        pushType(node.name.text)
         return .visitChildren
     }
     override func visitPost(_ node: ClassDeclSyntax) { popType() }
 
     override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node.attributes, node.inheritanceClause)
+        pushType(node.name.text)
         return .visitChildren
     }
     override func visitPost(_ node: StructDeclSyntax) { popType() }
 
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.name.text, node.attributes, node.inheritanceClause)
+        pushType(node.name.text)
         return .visitChildren
     }
     override func visitPost(_ node: EnumDeclSyntax) { popType() }
 
     override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushType(node.extendedType.trimmedDescription, node.attributes, node.inheritanceClause)
+        pushType(node.extendedType.trimmedDescription)
         return .visitChildren
     }
     override func visitPost(_ node: ExtensionDeclSyntax) { popType() }

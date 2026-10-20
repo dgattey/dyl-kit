@@ -48,10 +48,11 @@ public enum Linter {
         let typeCollector = MainActorTypeCollector()
         for file in files { typeCollector.walk(file.tree) }
         let mainTypes = typeCollector.mainTypes
+        let stateTypes = collectStateTypes(files)
 
         var raw = MainActorBlockingIO.run(files, mainTypes: mainTypes)
-        raw += PublishedWriteOffMain.run(files)
-        raw += HotCallbackStateWrite.run(files)
+        raw += PublishedWriteOffMain.run(files, types: stateTypes)
+        raw += HotCallbackStateWrite.run(files, types: stateTypes)
         for file in files {
             raw += CancellationBlindPoll.run(file)
             raw += FormatterAlloc.run(file)
@@ -69,29 +70,23 @@ public enum Linter {
                 kept.append(finding)
             }
         }
-        for file in files {
-            for allow in file.suppressions.allows where !allow.hasReason {
-                kept.append(
-                    Finding(
-                        file: file.path,
-                        line: allow.line,
-                        column: 1,
-                        rule: "lint_allow_reason",
-                        severity: .error,
-                        message:
-                            "lint:allow \(allow.rule) needs a reason: `// lint:allow \(allow.rule): <why this is safe>`"
-                    )
-                )
-            }
-        }
         kept.sort { ($0.file, $0.line, $0.column, $0.rule) < ($1.file, $1.line, $1.column, $1.rule) }
         return LintReport(findings: kept, allowedCount: allowed)
+    }
+
+    /// Parsed Swift sources under each path. Unreadable files are skipped.
+    ///
+    /// - Blocking: walks the file system and reads each source.
+    public static func parsedFiles(under paths: [String]) -> [ParsedFile] {
+        swiftFiles(under: paths).compactMap { path in
+            (try? String(contentsOfFile: path, encoding: .utf8)).map { ParsedFile(path: path, source: $0) }
+        }
     }
 
     /// Swift files under each path, skipping build products.
     ///
     /// - Blocking: walks the file system.
-    public static func swiftFiles(under paths: [String]) -> [String] {
+    static func swiftFiles(under paths: [String]) -> [String] {
         let fileManager = FileManager.default
         var result: [String] = []
         for path in paths {

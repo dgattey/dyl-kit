@@ -20,15 +20,14 @@ enum MainActorBlockingIO {
 
     static func primitive(_ call: FunctionCallExprSyntax) -> String? {
         let callee = calleeName(call)
-        let labels = call.arguments.map { $0.label?.text ?? "_" }
-        let first = labels.first
+        let first = call.arguments.first.map { $0.label?.text ?? "_" }
         let last = lastComponent(callee)
         let receiver = callee.split(separator: ".").dropLast().joined(separator: ".")
 
         switch callee {
         case "Data", "String", "NSString", "NSImage", "UIImage", "NSDictionary", "NSArray",
             "CGImageSourceCreateWithURL":
-            if let first, first.hasPrefix("contentsOf"), !readsBundledResource(call) { return "\(callee)(\(first):)" }
+            if let first, first.hasPrefix("contentsOf") { return "\(callee)(\(first):)" }
         case "FileHandle":
             if let first, first.hasPrefix("for") { return "FileHandle(\(first):)" }
         case "usleep", "sleep", "Thread.sleep", "SecItemCopyMatching", "SecItemAdd", "SecItemUpdate", "SecItemDelete":
@@ -43,63 +42,11 @@ enum MainActorBlockingIO {
         }
         if last == "write", let first, ["to", "toFile", "contentsOf"].contains(first) { return ".write(\(first):)" }
         if ["readDataToEndOfFile", "readToEnd", "waitUntilExit"].contains(last) { return ".\(last)()" }
-        if last == "wait", labels.isEmpty,
-            receiver.lowercased().contains("semaphore") || receiver.lowercased().hasSuffix("group")
-        {
-            return "\(receiver).wait()"
-        }
         if receiver.hasSuffix("AES.GCM") || receiver.hasSuffix("ChaChaPoly"), last == "seal" || last == "open" {
             return "\(receiver).\(last)"
         }
         if receiver.hasPrefix("HKDF"), last == "deriveKey" { return "HKDF.deriveKey" }
         return nil
-    }
-
-    /// Reads of the app's own read-only bundle resources (`Bundle.main.url(forResource:)`) are what `NSImage(named:)`
-    /// does internally: small, signed, and page-cached, so they are not treated as blocking.
-    static func readsBundledResource(_ call: FunctionCallExprSyntax) -> Bool {
-        guard let argument = call.arguments.first?.expression else { return false }
-        if isBundleResourceLookup(argument.trimmedDescription) { return true }
-        guard let name = argument.as(DeclReferenceExprSyntax.self)?.baseName.text else { return false }
-        var current = Syntax(call).parent
-        while let node = current {
-            if let ifExpr = node.as(IfExprSyntax.self), bindsBundleResource(name, in: ifExpr.conditions) {
-                return true
-            }
-            if let block = node.as(CodeBlockItemListSyntax.self) {
-                for item in block {
-                    if let guardStmt = item.item.as(GuardStmtSyntax.self),
-                        bindsBundleResource(name, in: guardStmt.conditions)
-                    {
-                        return true
-                    }
-                    if let variable = item.item.as(VariableDeclSyntax.self),
-                        variable.bindings.contains(where: {
-                            $0.pattern.trimmedDescription == name
-                                && isBundleResourceLookup($0.initializer?.value.trimmedDescription ?? "")
-                        })
-                    {
-                        return true
-                    }
-                }
-            }
-            if node.is(FunctionDeclSyntax.self) || node.is(ClosureExprSyntax.self) { break }
-            current = node.parent
-        }
-        return false
-    }
-
-    private static func bindsBundleResource(_ name: String, in conditions: ConditionElementListSyntax) -> Bool {
-        conditions.contains { element in
-            guard let binding = element.condition.as(OptionalBindingConditionSyntax.self),
-                binding.pattern.trimmedDescription == name
-            else { return false }
-            return isBundleResourceLookup(binding.initializer?.value.trimmedDescription ?? "")
-        }
-    }
-
-    private static func isBundleResourceLookup(_ text: String) -> Bool {
-        text.contains("Bundle") && (text.contains("forResource:") || text.contains("resourceURL"))
     }
 
     static func run(_ files: [ParsedFile], mainTypes: Set<String>) -> [Finding] {

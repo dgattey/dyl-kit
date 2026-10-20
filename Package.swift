@@ -12,7 +12,6 @@ let package = Package(
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
-        .plugin(name: "DylLintPlugin", targets: ["DylLintPlugin"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
@@ -44,13 +43,7 @@ let package = Package(
                 .product(name: "SwiftParser", package: "swift-syntax"),
             ]
         ),
-        .executableTarget(
-            name: "dyl-lint",
-            dependencies: [
-                "DylLintRules",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
-        ),
+        .executableTarget(name: "dyl-lint", dependencies: ["DylLintRules"]),
         .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"]),
         .executableTarget(
             name: "release-kit",
@@ -69,9 +62,6 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-
-        // Runs dyl-lint during app builds.
-        .plugin(name: "DylLintPlugin", capability: .buildTool(), dependencies: ["dyl-lint"]),
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
         .testTarget(name: "DylUpdatesTests", dependencies: ["DylCore", "DylUpdates"]),

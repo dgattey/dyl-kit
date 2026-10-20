@@ -36,10 +36,7 @@ public struct Checks: Sendable {
             Log.warn("swiftlint isn't installed; skipping tier 1 (brew install swiftlint)")
         }
 
-        let paths = Linter.swiftFiles(under: lintRoots.map { workspace.url($0).path })
-        let files = paths.compactMap { path in
-            (try? String(contentsOfFile: path, encoding: .utf8)).map { ParsedFile(path: path, source: $0) }
-        }
+        let files = Linter.parsedFiles(under: lintRoots.map { workspace.url($0).path })
         let lint = Linter.lint(files)
         for finding in lint.findings { print(finding) }
         if lint.errorCount > 0 { passed = false }

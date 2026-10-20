@@ -14,7 +14,7 @@ description: Window, toolbar, sidebar and tint conventions for DylKit apps using
 ## Material and color
 
 - Standard controls with glass materials. Don't stack a background platter under a toolbar item that already has one (`forced_toolbar_background` catches the common case).
-- Colors come from the app's `ThemePalette` through `.themePalette(_:)`; use `GlassCard`, `ThemedBackground`, `PressableStyle` and `StatusPill` from `DylDesign`.
+- Colors come from the app's theme palette, never literals in views.
 - The palette adapts to light and dark on its own. Never force a color scheme.
 - One accent for selection. Replace the system blue highlight with the palette's accent; never show both.
 

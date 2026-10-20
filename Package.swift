@@ -6,9 +6,6 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "DylCore", targets: ["DylCore"]),
-        .library(name: "DylDesign", targets: ["DylDesign"]),
-        .library(name: "DylShell", targets: ["DylShell"]),
-        .library(name: "DylUpdates", targets: ["DylUpdates"]),
         .library(name: "DylManifest", targets: ["DylManifest"]),
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
@@ -19,23 +16,12 @@ let package = Package(
         .plugin(name: "ReleaseCommand", targets: ["ReleaseCommand"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
     ],
     targets: [
-        // Runtime libraries (iOS + macOS; macOS-only pieces compile to no-ops on iOS).
+        // Runtime helpers shared by the app and the tools.
         .target(name: "DylCore"),
-        .target(name: "DylDesign"),
-        .target(name: "DylShell", dependencies: ["DylCore"]),
-        .target(
-            name: "DylUpdates",
-            dependencies: [
-                "DylCore",
-                "DylShell",
-                .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
-            ]
-        ),
 
         // Host tooling.
         .target(name: "DylManifest"),
@@ -100,13 +86,11 @@ let package = Package(
             dependencies: ["release-kit"]
         ),
 
-        .testTarget(name: "DylCoreTests", dependencies: ["DylCore"]),
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
-        .testTarget(name: "DylUpdatesTests", dependencies: ["DylUpdates", "DylShell"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",
-            dependencies: ["ReleaseKit", "DylCore", "DylManifest", "DylToolSupport"],
+            dependencies: ["ReleaseKit", "DylManifest", "DylToolSupport"],
             exclude: ["Fixtures"]
         ),
     ]

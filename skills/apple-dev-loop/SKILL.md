@@ -20,7 +20,7 @@ Every command runs from the app repo through `./run dev …` (it builds `devkit`
 
 - Only `build/` is ours. Never copy into, launch, kill or overwrite `/Applications/<App>.app` unless Dylan asks for a one-time install. `relaunch` only stops the process whose path is under `build/`.
 - Never steal focus: `open -g`, `screencapture -l <window>`, headless `simctl`. No `NSApp.activate`, AppleScript `activate`, or `open -a Simulator`.
-- Never change the system appearance. Pass `--appearance light|dark`; the app reads `<PREFIX>_APPEARANCE` through `LaunchOverrides` and sets its own appearance, and leaves it `nil` on a normal run.
+- Never change the system appearance. Pass `--appearance light|dark`; the app reads `<PREFIX>_APPEARANCE` and sets its own appearance, and leaves it `nil` on a normal run.
 - Pick the starting screen with `--initial-view <name>` and the size with `--window-size 1280x800` instead of clicking through the UI.
 - Captures go to `build/captures/`. When sharing one, copy it to a new, uniquely versioned filename so image caches never show a stale render.
 

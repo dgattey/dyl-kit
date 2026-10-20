@@ -1,4 +1,3 @@
-import DylCore
 import DylManifest
 import DylToolSupport
 import Foundation
@@ -114,6 +113,17 @@ private let sconeosModules = [
     @Test func buildNumberStaysAboveThePublishedOne() {
         #expect(VersionPlanner.nextBuild(commitCount: 10, appcasts: [feed]) == 25)
         #expect(VersionPlanner.nextBuild(commitCount: 300, appcasts: [feed]) == 300)
+    }
+
+    @Test func parsesOrdersAndBumpsVersions() throws {
+        #expect(AppVersion("v1.2.3") == AppVersion(major: 1, minor: 2, patch: 3))
+        #expect(AppVersion("1.0.9-beta") == AppVersion(major: 1, minor: 0, patch: 9))
+        #expect(AppVersion("1.x") == nil)
+        #expect(try #require(AppVersion("1.0.10")) > #require(AppVersion("1.0.9")))
+        let version = try #require(AppVersion("1.4.9"))
+        #expect(version.bumped(.patch).description == "1.4.10")
+        #expect(version.bumped(.minor).description == "1.5.0")
+        #expect(version.bumped(.major).description == "2.0.0")
     }
 }
 

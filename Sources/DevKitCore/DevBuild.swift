@@ -34,7 +34,7 @@ public struct DevBuild: Sendable {
     }
 }
 
-/// Launch-time options passed to the app as `<PREFIX>_<NAME>` environment variables (see `LaunchOverrides`).
+/// Launch-time options passed to the app as `<PREFIX>_<NAME>` environment variables.
 public struct LaunchOptions: Sendable {
     public var appearance: String?
     public var initialView: String?

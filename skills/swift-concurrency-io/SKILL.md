@@ -13,7 +13,7 @@ description: Keep blocking work off the main actor and structure async code the 
 - Mark functions that block with a `- Blocking:` doc line so callers know to move them.
 - Load heavy state after the first frame: show the window, then `await` the store.
 - Use structured concurrency: `async let`, task groups, and `Task` handles you cancel. Long waits check `Task.isCancelled` or use cancellable sleeps.
-- Coalesce duplicate work with `SingleFlight`; persist with `CodableFileStore`; keep secrets in `SecureFileVault`.
+- Coalesce duplicate work into one in-flight task per key, and keep persistence and secrets off the main actor.
 - One ordered consumer per stream (an `AsyncStream` drained by one task), never a `Task` per event.
 - Typed `Codable` models only. No `JSONSerialization`, `[String: Any]`, or swallowed decode errors.
 - `Duration` and `Clock`, not `Timer` polling or `DispatchQueue.asyncAfter`.

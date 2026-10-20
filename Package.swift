@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "DylCore", targets: ["DylCore"]),
         .library(name: "DylManifest", targets: ["DylManifest"]),
         .library(name: "DylUpdates", targets: ["DylUpdates"]),
+        .library(name: "DylUI", targets: ["DylUI"]),
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
@@ -29,6 +30,9 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
             ]
         ),
+
+        // The palette, main window and Settings shell, shared by every app's SwiftUI.
+        .target(name: "DylUI", dependencies: ["DylCore", "DylUpdates"]),
 
         // Host tooling.
         .target(name: "DylManifest"),

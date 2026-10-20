@@ -15,6 +15,11 @@ public final class AppUpdater {
     public private(set) var canCheckForUpdates = false
 
     #if os(macOS)
+    /// Sparkle's "check automatically" preference, for a Settings toggle.
+    public var automaticallyChecksForUpdates: Bool {
+        didSet { controller.updater.automaticallyChecksForUpdates = automaticallyChecksForUpdates }
+    }
+
     @ObservationIgnored private let isReleaseConfigured: Bool
     @ObservationIgnored private let controller: SPUStandardUpdaterController
     @ObservationIgnored private let presenter: UpdatePresenter
@@ -40,6 +45,7 @@ public final class AppUpdater {
         self.presenter = presenter
         self.updaterDelegate = updaterDelegate
         self.userDriverDelegate = userDriverDelegate
+        automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
         // SPUUpdater is main-actor isolated, so read canCheckForUpdates on the main actor, not in the KVO callback.
         canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial]) {
             [weak self] _, _ in
@@ -73,6 +79,8 @@ public final class AppUpdater {
         }
     }
     #else
+    public var automaticallyChecksForUpdates = false
+
     private init() {}
 
     public var blocksQuitOnLastWindowClosed: Bool { false }

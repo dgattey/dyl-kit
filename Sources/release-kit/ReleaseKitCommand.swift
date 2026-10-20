@@ -87,7 +87,7 @@ extension ReleaseKitCommand {
             abstract: "Write the notes and appcast, verify the EdDSA signature, and install the artifacts.")
 
         @OptionGroup var options: RootOption
-        @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64 or a repo-local key.")
+        @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, a local key file, or the Keychain.")
         var edKeyFile: String?
 
         func run() async throws {

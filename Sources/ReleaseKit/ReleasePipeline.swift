@@ -139,7 +139,7 @@ public struct ReleasePipeline: Sendable {
     ///
     /// - Blocking: runs Sparkle's tools and writes artifacts.
     @discardableResult
-    public func appcast(edKeyFile: URL) async throws -> URL {
+    public func appcast(edKeyFile: URL?) async throws -> URL {
         let state = try state()
         let archive = archiveURL(state)
         guard FileManager.default.fileExists(atPath: archive.path) else {
@@ -251,7 +251,7 @@ public struct ReleasePipeline: Sendable {
         return builds
     }
 
-    private func generateAppcast(edKeyFile: URL) throws -> URL {
+    private func generateAppcast(edKeyFile: URL?) throws -> URL {
         let tool = workspace.sparkleTool("generate_appcast")
         guard FileManager.default.isExecutableFile(atPath: tool.path) else {
             throw ToolError("\(tool.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
@@ -266,11 +266,12 @@ public struct ReleasePipeline: Sendable {
         let site = workspace.manifest.release.siteUrl
         let prefix = site.hasSuffix("/") ? site : site + "/"
         // The site's notes section lists every version the appcast carries, so it's the dialog's "full notes" link.
-        try Shell.run([
-            tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", prefix,
-            "--link", site, "--full-release-notes-url", prefix + "#release-notes", "--ed-key-file", edKeyFile.path,
-            feed.path,
-        ])
+        let key = edKeyFile.map { ["--ed-key-file", $0.path] } ?? []
+        try Shell.run(
+            [
+                tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", prefix,
+                "--link", site, "--full-release-notes-url", prefix + "#release-notes",
+            ] + key + [feed.path])
         let appcast = stagingDir.appending(path: "appcast.xml")
         try? FileManager.default.removeItem(at: appcast)
         try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: appcast)
@@ -291,10 +292,11 @@ public struct ReleasePipeline: Sendable {
         }
     }
 
-    /// The Sparkle private key: an explicit file, `SPARKLE_ED_PRIVATE_KEY_BASE64` (CI), or a repo-local key file.
+    /// The Sparkle private key: an explicit file, `SPARKLE_ED_PRIVATE_KEY_BASE64` (CI), or a local key file. Nil
+    /// means `generate_appcast` reads the login Keychain, where `generate-sparkle-key.sh` stores it.
     ///
     /// - Blocking: reads and may write a temporary key file.
-    public func resolveEdKey(explicit: String?) throws -> URL {
+    public func resolveEdKey(explicit: String?) throws -> URL? {
         if let path = explicit {
             guard FileManager.default.fileExists(atPath: path) else { throw ToolError("no Sparkle key at \(path)") }
             return URL(fileURLWithPath: path)
@@ -313,11 +315,8 @@ public struct ReleasePipeline: Sendable {
             workspace.url("sparkle_private.key"),
             home.appending(path: ".config/\(workspace.manifest.app.name.lowercased())/sparkle_ed.key"),
         ]
-        guard let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
-            throw ToolError(
-                "no Sparkle private key: pass --ed-key-file, set SPARKLE_ED_PRIVATE_KEY_BASE64, or add .cert/sparkle_ed.key"
-            )
-        }
+        let found = candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+        if found == nil { Log.step("no Sparkle key file; generate_appcast signs with the key in the login Keychain") }
         return found
     }
 

@@ -323,9 +323,8 @@ private let sconeosModules = [
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
     }
 
-    /// Photos #9 and Saga #50: library validation must be off to load Sparkle ad-hoc, and an Xcode project's
-    /// deployment target must match DylApp.toml.
-    @Test func entitlementsAndXcodeProjectsMatchTheManifest() throws {
+    /// Photos #9: library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
+    @Test func libraryValidationOffAndNoXcodeProject() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let entitlements = workspace.url("Sconeos.local.entitlements")
@@ -333,12 +332,16 @@ private let sconeosModules = [
         try Data(text.replacing("disable-library-validation", with: "allow-jit").utf8).write(to: entitlements)
         let project = workspace.url("Sconeos.xcodeproj/project.pbxproj")
         try FileManager.default.createDirectory(at: project.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let settings = "MACOSX_DEPLOYMENT_TARGET = 15.0;\nMACOSX_DEPLOYMENT_TARGET = 14.0;\nMACOSX_DEPLOYMENT_TARGET = 15.0;"
-        try Data(settings.utf8).write(to: project)
+        try Data().write(to: project)
 
-        let found = errors(ReleaseChecks(workspace: workspace).run())
-        #expect(found["library_validation"]?.count == 1)
-        #expect(found["min_os_consistency"] == ["MACOSX_DEPLOYMENT_TARGET is 15.0 but DylApp.toml says 14.0"])
+        let swiftPMWorkspace = workspace.url(".swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata")
+        try FileManager.default.createDirectory(
+            at: swiftPMWorkspace.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: swiftPMWorkspace)
+
+        let report = ReleaseChecks(workspace: workspace).run()
+        #expect(errors(report)["library_validation"]?.count == 1)
+        #expect(errorFiles(report)["swiftpm_only"] == ["Sconeos.xcodeproj"])
     }
 
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.

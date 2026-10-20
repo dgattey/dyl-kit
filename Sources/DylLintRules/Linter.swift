@@ -39,8 +39,7 @@ public struct LintReport: Sendable {
 
 public enum Linter {
     public static let rules = [
-        MainActorBlockingIO.rule, CancellationBlindPoll.rule, PublishedWriteOffMain.rule,
-        PublishedWriteOffMain.transitionalRule, HotCallbackStateWrite.rule, FormatterAlloc.rule,
+        MainActorBlockingIO.rule, CancellationBlindPoll.rule, HotCallbackStateWrite.rule, FormatterAlloc.rule,
         DelegateMainActorHop.rule, SessionAlloc.rule,
     ]
 
@@ -48,11 +47,9 @@ public enum Linter {
         let typeCollector = MainActorTypeCollector()
         for file in files { typeCollector.walk(file.tree) }
         let mainTypes = typeCollector.mainTypes
-        let stateTypes = collectStateTypes(files)
 
         var raw = MainActorBlockingIO.run(files, mainTypes: mainTypes)
-        raw += PublishedWriteOffMain.run(files, types: stateTypes)
-        raw += HotCallbackStateWrite.run(files, types: stateTypes)
+        raw += HotCallbackStateWrite.run(files, reactive: collectReactiveProperties(files))
         for file in files {
             raw += CancellationBlindPoll.run(file)
             raw += FormatterAlloc.run(file)

@@ -208,52 +208,6 @@ private func rules(_ report: LintReport) -> [String] { report.findings.map(\.rul
     }
 }
 
-@Suite struct PublishedWriteOffMainTests {
-    @Test func flagsWriteFromDetachedTask() {
-        let report = lint(
-            """
-            import Combine
-            final class Model: ObservableObject {
-                @Published var items: [Int] = []
-                func reload() {
-                    DispatchQueue.global().async { self.clear() }
-                }
-                private func clear() { items = [] }
-            }
-            """
-        )
-        #expect(Set(rules(report)) == ["published_write_off_main", "observable_not_main_actor"])
-    }
-
-    @Test func flagsObservableObjectWithoutMainActor() {
-        let report = lint(
-            """
-            import Combine
-            final class Model: ObservableObject {
-                @Published var items: [Int] = []
-            }
-            """
-        )
-        #expect(rules(report) == ["observable_not_main_actor"])
-    }
-
-    @Test func acceptsMainActorWrites() {
-        let report = lint(
-            """
-            import Combine
-            @MainActor final class Model: ObservableObject {
-                @Published var items: [Int] = []
-                func reload() async {
-                    let fresh = await Task.detached { [1, 2] }.value
-                    items = fresh
-                }
-            }
-            """
-        )
-        #expect(report.findings.isEmpty)
-    }
-}
-
 @Suite struct AllocationAndDelegateTests {
     @Test func flagsPerCallFormatterOnly() {
         let report = lint(

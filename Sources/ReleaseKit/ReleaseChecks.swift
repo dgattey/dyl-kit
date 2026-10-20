@@ -51,6 +51,7 @@ public struct ReleaseChecks: Sendable {
         check("sparkle_public_key", checkPublicKey)
         check("swift_language_mode", checkPackageManifests)
         check("min_os_consistency", checkMinimumOS)
+        check("swiftpm_only", checkNoXcodeProject)
         check("appcast_signature", checkCommittedAppcast)
         check("release_trigger_drift", checkTriggerDrift)
         check("unused_ci_secret", checkSecrets)
@@ -114,28 +115,19 @@ public struct ReleaseChecks: Sendable {
                     error("swift_language_mode", path, "uses unsafeFlags, which SwiftPM rejects in dependencies"))
             }
         }
-        for project in projectFiles() {
-            guard let text = read(project) else { continue }
-            if text.matches(pattern: #"SWIFT_VERSION = [45]"#) {
-                findings.append(error("swift_language_mode", project, "sets SWIFT_VERSION below 6"))
-            }
-        }
     }
 
-    private func projectFiles() -> [String] {
+    private func checkNoXcodeProject(_ findings: inout [CheckFinding]) {
         let enumerator = FileManager.default.enumerator(atPath: workspace.root.path)
-        var result: [String] = []
         while let path = enumerator?.nextObject() as? String {
-            if path.hasPrefix(".build") || path.hasPrefix("build/") || path.contains("/.build/")
-                || path.hasPrefix(".git/")
-                || path.contains("node_modules")
-            {
+            let name = (path as NSString).lastPathComponent
+            if name.hasPrefix(".") || name == "build" || name == "node_modules" {
                 enumerator?.skipDescendants()
-                continue
+            } else if name.hasSuffix(".xcodeproj") || name.hasSuffix(".xcworkspace") {
+                findings.append(error("swiftpm_only", path, "DylKit apps build with SwiftPM only; delete it"))
+                enumerator?.skipDescendants()
             }
-            if path.hasSuffix("project.pbxproj") { result.append(path) }
         }
-        return result
     }
 
     private func checkMinimumOS(_ findings: inout [CheckFinding]) {
@@ -154,16 +146,6 @@ public struct ReleaseChecks: Sendable {
                     error("min_os_consistency", "Package.swift", ".iOS(.v\(declared.1)) but DylApp.toml says \(iOS)"))
             }
         }
-        for project in projectFiles() {
-            guard let text = read(project) else { continue }
-            var mismatches: Set<String> = []
-            for match in text.matches(of: /(MACOSX|IPHONEOS)_DEPLOYMENT_TARGET = "?([\d.]+)/) {
-                let expected = match.1 == "MACOSX" ? macOS : manifest.app.platforms.ios
-                guard let expected, !sameVersion(String(match.2), expected) else { continue }
-                mismatches.insert("\(match.1)_DEPLOYMENT_TARGET is \(match.2) but DylApp.toml says \(expected)")
-            }
-            findings += mismatches.sorted().map { error("min_os_consistency", project, $0) }
-        }
         let appcastPath = workspace.appcastPath
         if let item = Appcast.items(at: workspace.appcastURL).first, let published = item.minimumSystemVersion,
             published != macOS
@@ -173,10 +155,6 @@ public struct ReleaseChecks: Sendable {
                     "min_os_consistency", appcastPath, "minimumSystemVersion is \(published), DylApp.toml says \(macOS)"
                 ))
         }
-    }
-
-    private func sameVersion(_ lhs: String, _ rhs: String) -> Bool {
-        lhs.trimmingSuffix(".0") == rhs.trimmingSuffix(".0")
     }
 
     private func checkCommittedAppcast(_ findings: inout [CheckFinding]) {

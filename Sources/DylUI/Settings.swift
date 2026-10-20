@@ -73,22 +73,27 @@ public struct SettingsWindow: Scene {
 
     public var body: some Scene {
         Window("Settings", id: Self.id) {
-            SettingsView(pages: pages).palette(palette)
+            SettingsView(pages: pages)
+                .palette(palette)
+                .background(NonRestorableWindow())
         }
         .windowResizability(.contentMinSize)
-        .withoutRestoration()
         .commands {
             CommandGroup(replacing: .appSettings) { OpenSettingsButton() }
         }
     }
 }
 
-extension Scene {
-    @SceneBuilder fileprivate func withoutRestoration() -> some Scene {
-        if #available(macOS 15, *) {
-            restorationBehavior(.disabled)
-        } else {
-            self
+/// `Scene.restorationBehavior` needs macOS 15 and `SceneBuilder` can't fall back with `else`, so this turns off
+/// restoration on the hosting window itself.
+private struct NonRestorableWindow: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { WindowHook() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class WindowHook: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.isRestorable = false
         }
     }
 }

@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "DylCore", targets: ["DylCore"]),
         .library(name: "DylManifest", targets: ["DylManifest"]),
+        .library(name: "DylUpdates", targets: ["DylUpdates"]),
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
@@ -15,10 +16,19 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
     ],
     targets: [
         // Runtime helpers shared by the app and the tools.
         .target(name: "DylCore"),
+        // Sparkle on macOS; a no-op on iOS so call sites stay free of #if.
+        .target(
+            name: "DylUpdates",
+            dependencies: [
+                "DylCore",
+                .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
+            ]
+        ),
 
         // Host tooling.
         .target(name: "DylManifest"),
@@ -60,6 +70,7 @@ let package = Package(
         .plugin(name: "DylLintPlugin", capability: .buildTool(), dependencies: ["dyl-lint"]),
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
+        .testTarget(name: "DylUpdatesTests", dependencies: ["DylUpdates"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",

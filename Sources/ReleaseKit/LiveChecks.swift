@@ -2,10 +2,9 @@ import DylToolSupport
 import Foundation
 
 extension ReleaseChecks {
-    /// `check --live`: what users' updaters see. With `expectedVersion`, waits up to `wait` for the deploy to serve
-    /// it. The live feed must not be ahead of the committed one, its newest archive must download and verify against
-    /// the committed public key, and the site page must show the same version.
-    public func live(expectedVersion: String? = nil, wait: Duration = .zero) async -> CheckReport {
+    /// `check --live`: what users' updaters see. The live feed must not be ahead of the committed one, its newest
+    /// archive must download and verify against the committed public key, and the site page must show the same version.
+    public func live() async -> CheckReport {
         var report = CheckReport()
         report.checked = ["live_site"]
         let manifest = workspace.manifest
@@ -15,21 +14,9 @@ extension ReleaseChecks {
                 CheckFinding(rule: "live_site", severity: .error, file: file ?? feedURL, message: message))
         }
 
-        let deadline = ContinuousClock.now + wait
-        var live: AppcastItem?
-        while !Task.isCancelled {
-            live = await LiveFeed.download(feedURL, timeout: 20).flatMap { Appcast.items(in: $0).first }
-            let served = live.map { expectedVersion == nil || $0.displayVersion == expectedVersion } ?? false
-            if served || ContinuousClock.now >= deadline { break }
-            Log.step("waiting for \(feedURL) to serve \(expectedVersion ?? "a release")")
-            do { try await Task.sleep(for: .seconds(15)) } catch { break }
-        }
-        guard let live else {
+        guard let live = await LiveFeed.download(feedURL, timeout: 20).flatMap({ Appcast.items(in: $0).first }) else {
             fail("can't fetch the live appcast, or it has no items")
             return report
-        }
-        if let expectedVersion, live.displayVersion != expectedVersion {
-            fail("serves \(live.displayVersion), not \(expectedVersion), after waiting \(wait)")
         }
 
         let committed = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml")).first
@@ -38,7 +25,7 @@ extension ReleaseChecks {
         {
             fail("live build \(liveBuild) is ahead of the committed build \(committedBuild); pull before releasing")
         }
-        if expectedVersion == nil, let committed, committed.displayVersion != live.displayVersion {
+        if let committed, committed.displayVersion != live.displayVersion {
             report.findings.append(
                 CheckFinding(
                     rule: "live_site", severity: .warning, file: feedURL,

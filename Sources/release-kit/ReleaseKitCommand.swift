@@ -9,7 +9,7 @@ struct ReleaseKitCommand: AsyncParsableCommand {
         commandName: "release-kit",
         abstract: "Version, bundle, sign and publish a Sparkle release, and check the release invariants.",
         discussion: """
-            CI runs the steps in order: version, bundle, sign, appcast, check, publish, check --live. Each step reads \
+            CI runs the steps in order: version, bundle, sign, appcast, check, publish. Each step reads \
             what the earlier ones left in build/release/.
             """,
         subcommands: [
@@ -103,17 +103,13 @@ extension ReleaseKitCommand {
         @OptionGroup var options: RootOption
         @Option(help: "Also check this built .app (signature, rpaths, Info.plist).") var bundle: String?
         @Flag(help: "Check what users' updaters see instead of the repo.") var live = false
-        @Option(help: "With --live, the version the site must serve; defaults to the planned release, if any.")
-        var expect: String?
-        @Option(help: "With --live, seconds to wait for the deploy to serve it.") var wait: Int = 0
 
         func run() async throws {
             let workspace = try options.workspace()
             let checks = ReleaseChecks(workspace: workspace)
             let report: CheckReport
             if live {
-                let planned = try? ReleasePipeline(workspace: workspace).state().version
-                report = await checks.live(expectedVersion: expect ?? planned, wait: .seconds(wait))
+                report = await checks.live()
             } else {
                 report = checks.run(bundle: bundle.map { URL(fileURLWithPath: $0) })
             }

@@ -51,8 +51,8 @@ extension ReleaseChecks {
 
         let site = manifest.release.siteUrl
         if let page = await LiveFeed.download(site, timeout: 20) {
-            if !String(decoding: page, as: UTF8.self).contains("v\(live.displayVersion)") {
-                fail("the download page doesn't show v\(live.displayVersion)", file: site)
+            if !String(decoding: page, as: UTF8.self).contains("Version \(live.displayVersion)") {
+                fail("the download page doesn't show Version \(live.displayVersion)", file: site)
             }
         } else {
             fail("can't fetch the download page", file: site)

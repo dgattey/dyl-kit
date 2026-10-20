@@ -130,7 +130,7 @@ extension DevKitCommand {
 
     struct Verify: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "What CI runs on every PR: checks, build, tests, and the site's typecheck and tests.")
+            abstract: "What macOS CI runs on every PR: checks, build and tests.")
 
         @OptionGroup var root: RootOption
 

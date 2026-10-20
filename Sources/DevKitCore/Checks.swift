@@ -62,9 +62,9 @@ public struct Checks: Sendable {
         return path
     }
 
-    /// `checks`, then build and test the app and DylKit, then the site's typecheck and tests.
+    /// `checks`, then build and test the app and DylKit. The site has its own ubuntu job.
     ///
-    /// - Blocking: runs `swift` and `npm`.
+    /// - Blocking: runs `swift`.
     public func verify() throws {
         guard run() else { throw ToolError("checks failed") }
         try Shell.run(["swift", "build"], cwd: workspace.root)
@@ -72,12 +72,6 @@ public struct Checks: Sendable {
         let dylKit = workspace.url("Packages/DylKit")
         if FileManager.default.fileExists(atPath: dylKit.appending(path: "Package.swift").path) {
             try Shell.run(["swift", "test", "--package-path", dylKit.path], cwd: workspace.root)
-        }
-        let server = workspace.url("server")
-        if FileManager.default.fileExists(atPath: server.appending(path: "package.json").path) {
-            try Shell.run(["npm", "ci", "--no-audit", "--no-fund"], cwd: server)
-            try Shell.run(["npm", "run", "typecheck"], cwd: server)
-            try Shell.run(["npm", "test"], cwd: server)
         }
     }
 }

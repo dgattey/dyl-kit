@@ -1,0 +1,33 @@
+{
+  "name": "@dylkit/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Each DylKit app's <app>.gattey.com download site, built from its DylApp.toml and appcast.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "smol-toml": "^1.3.0"
+  },
+  "peerDependencies": {
+    "next": ">=15.3.0",
+    "react": ">=19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/react": "19.2.15",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.8.0"
+  }
+}

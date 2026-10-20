@@ -1,0 +1,71 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <title>Saga</title>
+    <link>https://github.com/dgattey/saga/releases/tag/v1.6.1</link>
+    <item>
+      <title>1.6.1</title>
+      <pubDate>Tue, 20 Oct 2026 00:47:26 +0000</pubDate>
+      <link>https://github.com/dgattey/saga/releases/tag/v1.6.1</link>
+      <sparkle:version>22565</sparkle:version>
+      <sparkle:shortVersionString>1.6.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/dgattey/saga/releases</sparkle:fullReleaseNotesLink>
+      <description><![CDATA[<h3 style="margin: 0 0 6px 0; font-size: 13px;">1.6.1</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Redesigned the Saga app icon with a 3D botanical two-book stack, terracotta and sage linen covers, and a sculptural Monstera leaf aligned to Saga's warm botanical palette</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.6.0</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Settings is now a native macOS-style window with General, Storage, Credits, and About panes</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Sidebar selection uses a soft neutral highlight instead of green, and Home has a new olive badge</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Book covers rest on the page with a natural shadow, and Rating / ISBN / Cover are grouped together</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.5</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Show release notes from all intermediate versions when updating across multiple releases, capped at the last 10 versions</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Add a Full Release Notes link in the update window to view all releases on GitHub</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.4</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Tighten sidebar spacing between the search bar, Home row, and Books list</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Keep sidebar selection pills visible with a solid botanical tint backing layer</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Replace continuous 30Hz scroll-velocity timer polling with native scroll geometry tracking</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.3</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Compute release version and Sparkle build number at merge time instead of committing version bumps to PR branches, eliminating <code>project.pbxproj</code> merge conflicts across parallel PRs</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.2</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Fix Sparkle update signature validation so macOS updates install cleanly without signature verification errors</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Require and cryptographically verify <code>sparkle:edSignature</code> against <code>SUPublicEDKey</code> during release packaging</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Pin ad-hoc signed app bundles to a bundle-identifier designated requirement (<code>designated =&gt; identifier "com.dylangattey.Saga"</code>) so Sparkle's code-signature check succeeds across builds</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.1</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Restore a clean transparent toolbar across the book detail pane and sidebar on macOS</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Improve Home sidebar row proportions and icon badge alignment</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Smooth scrolling performance across the Home book grid and sidebar list with background cover image decoding</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.5.0</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Redesigned Settings on macOS with a split sidebar layout (<code>General</code>, <code>Storage</code>, and <code>Credits &amp; About</code>) and Liquid Glass cards.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Added a <strong>Credits &amp; About</strong> pane with quick links (<code>Website</code>, <code>GitHub</code>, <code>More by Dylan</code>), <strong>Data &amp; APIs</strong> attributions, and <strong>Open Source Libraries</strong> with version and license badges.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Added a Settings button on iOS to adjust cache limits, spring animations, and view credits in an adaptive sheet.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.4.3</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Check for updates automatically when launching Saga on macOS (<code>SUEnableAutomaticChecks</code> and <code>checkForUpdatesInBackground()</code>).</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Render in-app Sparkle release notes as clean, scannable bullet lists instead of unformatted Markdown paragraphs.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.4.2</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Added the <strong>saga.gattey.com</strong> macOS download site with a collapsible <strong>System Settings → Privacy &amp; Security → Open Anyway</strong> first-launch guide.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Improved macOS app bundle signing and portable framework runtime paths (<code>LC_RPATH</code>) for cleaner launches after download.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Connected <code>saga.gattey.com/download/macos</code> to the live Sparkle release feed so new updates are available immediately.</li>
+</ul>]]></description>
+      <enclosure url="https://github.com/dgattey/saga/releases/download/v1.6.1/Saga-1.6.1.zip" length="5921083" type="application/octet-stream" sparkle:edSignature="IOSaZZ3OY4ByVD4J7DJItOf/CFOs1M8M/4RBShUElWL0C02jC8J7CHZ60XVLybpHlMZZoQBSQqsB3LWH7b5FBQ=="/>
+    </item>
+  </channel>
+</rss>

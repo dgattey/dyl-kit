@@ -2,7 +2,7 @@ import Foundation
 
 /// Launch-time state for screenshots and agent runs, set by `devkit relaunch` and `devkit ios`. Option `name` reads
 /// the environment variable `<PREFIX>_<NAME>` (uppercased, dashes as underscores), then the argument `--name=value`
-/// or `--name value`. The prefix is `[launch] env-prefix` in `DylApp.toml`.
+/// or `--name value`. Callers pass `prefix` (the app name, uppercased, letters and digits only).
 public struct LaunchOverrides: Sendable {
     public let prefix: String
     private let environment: [String: String]

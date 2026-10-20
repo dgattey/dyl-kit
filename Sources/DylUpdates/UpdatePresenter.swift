@@ -31,9 +31,6 @@ final class UpdatePresenter {
         self.showUpdateInFocus = showUpdateInFocus
     }
 
-    /// `standardUserDriverShouldHandleShowingScheduledUpdate`: never, so `willShowUpdate` can bring it forward.
-    nonisolated static let sparkleShowsScheduledUpdates = false
-
     /// Only an installed release takes focus. A dev build under `build/`, a test runner, or anything devkit or an
     /// agent launched (`<PREFIX>_BACKGROUND`) never does.
     nonisolated static func mayActivate(app: AppInfo, bundleURL: URL, launch: LaunchOverrides) -> Bool {

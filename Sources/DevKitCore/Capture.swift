@@ -12,7 +12,7 @@ public struct WindowCapture: Sendable {
 
     public init(workspace: Workspace) { self.workspace = workspace }
 
-    public var capturesDir: URL { workspace.buildDir.appending(path: "captures") }
+    private var capturesDir: URL { workspace.buildDir.appending(path: "captures") }
 
     /// A fresh, timestamped path so image caches never serve an old render.
     public func defaultOutput(label: String?) -> URL {
@@ -48,7 +48,7 @@ public struct WindowCapture: Sendable {
     }
 
     /// The largest normal-layer window `pid` owns.
-    public static func mainWindow(of pid: Int32) -> UInt32? {
+    private static func mainWindow(of pid: Int32) -> UInt32? {
         #if canImport(CoreGraphics)
         guard
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)

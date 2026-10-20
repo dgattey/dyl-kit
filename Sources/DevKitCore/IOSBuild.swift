@@ -74,8 +74,10 @@ public struct IOSBuild: Sendable {
     ///
     /// - Blocking: runs `simctl`.
     @discardableResult
-    public func run(options: LaunchOptions, simulator: String? = nil) throws -> String {
-        let name = simulator ?? workspace.manifest.ios?.simulator ?? "iPhone 17 Pro"
+    public func run(options: LaunchOptions) throws -> String {
+        guard let name = workspace.manifest.ios?.simulator else {
+            throw ToolError("DylApp.toml has no [ios] simulator")
+        }
         let json = try Shell.capture(["xcrun", "simctl", "list", "devices", "available", "--json"])
         let list = try JSONDecoder().decode(DeviceList.self, from: Data(json.utf8))
         let matches = list.devices.sorted { $0.key > $1.key }.flatMap(\.value).filter { $0.name == name }
@@ -86,7 +88,7 @@ public struct IOSBuild: Sendable {
             try Shell.run(["xcrun", "simctl", "boot", device.udid])
         }
         try Shell.run(["xcrun", "simctl", "install", device.udid, appURL.path])
-        let prefix = workspace.manifest.launch?.envPrefix ?? workspace.manifest.app.name.uppercased()
+        let prefix = workspace.manifest.launchPrefix
         let environment = Dictionary(
             uniqueKeysWithValues: options.environment(prefix: prefix).map { ("SIMCTL_CHILD_\($0.key)", $0.value) })
         try Shell.run(

@@ -7,7 +7,11 @@ public struct DylAppManifest: Equatable, Sendable {
     public var bundle: Bundle
     public var ios: IOS?
     public var release: Release
-    public var launch: Launch?
+
+    /// Environment-variable prefix for launch overrides. The app name, uppercased, letters and digits only.
+    public var launchPrefix: String {
+        String(app.name.uppercased().filter { $0.isLetter || $0.isNumber })
+    }
 
     public struct App: Equatable, Sendable {
         public var name: String
@@ -54,11 +58,6 @@ public struct DylAppManifest: Equatable, Sendable {
         public var inputs: [String]
 
         public var feedURL: String { siteUrl.hasSuffix("/") ? "\(siteUrl)appcast.xml" : "\(siteUrl)/appcast.xml" }
-    }
-
-    /// Prefix for the launch-override environment variables (`<PREFIX>_INITIAL_VIEW`, `<PREFIX>_APPEARANCE`, ...).
-    public struct Launch: Equatable, Sendable {
-        public var envPrefix: String
     }
 }
 
@@ -127,8 +126,7 @@ extension DylAppManifest {
                 checkInterval: try toml.integer("release.check-interval"),
                 notesMaxVersions: try toml.integer("release.notes-max-versions"),
                 inputs: try toml.strings("release.inputs") ?? []
-            ),
-            launch: try toml.string("launch.env-prefix").map(Launch.init)
+            )
         )
         try manifest.validate(toml)
         return manifest

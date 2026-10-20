@@ -40,7 +40,6 @@ public struct LaunchOptions: Sendable {
     public var appearance: String?
     public var initialView: String?
     public var windowSize: String?
-    public var extra: [String: String] = [:]
 
     public init(appearance: String? = nil, initialView: String? = nil, windowSize: String? = nil) {
         self.appearance = appearance
@@ -49,12 +48,15 @@ public struct LaunchOptions: Sendable {
     }
 
     func environment(prefix: String) -> [String: String] {
-        var values = extra
-        values["BACKGROUND"] = "1"
-        values["APPEARANCE"] = appearance
-        values["INITIAL_VIEW"] = initialView
-        values["WINDOW_SIZE"] = windowSize
-        return Dictionary(uniqueKeysWithValues: values.map { ("\(prefix)_\($0.key)", $0.value) })
+        let values: [String: String?] = [
+            "BACKGROUND": "1",
+            "APPEARANCE": appearance,
+            "INITIAL_VIEW": initialView,
+            "WINDOW_SIZE": windowSize,
+        ]
+        return Dictionary(uniqueKeysWithValues: values.compactMap { key, value in
+            value.map { ("\(prefix)_\(key)", $0) }
+        })
     }
 }
 
@@ -70,13 +72,13 @@ public struct Launcher: Sendable {
     }
 
     /// - Blocking: runs `pgrep`.
-    public func pid(of app: URL) -> Int32? {
+    private func pid(of app: URL) -> Int32? {
         let output = try? Shell.capture(["pgrep", "-f", executable(of: app).path], allowFailure: true)
         return output?.split(separator: "\n").first.flatMap { Int32($0) }
     }
 
     /// - Blocking: runs `pkill` and waits for the process to exit.
-    public func stop(_ app: URL) async throws {
+    private func stop(_ app: URL) async throws {
         guard pid(of: app) != nil else { return }
         try Shell.run(["pkill", "-f", executable(of: app).path], allowFailure: true)
         for _ in 0..<50 where pid(of: app) != nil {
@@ -91,7 +93,7 @@ public struct Launcher: Sendable {
     @discardableResult
     public func launch(_ app: URL, options: LaunchOptions) async throws -> Int32 {
         try await stop(app)
-        let prefix = workspace.manifest.launch?.envPrefix ?? workspace.manifest.app.name.uppercased()
+        let prefix = workspace.manifest.launchPrefix
         let environment = options.environment(prefix: prefix).sorted { $0.key < $1.key }
         try Shell.run(["open", "-g"] + environment.flatMap { ["--env", "\($0.key)=\($0.value)"] } + [app.path])
         for _ in 0..<100 {

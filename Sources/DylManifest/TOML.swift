@@ -1,28 +1,27 @@
 import Foundation
 
 /// A TOML value, limited to what `DylApp.toml` uses.
-public enum TOMLValue: Equatable, Sendable {
+enum TOMLValue: Equatable, Sendable {
     case string(String)
     case integer(Int)
-    case boolean(Bool)
     case array([TOMLValue])
     case table([String: TOMLValue])
 }
 
-public struct TOMLError: Error, Equatable, CustomStringConvertible, Sendable {
-    public let line: Int
-    public let message: String
+struct TOMLError: Error, Equatable, CustomStringConvertible, Sendable {
+    let line: Int
+    let message: String
 
-    public var description: String { "line \(line): \(message)" }
+    var description: String { "line \(line): \(message)" }
 }
 
 /// A parsed document as dotted keys (`app.platforms.macos`) with the line each key or table header is on. Inline
 /// tables are stored whole and flattened, so both `bundle.usage` and `app.platforms.macos` resolve.
-public struct TOMLDocument: Sendable {
-    public fileprivate(set) var values: [String: TOMLValue] = [:]
-    public fileprivate(set) var lines: [String: Int] = [:]
+struct TOMLDocument: Sendable {
+    fileprivate(set) var values: [String: TOMLValue] = [:]
+    fileprivate(set) var lines: [String: Int] = [:]
 
-    public subscript(key: String) -> TOMLValue? { values[key] }
+    subscript(key: String) -> TOMLValue? { values[key] }
 
     fileprivate mutating func set(_ key: String, _ value: TOMLValue, line: Int) throws(TOMLError) {
         guard values[key] == nil else { throw TOMLError(line: line, message: "duplicate key `\(key)`") }
@@ -34,10 +33,10 @@ public struct TOMLDocument: Sendable {
     }
 }
 
-/// The TOML subset `DylApp.toml` needs: `[table]` headers, bare and dotted keys, basic and literal strings,
-/// integers, booleans, multi-line arrays and inline tables, with `#` comments.
-public enum TOML {
-    public static func parse(_ text: String) throws(TOMLError) -> TOMLDocument {
+/// The TOML subset `DylApp.toml` needs: `[table]` headers, bare keys, basic strings, integers, multi-line arrays
+/// and inline tables, with `#` comments.
+enum TOML {
+    static func parse(_ text: String) throws(TOMLError) -> TOMLDocument {
         var scanner = Scanner(characters: Array(text))
         var document = TOMLDocument()
         var table = ""
@@ -91,30 +90,20 @@ private struct Scanner {
     }
 
     mutating func key() throws(TOMLError) -> String {
-        var parts: [String] = []
-        repeat {
-            if !parts.isEmpty { index += 1 }
-            skip(newlines: false)
-            if peek == "\"" || peek == "'" {
-                parts.append(try string())
-            } else {
-                var bare = ""
-                while let character = peek, character.isLetter || character.isNumber || "-_".contains(character) {
-                    bare.append(character)
-                    index += 1
-                }
-                guard !bare.isEmpty else { throw error("expected a key") }
-                parts.append(bare)
-            }
-            skip(newlines: false)
-        } while peek == "."
-        return parts.joined(separator: ".")
+        skip(newlines: false)
+        var bare = ""
+        while let character = peek, character.isLetter || character.isNumber || "-_".contains(character) {
+            bare.append(character)
+            index += 1
+        }
+        guard !bare.isEmpty else { throw error("expected a key") }
+        return bare
     }
 
     mutating func value() throws(TOMLError) -> TOMLValue {
         skip(newlines: false)
         switch peek {
-        case "\"", "'":
+        case "\"":
             return .string(try string())
         case "[":
             index += 1
@@ -151,28 +140,25 @@ private struct Scanner {
                 word.append(character)
                 index += 1
             }
-            if word == "true" || word == "false" { return .boolean(word == "true") }
             guard let integer = Int(word) else { throw error("unsupported value `\(word)`") }
             return .integer(integer)
         }
     }
 
-    /// A basic (`"…"`, with `\"`, `\\`, `\n` and `\t` escapes) or literal (`'…'`) single-line string.
+    /// A basic (`"…"`, with `\"`, `\\` and `\n` escapes) single-line string.
     mutating func string() throws(TOMLError) -> String {
-        let quote = characters[index]
         index += 1
         var result = ""
         while let character = peek, character != "\n" {
             index += 1
-            if character == quote { return result }
-            guard quote == "\"", character == "\\", let escaped = peek else {
+            if character == "\"" { return result }
+            guard character == "\\", let escaped = peek else {
                 result.append(character)
                 continue
             }
             index += 1
             switch escaped {
             case "n": result.append("\n")
-            case "t": result.append("\t")
             case "\"", "\\": result.append(escaped)
             default: throw error("unsupported escape `\\\(escaped)`")
             }

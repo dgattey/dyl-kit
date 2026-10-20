@@ -15,7 +15,8 @@ final class UserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(
         _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
     ) -> Bool {
-        UpdatePresenter.sparkleShowsScheduledUpdates
+        // Scheduled updates stay deferred so `willShowUpdate` can bring them forward.
+        return false
     }
 
     nonisolated func standardUserDriverWillHandleShowingUpdate(

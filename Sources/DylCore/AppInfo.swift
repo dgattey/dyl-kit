@@ -2,7 +2,6 @@ import Foundation
 
 /// The Info.plist values every DylKit app reads at runtime. Empty strings count as missing.
 public struct AppInfo: Equatable, Sendable {
-    public var bundleIdentifier: String?
     public var version: String?
     public var build: String?
     public var sparkleFeedURL: URL?
@@ -15,7 +14,6 @@ public struct AppInfo: Equatable, Sendable {
             }
             return text
         }
-        bundleIdentifier = value("CFBundleIdentifier")
         version = value("CFBundleShortVersionString")
         build = value("CFBundleVersion")
         sparkleFeedURL = value("SUFeedURL").flatMap(URL.init(string:))

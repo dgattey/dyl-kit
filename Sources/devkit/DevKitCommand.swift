@@ -14,13 +14,6 @@ struct DevKitCommand: AsyncParsableCommand {
     )
 }
 
-struct RootOption: ParsableArguments {
-    @Option(help: "The app repo (the directory with DylApp.toml). Defaults to the nearest ancestor that has one.")
-    var root: String?
-
-    func workspace() throws -> Workspace { try Workspace.locate(root) }
-}
-
 extension Bundler.Configuration: ExpressibleByArgument {}
 
 enum AppearanceChoice: String, ExpressibleByArgument, CaseIterable {
@@ -42,11 +35,10 @@ extension DevKitCommand {
     struct Build: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Bundle and ad-hoc sign build/<App>.app.")
 
-        @OptionGroup var root: RootOption
         @Argument(help: "debug or release.") var configuration: Bundler.Configuration = .debug
 
         func run() throws {
-            print(try DevBuild(workspace: try root.workspace()).build(configuration: configuration).path)
+            print(try DevBuild(workspace: try Workspace.locate()).build(configuration: configuration).path)
         }
     }
 
@@ -54,15 +46,13 @@ extension DevKitCommand {
         static let configuration = CommandConfiguration(
             abstract: "Build, stop the build/ copy if it's running, and open it in the background.")
 
-        @OptionGroup var root: RootOption
         @OptionGroup var launch: LaunchArguments
-        @Option(help: "debug or release.") var configuration: Bundler.Configuration = .debug
         @Flag(help: "Relaunch the existing build without rebuilding.") var noBuild = false
 
         func run() async throws {
-            let workspace = try root.workspace()
+            let workspace = try Workspace.locate()
             let builder = DevBuild(workspace: workspace)
-            let app = noBuild ? builder.appURL : try builder.build(configuration: configuration)
+            let app = noBuild ? builder.appURL : try builder.build(configuration: .debug)
             try await Launcher(workspace: workspace).launch(app, options: launch.options)
         }
     }
@@ -71,22 +61,18 @@ extension DevKitCommand {
         static let configuration = CommandConfiguration(
             abstract: "Relaunch in the background and screenshot the main window into build/captures.")
 
-        @OptionGroup var root: RootOption
         @OptionGroup var launch: LaunchArguments
-        @Option(help: "debug or release.") var configuration: Bundler.Configuration = .debug
         @Flag(help: "Capture the existing build without rebuilding.") var noBuild = false
-        @Option(help: "Where to write the PNG; defaults to a timestamped file in build/captures.") var output: String?
         @Option(help: "Seconds to let the window settle before capturing.") var settle: Double = 2
 
         func run() async throws {
-            let workspace = try root.workspace()
+            let workspace = try Workspace.locate()
             let builder = DevBuild(workspace: workspace)
-            let app = noBuild ? builder.appURL : try builder.build(configuration: configuration)
+            let app = noBuild ? builder.appURL : try builder.build(configuration: .debug)
             let pid = try await Launcher(workspace: workspace).launch(app, options: launch.options)
             let capture = WindowCapture(workspace: workspace)
             let label = [launch.appearance?.rawValue, launch.initialView].compactMap { $0 }.joined(separator: "-")
-            let url =
-                output.map { URL(fileURLWithPath: $0) } ?? capture.defaultOutput(label: label.isEmpty ? nil : label)
+            let url = capture.defaultOutput(label: label.isEmpty ? nil : label)
             print(try await capture.capture(pid: pid, to: url, settle: .milliseconds(Int(settle * 1000))).path)
         }
     }
@@ -96,18 +82,16 @@ extension DevKitCommand {
             commandName: "ios",
             abstract: "Build for the iOS Simulator; --run installs and launches it headless, --capture screenshots it.")
 
-        @OptionGroup var root: RootOption
         @OptionGroup var launch: LaunchArguments
         @Flag(help: "Boot the simulator without Simulator.app, install and launch.") var run = false
         @Flag(help: "With --run, screenshot the simulator into build/captures.") var capture = false
-        @Option(help: "The simulator name; defaults to [ios] simulator.") var simulator: String?
 
         func run() async throws {
-            let workspace = try root.workspace()
+            let workspace = try Workspace.locate()
             let ios = IOSBuild(workspace: workspace)
             print(try ios.build().path)
             guard run || capture else { return }
-            let udid = try ios.run(options: launch.options, simulator: simulator)
+            let udid = try ios.run(options: launch.options)
             guard capture else { return }
             try await Task.sleep(for: .seconds(3))
             let label = ["ios", launch.appearance?.rawValue].compactMap { $0 }.joined(separator: "-")
@@ -121,10 +105,8 @@ extension DevKitCommand {
         static let configuration = CommandConfiguration(
             abstract: "Manifest, SwiftLint (tier 1), dyl-lint (tier 2) and release checks (tier 3).")
 
-        @OptionGroup var root: RootOption
-
         func run() throws {
-            guard DevKitCore.Checks(workspace: try root.workspace()).run() else { throw ExitCode.failure }
+            guard DevKitCore.Checks(workspace: try Workspace.locate()).run() else { throw ExitCode.failure }
         }
     }
 
@@ -132,10 +114,8 @@ extension DevKitCommand {
         static let configuration = CommandConfiguration(
             abstract: "What macOS CI runs on every PR: checks, build and tests.")
 
-        @OptionGroup var root: RootOption
-
         func run() throws {
-            try DevKitCore.Checks(workspace: try root.workspace()).verify()
+            try DevKitCore.Checks(workspace: try Workspace.locate()).verify()
         }
     }
 }

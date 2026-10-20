@@ -49,7 +49,6 @@ import Sparkle
             showUpdateInFocus: { calls.append("showInFocus") }
         )
         presenter.mayActivate = true
-        #expect(!UpdatePresenter.sparkleShowsScheduledUpdates)
 
         // A background check that finds nothing only ends its session.
         presenter.sessionEnded()

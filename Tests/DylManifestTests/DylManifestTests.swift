@@ -3,46 +3,6 @@ import Testing
 
 @testable import DylManifest
 
-struct TOMLTests {
-    @Test func parsesTablesDottedKeysAndInlineTables() throws {
-        let document = try TOML.parse(
-            """
-            # comment
-            [app]
-            name = "Sconeos" # trailing
-            platforms = { macos = "14.0", ios = '17.0' }
-            [release]
-            check-interval = 3600
-            inputs = [
-                "Sources/**",
-                "Package.swift", # trailing comma below
-            ]
-            a.b = true
-            """)
-        #expect(document["app.name"] == .string("Sconeos"))
-        #expect(document["app.platforms.ios"] == .string("17.0"))
-        #expect(document["release.check-interval"] == .integer(3600))
-        #expect(document["release.inputs"] == .array([.string("Sources/**"), .string("Package.swift")]))
-        #expect(document["release.a.b"] == .boolean(true))
-        #expect(document.lines["release.inputs"] == 7)
-        #expect(document.lines["app.platforms.ios"] == 4)
-    }
-
-    @Test func reportsTheLineOfAnError() {
-        #expect(throws: TOMLError(line: 3, message: "duplicate key `app.name`")) {
-            try TOML.parse("[app]\nname = \"a\"\nname = \"b\"\n")
-        }
-        #expect(throws: TOMLError(line: 2, message: "unterminated string")) {
-            try TOML.parse("[app]\nname = \"a\n")
-        }
-    }
-
-    @Test func decodesEscapes() throws {
-        let document = try TOML.parse(#"s = "a\"b\\c\n""#)
-        #expect(document["s"] == .string("a\"b\\c\n"))
-    }
-}
-
 struct DylAppManifestTests {
     static let valid = """
         [app]
@@ -63,14 +23,84 @@ struct DylAppManifestTests {
         site-url = "https://demo.gattey.com"
         artifacts-dir = "server/public"
         inputs = ["Sources/**"]
+        check-interval = 3600
         """
 
     @Test func decodesKebabKeysAndKeepsUsageKeys() throws {
         let manifest = try DylAppManifest.decode(Self.valid)
         #expect(manifest.app.bundleId == "com.example.Demo")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
+        #expect(manifest.release.checkInterval == 3600)
+        #expect(manifest.release.notesMaxVersions == nil)
+        #expect(manifest.launchPrefix == "DEMO")
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
         #expect(manifest.ios == nil)
+    }
+
+    @Test func launchPrefixKeepsLettersAndDigits() throws {
+        let text = Self.valid.replacingOccurrences(of: "name = \"Demo\"", with: "name = \"Scone OS!\"")
+        #expect(try DylAppManifest.decode(text).launchPrefix == "SCONEOS")
+    }
+
+    @Test func parsesCommentsTrailingCommasAndInlineTables() throws {
+        let manifest = try DylAppManifest.decode(
+            """
+            # comment
+            [app]
+            name = "Sconeos" # trailing
+            bundle-id = "com.example.Sconeos"
+            platforms = { macos = "14.0", ios = "17.0" }
+            category = "public.app-category.utilities"
+
+            [build]
+            product = "Sconeos"
+            entitlements = "Demo.entitlements"
+
+            [release]
+            sparkle-public-key = "key.txt"
+            site-url = "https://demo.gattey.com/"
+            artifacts-dir = "server/public"
+            check-interval = 3600
+            inputs = [
+                "Sources/**",
+                "Package.swift", # trailing comma below
+            ]
+
+            [site]
+            tagline = "Hello"
+            accent = { light = "#fff", dark = "#000" }
+            screenshots = [
+                { src = "a.png", alt = "A" },
+            ]
+            """)
+        #expect(manifest.app.name == "Sconeos")
+        #expect(manifest.app.platforms.ios == "17.0")
+        #expect(manifest.release.checkInterval == 3600)
+        #expect(manifest.release.inputs == ["Sources/**", "Package.swift"])
+        #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
+        #expect(manifest.launchPrefix == "SCONEOS")
+    }
+
+    @Test func reportsTheLineOfAnError() {
+        do {
+            _ = try DylAppManifest.decode("[app]\nname = \"a\"\nname = \"b\"\n", path: "DylApp.toml")
+            Issue.record("expected an error")
+        } catch {
+            #expect(error.line == 3)
+            #expect(error.message == "duplicate key `app.name`")
+        }
+        do {
+            _ = try DylAppManifest.decode("[app]\nname = \"a\n", path: "DylApp.toml")
+            Issue.record("expected an error")
+        } catch {
+            #expect(error.line == 2)
+            #expect(error.message == "unterminated string")
+        }
+    }
+
+    @Test func decodesEscapes() throws {
+        let text = Self.valid.replacingOccurrences(of: "name = \"Demo\"", with: #"name = "a\"b\\c\n""#)
+        #expect(try DylAppManifest.decode(text).app.name == "a\"b\\c\n")
     }
 
     @Test func missingKeyPointsAtItsTable() {
@@ -81,6 +111,20 @@ struct DylAppManifestTests {
         } catch {
             #expect(error.description == "DylApp.toml:7: error: missing required key `build.product`")
         }
+    }
+
+    @Test func decodesTheRepoManifest() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let manifest = try DylAppManifest.load(root: root)
+        #expect(manifest.app.name == "Sconeos")
+        #expect(manifest.launchPrefix == "SCONEOS")
+        #expect(manifest.release.notesMaxVersions == nil)
+        #expect(manifest.ios?.simulator == "iPhone 17 Pro")
     }
 
     @Test func rejectsNonHTTPSSiteURL() {

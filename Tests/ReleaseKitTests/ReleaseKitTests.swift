@@ -52,6 +52,18 @@ private let sconeosModules = [
         #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4") }
     }
 
+    /// scone-os #7 checked Minor but shipped as 1.0.6: the squash commit carried only the commit list, and the old
+    /// scripts defaulted to patch. Its body, verbatim, has prose and a rule before the heading and labels after each box.
+    @Test func scone7ReleasesAsMinorFromItsBodyAndNeverDefaultsToPatch() throws {
+        let body = try fixture("release-info/pr-7-body.md")
+        let squashMessage = try fixture("release-info/pr-7-merge-commit.txt")
+        #expect(ReleaseInfo.releaseType(in: body) == .minor)
+        #expect(ReleaseInfo.releaseType(in: body.replacingOccurrences(of: "\n", with: "\r\n")) == .minor)
+        #expect(try ReleaseInfo.source(prBody: body, commitBody: squashMessage).bump == .minor)
+        #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: nil, commitBody: squashMessage) }
+        #expect(ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "").hasPrefix("- **One-click Spotify transfer:**"))
+    }
+
     @Test func notesComeFromTheFirstNonEmptySectionElseTheTitle() throws {
         let body = try fixture("notes/pr-13.md")
         let notes = ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "Title")

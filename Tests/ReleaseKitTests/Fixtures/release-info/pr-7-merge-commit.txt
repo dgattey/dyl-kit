@@ -1,0 +1,5 @@
+Show external Spotify playback and one-click transfer on idle Sonos groups (#7)
+
+* Surface external Spotify playback and one-click transfer on idle Sonos groups
+
+* Prevent truncation of external device caption on floorplan hub card

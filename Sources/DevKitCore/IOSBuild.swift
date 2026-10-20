@@ -74,9 +74,9 @@ public struct IOSBuild: Sendable {
     ///
     /// - Blocking: runs `simctl`.
     @discardableResult
-    public func run(options: LaunchOptions) throws -> String {
-        guard let name = workspace.manifest.ios?.simulator else {
-            throw ToolError("DylApp.toml has no [ios] simulator")
+    public func run(options: LaunchOptions, simulator: String? = nil) throws -> String {
+        guard let name = simulator ?? workspace.manifest.ios?.simulator else {
+            throw ToolError("pass --simulator or set [ios] simulator in DylApp.toml")
         }
         let json = try Shell.capture(["xcrun", "simctl", "list", "devices", "available", "--json"])
         let list = try JSONDecoder().decode(DeviceList.self, from: Data(json.utf8))

@@ -6,7 +6,7 @@ import SwiftUI
 import AppKit
 #endif
 
-/// One page of the macOS Settings window. Its content goes in a grouped `Form`.
+/// One page of Settings: a sidebar row on macOS, a pushed list row on iOS. Its content goes in a grouped `Form`.
 public struct SettingsPage: Identifiable {
     public let title: String
     let systemImage: String
@@ -21,18 +21,18 @@ public struct SettingsPage: Identifiable {
     }
 }
 
-#if os(macOS)
-/// A sidebar of pages beside a grouped form.
-struct SettingsView: View {
+/// Settings as Saga #48 shaped it: a sidebar of pages beside a grouped form on macOS, a pushed list on iOS.
+public struct SettingsView: View {
     private let pages: [SettingsPage]
     @State private var selection: String?
 
-    init(pages: [SettingsPage]) {
+    public init(pages: [SettingsPage]) {
         self.pages = pages
         _selection = State(initialValue: pages.first?.id)
     }
 
-    var body: some View {
+    public var body: some View {
+        #if os(macOS)
         NavigationSplitView {
             List(pages, selection: $selection) { page in
                 Label(page.title, systemImage: page.systemImage).tag(page.id)
@@ -44,6 +44,14 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 620, minHeight: 420)
+        #else
+        NavigationStack {
+            List(pages) { page in
+                NavigationLink { form(page) } label: { Label(page.title, systemImage: page.systemImage) }
+            }
+            .navigationTitle("Settings")
+        }
+        #endif
     }
 
     private func form(_ page: SettingsPage) -> some View {
@@ -53,6 +61,7 @@ struct SettingsView: View {
     }
 }
 
+#if os(macOS)
 /// The Settings window: one instance, never reopened at launch, and ⌘, focuses it when it's already open, with no
 /// lookups by window title.
 public struct SettingsWindow: Scene {

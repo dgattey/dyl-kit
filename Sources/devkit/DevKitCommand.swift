@@ -47,12 +47,13 @@ extension DevKitCommand {
             abstract: "Build, stop the build/ copy if it's running, and open it in the background.")
 
         @OptionGroup var launch: LaunchArguments
+        @Option(help: "debug or release.") var configuration: Bundler.Configuration = .debug
         @Flag(help: "Relaunch the existing build without rebuilding.") var noBuild = false
 
         func run() async throws {
             let workspace = try Workspace.locate()
             let builder = DevBuild(workspace: workspace)
-            let app = noBuild ? builder.appURL : try builder.build(configuration: .debug)
+            let app = noBuild ? builder.appURL : try builder.build(configuration: configuration)
             try await Launcher(workspace: workspace).launch(app, options: launch.options)
         }
     }
@@ -85,13 +86,14 @@ extension DevKitCommand {
         @OptionGroup var launch: LaunchArguments
         @Flag(help: "Boot the simulator without Simulator.app, install and launch.") var run = false
         @Flag(help: "With --run, screenshot the simulator into build/captures.") var capture = false
+        @Option(help: "The simulator, such as an iPad; defaults to [ios] simulator.") var simulator: String?
 
         func run() async throws {
             let workspace = try Workspace.locate()
             let ios = IOSBuild(workspace: workspace)
             print(try ios.build().path)
             guard run || capture else { return }
-            let udid = try ios.run(options: launch.options)
+            let udid = try ios.run(options: launch.options, simulator: simulator)
             guard capture else { return }
             try await Task.sleep(for: .seconds(3))
             let label = ["ios", launch.appearance?.rawValue].compactMap { $0 }.joined(separator: "-")

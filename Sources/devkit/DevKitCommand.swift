@@ -12,7 +12,7 @@ struct DevKitCommand: AsyncParsableCommand {
         discussion: "Nothing here touches /Applications, steals focus or changes the system appearance.",
         subcommands: [
             Build.self, Relaunch.self, Capture.self, IOS.self, Checks.self, Verify.self, Bootstrap.self, Clean.self,
-            Manifest.self, Skills.self,
+            Manifest.self,
         ]
     )
 }
@@ -194,29 +194,6 @@ extension DevKitCommand {
                 throw ToolError("DylApp.toml has no \(key)")
             }
             print(value.plainText)
-        }
-    }
-
-    struct Skills: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "DylKit's agent skills and rules.", subcommands: [SkillsSyncCommand.self])
-    }
-
-    struct SkillsSyncCommand: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            commandName: "sync", abstract: "Copy DylKit's skills and rules into .cursor/.")
-
-        @OptionGroup var root: RootOption
-        @Flag(help: "Only report files that differ from DylKit's copies.") var check = false
-
-        func run() throws {
-            let stale = try AgentAssets.sync(workspace: try root.workspace(), check: check)
-            if check, !stale.isEmpty {
-                for path in stale {
-                    FileHandle.standardError.write(Data("\(path) differs; run `./run dev skills sync`\n".utf8))
-                }
-                throw ExitCode.failure
-            }
         }
     }
 }

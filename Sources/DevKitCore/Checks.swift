@@ -51,10 +51,6 @@ public struct Checks: Sendable {
         release.print()
         if !release.passed { passed = false }
 
-        let staleAssets = (try? AgentAssets.sync(workspace: workspace, check: true)) ?? ["skills/"]
-        for path in staleAssets { print("error: \(path) differs from DylKit's copy; run `./run dev skills sync`") }
-        if !staleAssets.isEmpty { passed = false }
-        Log.step("skills: \(staleAssets.isEmpty ? "OK" : "\(staleAssets.count) out of date")")
         return passed
     }
 
@@ -119,45 +115,5 @@ public enum Clean {
             try FileManager.default.removeItem(at: target)
             Log.step("removed \(target.path)")
         }
-    }
-}
-
-/// Copies DylKit's skills and rules into the app's `.cursor/`, leaving the app's own skills alone.
-public enum AgentAssets {
-    /// DylKit's checkout. `devkit` is always compiled from it (vendored or as a SwiftPM checkout), so the
-    /// compile-time path is the package root.
-    static let packageRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-
-    /// Each asset as (path relative to DylKit, path relative to the app).
-    static func files() throws -> [(source: String, destination: String)] {
-        let fileManager = FileManager.default
-        let skills = try fileManager.contentsOfDirectory(atPath: packageRoot.appending(path: "skills").path).sorted()
-            .filter { fileManager.fileExists(atPath: packageRoot.appending(path: "skills/\($0)/SKILL.md").path) }
-            .map { ("skills/\($0)/SKILL.md", ".cursor/skills/\($0)/SKILL.md") }
-        let rules = try fileManager.contentsOfDirectory(atPath: packageRoot.appending(path: "rules").path).sorted()
-            .filter { $0.hasSuffix(".mdc") }
-            .map { ("rules/\($0)", ".cursor/rules/\($0)") }
-        return skills + rules
-    }
-
-    /// Writes the assets, or with `check` only reports which differ. Returns the app paths that differ (before
-    /// writing).
-    ///
-    /// - Blocking: reads and writes files.
-    public static func sync(workspace: Workspace, check: Bool) throws -> [String] {
-        var stale: [String] = []
-        for file in try files() {
-            let contents = try Data(contentsOf: packageRoot.appending(path: file.source))
-            let url = workspace.url(file.destination)
-            if (try? Data(contentsOf: url)) == contents { continue }
-            stale.append(file.destination)
-            guard !check else { continue }
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try contents.write(to: url)
-            Log.step("wrote \(file.destination)")
-        }
-        return stale
     }
 }

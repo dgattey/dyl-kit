@@ -19,7 +19,7 @@ extension ReleaseChecks {
             return report
         }
 
-        let committed = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml")).first
+        let committed = Appcast.items(at: workspace.appcastURL).first
         if let committedBuild = committed?.build.flatMap({ Int($0) }), let liveBuild = live.build.flatMap({ Int($0) }),
             liveBuild > committedBuild
         {

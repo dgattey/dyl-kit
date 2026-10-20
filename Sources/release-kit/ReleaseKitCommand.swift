@@ -76,12 +76,9 @@ extension ReleaseKitCommand {
             abstract: "Sign the staged app inside-out, verify it and zip it.")
 
         @OptionGroup var options: RootOption
-        @Option(help: "The codesign identity; ad-hoc by default.") var identity: String = Signer.adHoc
 
         func run() throws {
-            var pipeline = ReleasePipeline(workspace: try options.workspace())
-            pipeline.identity = identity
-            print(try pipeline.sign().path)
+            print(try ReleasePipeline(workspace: try options.workspace()).sign().path)
         }
     }
 
@@ -104,7 +101,6 @@ extension ReleaseKitCommand {
             abstract: "Tier 3 release checks against the repo, or with --live against the deployed site.")
 
         @OptionGroup var options: RootOption
-        @Option(help: "Also check this built .app (signature, rpaths, Info.plist).") var bundle: String?
         @Flag(help: "Check what users' updaters see instead of the repo.") var live = false
 
         func run() async throws {
@@ -114,7 +110,7 @@ extension ReleaseKitCommand {
             if live {
                 report = await checks.live()
             } else {
-                report = checks.run(bundle: bundle.map { URL(fileURLWithPath: $0) })
+                report = checks.run()
             }
             report.print()
             if !report.passed { throw ExitCode.failure }
@@ -146,8 +142,7 @@ extension ReleaseKitCommand {
             let pipeline = ReleasePipeline(workspace: workspace)
             var state = try? pipeline.state()
             if let body = try readBody(bodyFile) {
-                state = ReleasePipeline.State(
-                    current: "", version: version, bump: "", build: 0, subject: "Untitled", body: body)
+                state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
             let live = await LiveFeed.fetch(workspace.manifest.release.feedURL)

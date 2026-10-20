@@ -82,9 +82,4 @@ public struct CommitMessage: Sendable, Equatable {
         subject = rawSubject.replacing(pattern: #"\s*\(#\d+\)\s*$"#, with: "")
         body = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-    public init(subject: String, body: String) {
-        self.subject = subject
-        self.body = body
-    }
 }

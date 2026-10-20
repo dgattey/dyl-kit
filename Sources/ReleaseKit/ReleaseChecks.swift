@@ -28,8 +28,8 @@ public struct CheckReport: Sendable {
     }
 }
 
-/// Tier 3: release, bundle and workflow invariants, checked against the real files (manifest, `Package.swift`,
-/// workflows, the committed appcast and, when given, a built bundle or a staged release).
+/// Tier 3: release and workflow invariants, checked against the real files (manifest, `Package.swift`,
+/// workflows, the committed appcast and, when given, a staged release).
 public struct ReleaseChecks: Sendable {
     public let workspace: Workspace
 
@@ -37,9 +37,9 @@ public struct ReleaseChecks: Sendable {
 
     private var manifest: DylAppManifest { workspace.manifest }
 
-    /// - Blocking: reads repo files and, for a bundle, runs `codesign`, `otool` and `xattr`.
+    /// - Blocking: reads repo files.
     public func run(
-        bundle: URL? = nil, stagedAppcast: URL? = nil, stagedArchive: URL? = nil, liveFeed: [AppcastItem] = []
+        stagedAppcast: URL? = nil, stagedArchive: URL? = nil, liveFeed: [AppcastItem] = []
     ) -> CheckReport {
         var report = CheckReport()
         func check(_ rule: String, _ body: (inout [CheckFinding]) -> Void) {
@@ -63,9 +63,6 @@ public struct ReleaseChecks: Sendable {
             check("staged_release") {
                 checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
             }
-        }
-        if let bundle {
-            check("bundle") { checkBundle(bundle, into: &$0) }
         }
         return report
     }
@@ -167,8 +164,8 @@ public struct ReleaseChecks: Sendable {
             }
             findings += mismatches.sorted().map { error("min_os_consistency", project, $0) }
         }
-        let appcastPath = "\(manifest.release.artifactsDir)/appcast.xml"
-        if let item = Appcast.items(at: workspace.url(appcastPath)).first, let published = item.minimumSystemVersion,
+        let appcastPath = workspace.appcastPath
+        if let item = Appcast.items(at: workspace.appcastURL).first, let published = item.minimumSystemVersion,
             published != macOS
         {
             findings.append(
@@ -183,8 +180,8 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkCommittedAppcast(_ findings: inout [CheckFinding]) {
-        let appcastPath = "\(manifest.release.artifactsDir)/appcast.xml"
-        guard let item = Appcast.items(at: workspace.url(appcastPath)).first else { return }
+        let appcastPath = workspace.appcastPath
+        guard let item = Appcast.items(at: workspace.appcastURL).first else { return }
         guard let signature = item.edSignature, !signature.isEmpty else {
             findings.append(error("appcast_signature", appcastPath, "newest item has no sparkle:edSignature"))
             return
@@ -355,12 +352,7 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkWorkflowHygiene(_ findings: inout [CheckFinding]) {
-        for workflow in workflows {
-            if workflow.text.contains("dorny/") {
-                findings.append(
-                    error("workflow_hygiene", workflow.path, "uses a dorny/ action; filter with `paths:` instead"))
-            }
-            guard workflow.runsRelease else { continue }
+        for workflow in workflows where workflow.runsRelease {
             if !workflow.text.contains("concurrency:") || !workflow.text.contains("cancel-in-progress: false") {
                 findings.append(
                     error(
@@ -372,8 +364,8 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkPRTemplate(_ findings: inout [CheckFinding]) {
-        let candidates = [".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md"]
-        guard let path = candidates.first(where: { read($0) != nil }), let text = read(path) else {
+        let path = ".github/pull_request_template.md"
+        guard let text = read(path) else {
             findings.append(
                 error("pr_template_contract", nil, "no PR template; release-kit reads its Release info checkboxes"))
             return
@@ -443,7 +435,7 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
-    // MARK: - Staged release and bundle
+    // MARK: - Staged release
 
     /// The build must beat both the committed feed and the live one, which can be ahead of a stale checkout.
     private func checkStaged(appcast: URL, archive: URL, liveFeed: [AppcastItem], into findings: inout [CheckFinding]) {
@@ -459,7 +451,7 @@ public struct ReleaseChecks: Sendable {
                     "minimumSystemVersion is \(item.minimumSystemVersion ?? "missing"), expected \(manifest.app.platforms.macos)"
                 ))
         }
-        let published = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml")) + liveFeed
+        let published = Appcast.items(at: workspace.appcastURL) + liveFeed
         if let newBuild = item.build.flatMap({ Int($0) }),
             let oldBuild = published.compactMap({ $0.build.flatMap { Int($0) } }).max(), newBuild <= oldBuild
         {
@@ -471,68 +463,6 @@ public struct ReleaseChecks: Sendable {
             findings.append(
                 error("staged_release", file, "enclosure is \(item.enclosureURL ?? "missing"), expected \(expectedURL)")
             )
-        }
-    }
-
-    private func checkBundle(_ app: URL, into findings: inout [CheckFinding]) {
-        let file = app.lastPathComponent
-        let plistURL = app.appending(path: "Contents/Info.plist")
-        guard let plist = InfoPlist.read(plistURL) else {
-            findings.append(error("bundle", file, "has no readable Contents/Info.plist"))
-            return
-        }
-        let expected: [(String, String?)] = [
-            ("CFBundleIdentifier", manifest.app.bundleId),
-            ("LSMinimumSystemVersion", manifest.app.platforms.macos),
-            ("SUFeedURL", manifest.release.feedURL),
-            ("SUPublicEDKey", publicKey),
-            ("CFBundleExecutable", manifest.build.product),
-        ]
-        for (key, value) in expected where plist[key]?.string != value {
-            findings.append(
-                error(
-                    "bundle", file, "Info.plist \(key) is \(plist[key]?.string ?? "missing"), expected \(value ?? "-")")
-            )
-        }
-        if plist["CFBundleVersion"]?.string.flatMap({ Int($0) }) == nil {
-            findings.append(error("bundle", file, "CFBundleVersion must be an integer build number for Sparkle"))
-        }
-
-        if (try? Shell.run(["codesign", "--verify", "--deep", "--strict", app.path], allowFailure: true)) != 0 {
-            findings.append(error("bundle", file, "codesign --verify --deep --strict fails"))
-        }
-        if let requirement = try? Signer.designatedRequirement(of: app),
-            !requirement.contains("identifier \"\(manifest.app.bundleId)\"")
-        {
-            findings.append(
-                error("dr_pinned", file, "designated requirement `\(requirement)` doesn't pin \(manifest.app.bundleId)")
-            )
-        }
-        let executable = app.appending(path: "Contents/MacOS/\(manifest.build.product)")
-        if let rpaths = try? Bundler.rpaths(of: executable) {
-            for rpath in rpaths where !Bundler.isBundleRelative(rpath) {
-                findings.append(error("rpath_strip", file, "keeps build-machine rpath \(rpath)"))
-            }
-            if !rpaths.contains("@executable_path/../Frameworks") {
-                findings.append(error("rpath_strip", file, "is missing the @executable_path/../Frameworks rpath"))
-            }
-        }
-        if !(manifest.build.embedFrameworks ?? []).isEmpty,
-            let signed = try? Shell.capture(["codesign", "-d", "--entitlements", "-", "--xml", app.path], allowFailure: true),
-            !signed.contains(Self.libraryValidationKey)
-        {
-            findings.append(error("library_validation", file, "isn't signed with \(Self.libraryValidationKey)"))
-        }
-        for framework in manifest.build.embedFrameworks ?? [] {
-            let path = app.appending(path: "Contents/Frameworks/\(framework).framework")
-            if !FileManager.default.fileExists(atPath: path.path) {
-                findings.append(error("bundle", file, "doesn't embed \(framework).framework"))
-            }
-        }
-        if let attributes = try? Shell.capture(["xattr", "-lr", app.path], allowFailure: true),
-            attributes.contains("com.apple.quarantine")
-        {
-            findings.append(error("xattr_before_sign", file, "carries com.apple.quarantine; strip it before signing"))
         }
     }
 }

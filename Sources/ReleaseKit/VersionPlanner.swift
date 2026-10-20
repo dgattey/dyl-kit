@@ -18,7 +18,7 @@ public struct VersionPlanner: Sendable {
     ///
     /// - Blocking: runs git and reads the committed appcast.
     public func plan(bump: AppVersion.Bump, liveFeed: [AppcastItem] = []) throws -> Plan {
-        let local = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml"))
+        let local = Appcast.items(at: workspace.appcastURL)
         let current = Self.currentVersion(appcasts: [local, liveFeed], tags: try tags())
         let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? 1
         let build = Self.nextBuild(commitCount: commitCount, appcasts: [local, liveFeed])
@@ -35,7 +35,7 @@ public struct VersionPlanner: Sendable {
     /// - Blocking: runs git and reads the committed appcast.
     public func shippedVersion() throws -> AppVersion {
         Self.currentVersion(
-            appcasts: [Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml"))], tags: try tags())
+            appcasts: [Appcast.items(at: workspace.appcastURL)], tags: try tags())
     }
 
     /// - Blocking: runs git.

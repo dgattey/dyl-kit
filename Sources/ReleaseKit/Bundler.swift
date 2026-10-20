@@ -92,14 +92,14 @@ public struct Bundler: Sendable {
         }
     }
 
-    static func isBundleRelative(_ rpath: String) -> Bool {
+    private static func isBundleRelative(_ rpath: String) -> Bool {
         rpath.hasPrefix("@executable_path") || rpath.hasPrefix("@loader_path") || rpath.hasPrefix("/usr/lib/swift")
     }
 
     /// The `LC_RPATH` entries of a Mach-O binary.
     ///
     /// - Blocking: runs `otool`.
-    static func rpaths(of executable: URL) throws -> [String] {
+    private static func rpaths(of executable: URL) throws -> [String] {
         let loadCommands = try Shell.capture(["otool", "-l", executable.path])
         var result: [String] = []
         var inRpath = false

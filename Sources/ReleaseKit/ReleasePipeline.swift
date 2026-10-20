@@ -6,7 +6,6 @@ import Foundation
 /// the artifacts and tags the release with plain git, so any forge (or none) can host it.
 public struct ReleasePipeline: Sendable {
     public let workspace: Workspace
-    public var identity = Signer.adHoc
 
     public init(workspace: Workspace) { self.workspace = workspace }
 
@@ -16,17 +15,13 @@ public struct ReleasePipeline: Sendable {
 
     /// What `version` decided, shared with every later step.
     public struct State: Codable, Equatable, Sendable {
-        public var current: String
         public var version: String
-        public var bump: String
         public var build: Int
         public var subject: String
         public var body: String
 
-        public init(current: String, version: String, bump: String, build: Int, subject: String, body: String) {
-            self.current = current
+        public init(version: String, build: Int, subject: String, body: String) {
             self.version = version
-            self.bump = bump
             self.build = build
             self.subject = subject
             self.body = body
@@ -45,27 +40,26 @@ public struct ReleasePipeline: Sendable {
         let head = try planner.headCommitMessage()
         try fastForwardToRemote()
         if prBody == nil { Log.warn("no PR body from the forge; reading `# Release info` from the merge commit") }
-        let commit: CommitMessage
+        let subject = head.subject
+        let body: String
         let bump: AppVersion.Bump
         if let explicitBump {
-            commit = CommitMessage(subject: head.subject, body: prBody ?? head.body)
+            body = prBody ?? head.body
             bump = explicitBump
         } else {
             let source = try ReleaseInfo.source(prBody: prBody, commitBody: head.body)
-            commit = CommitMessage(subject: head.subject, body: source.body)
+            body = source.body
             bump = source.bump
         }
         let plan = try planner.plan(bump: bump, liveFeed: liveFeed)
-        let state = State(
-            current: plan.current.description, version: plan.next.description, bump: plan.bump.rawValue,
-            build: plan.build, subject: commit.subject, body: commit.body)
+        let state = State(version: plan.next.description, build: plan.build, subject: subject, body: body)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: stagingDir)
         try fileManager.createDirectory(at: stagingDir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(state).write(to: planFile)
-        Log.step("releasing \(state.version) (build \(state.build), \(state.bump) bump from \(state.current))")
+        Log.step("releasing \(plan.next) (build \(plan.build), \(plan.bump.rawValue) bump from \(plan.current))")
         return state
     }
 
@@ -99,7 +93,6 @@ public struct ReleasePipeline: Sendable {
             throw ToolError("no staged app at \(app.path); run `release-kit bundle` first")
         }
         let signer = Signer(
-            identity: identity,
             entitlements: workspace.url(manifest.build.entitlements),
             bundleIdentifier: manifest.app.bundleId
         )
@@ -149,7 +142,7 @@ public struct ReleasePipeline: Sendable {
             try fileManager.removeItem(at: artifacts.appending(path: old))
         }
         try fileManager.copyItem(at: archive, to: artifacts.appending(path: archive.lastPathComponent))
-        let destination = artifacts.appending(path: "appcast.xml")
+        let destination = workspace.appcastURL
         try? fileManager.removeItem(at: destination)
         try fileManager.copyItem(at: appcast, to: destination)
         Log.step("wrote \(workspace.manifest.release.artifactsDir)/\(archive.lastPathComponent) and appcast.xml")
@@ -201,7 +194,7 @@ public struct ReleasePipeline: Sendable {
         let markdown = ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject)
         let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
         let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + modules.sorted())
-        let local = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml"))
+        let local = Appcast.items(at: workspace.appcastURL)
         return CumulativeNotes.html(
             version: state.version,
             build: String(state.build),
@@ -217,7 +210,7 @@ public struct ReleasePipeline: Sendable {
     ///
     /// - Blocking: runs git.
     private func committedBuilds() throws -> [String: String] {
-        let path = "\(workspace.manifest.release.artifactsDir)/appcast.xml"
+        let path = workspace.appcastPath
         let revisions = try Shell.capture(
             ["git", "log", "--format=%H", "--", path], cwd: workspace.root, allowFailure: true)
         var builds: [String: String] = [:]
@@ -274,11 +267,11 @@ public struct ReleasePipeline: Sendable {
     ///
     /// - Blocking: reads and may write a temporary key file.
     public func resolveEdKey(explicit: String?) throws -> URL {
-        let environment = ProcessInfo.processInfo.environment
-        if let path = explicit ?? environment["SPARKLE_ED_KEY_FILE"] {
+        if let path = explicit {
             guard FileManager.default.fileExists(atPath: path) else { throw ToolError("no Sparkle key at \(path)") }
             return URL(fileURLWithPath: path)
         }
+        let environment = ProcessInfo.processInfo.environment
         if let encoded = environment["SPARKLE_ED_PRIVATE_KEY_BASE64"] {
             let key = try Self.edKeyFile(fromSecret: encoded)
             let file = FileManager.default.temporaryDirectory.appending(path: "dylkit-sparkle-\(UUID().uuidString).key")

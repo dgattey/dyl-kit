@@ -15,15 +15,9 @@ public struct NotesFormatter: Sendable {
     }
 
     public func html(_ markdown: String, version: String) -> String {
-        var raw = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
-        raw = raw.replacing(pattern: #"<!--[\s\S]*?-->"#, with: "")
+        let raw = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacing(pattern: #"<!--[\s\S]*?-->"#, with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        for heading in ReleaseInfo.notesHeadings {
-            if let section = ReleaseInfo.section(heading, in: raw) {
-                raw = section
-                break
-            }
-        }
         if raw.matches(pattern: #"(?i)<(ul|ol|li|p)\b"#) { return raw }
 
         var bullets: [String] = []

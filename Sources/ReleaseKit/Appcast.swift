@@ -55,10 +55,6 @@ public enum Appcast {
                 current?.enclosureURL = attributeDict["url"]
                 current?.enclosureLength = attributeDict["length"].flatMap { Int($0) }
                 current?.edSignature = attributeDict["sparkle:edSignature"]
-                if let version = attributeDict["sparkle:version"], current?.build == nil { current?.build = version }
-                if let short = attributeDict["sparkle:shortVersionString"], current?.shortVersion == nil {
-                    current?.shortVersion = short
-                }
             }
         }
 

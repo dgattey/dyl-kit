@@ -5,19 +5,15 @@ import Foundation
 /// Ad-hoc builds pin the designated requirement to the bundle identifier instead of the cdhash, so Sparkle accepts
 /// each new build as the same app.
 public struct Signer: Sendable {
-    public static let adHoc = "-"
-
-    public let identity: String
     public let entitlements: URL
     public let bundleIdentifier: String
 
-    public init(identity: String = Signer.adHoc, entitlements: URL, bundleIdentifier: String) {
-        self.identity = identity
+    public init(entitlements: URL, bundleIdentifier: String) {
         self.entitlements = entitlements
         self.bundleIdentifier = bundleIdentifier
     }
 
-    public var designatedRequirement: String { "designated => identifier \"\(bundleIdentifier)\"" }
+    private var designatedRequirement: String { "designated => identifier \"\(bundleIdentifier)\"" }
 
     /// - Blocking: runs `xattr` and `codesign`.
     public func sign(_ app: URL) throws {
@@ -38,8 +34,7 @@ public struct Signer: Sendable {
             try signFramework(framework)
         }
 
-        var outer = ["--entitlements", entitlements.path]
-        if identity == Self.adHoc { outer += ["-r=\(designatedRequirement)"] }
+        let outer = ["--entitlements", entitlements.path, "-r=\(designatedRequirement)"]
         try codesign(outer + [app.path])
     }
 
@@ -82,15 +77,14 @@ public struct Signer: Sendable {
     }
 
     private func codesign(_ arguments: [String]) throws {
-        try Shell.run(["codesign", "--force", "--sign", identity] + arguments)
+        try Shell.run(["codesign", "--force", "--sign", "-"] + arguments)
     }
 
-    /// Strict verification plus, for ad-hoc builds, the pinned designated requirement Sparkle relies on.
+    /// Strict verification plus the pinned designated requirement Sparkle relies on.
     ///
     /// - Blocking: runs `codesign`.
     public func verify(_ app: URL) throws {
         try Shell.run(["codesign", "--verify", "--deep", "--strict", app.path])
-        guard identity == Self.adHoc else { return }
         let requirement = try Self.designatedRequirement(of: app)
         guard requirement.contains("identifier \"\(bundleIdentifier)\"") else {
             throw ToolError("designated requirement is `\(requirement)`, expected `\(designatedRequirement)`")
@@ -98,7 +92,7 @@ public struct Signer: Sendable {
     }
 
     /// - Blocking: runs `codesign`.
-    public static func designatedRequirement(of app: URL) throws -> String {
+    private static func designatedRequirement(of app: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["codesign", "-d", "-r-", app.path]

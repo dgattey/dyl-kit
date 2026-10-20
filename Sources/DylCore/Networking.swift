@@ -8,8 +8,12 @@ import OSLog
 #endif
 
 extension URLSession {
+    /// The app-wide bounded session. Give a request a tighter deadline with `URLRequest.timeoutInterval`.
+    public static let boundedShared = bounded()
+
     /// A session that fails fast when a host is offline or stalls: it never waits for connectivity, and requests and
-    /// resources have bounded timeouts. Pass `cache` for image or asset loads that should reuse responses.
+    /// resources have bounded timeouts. Pass `cache` for image or asset loads that should reuse responses. Each session
+    /// has its own connection pool, so build one per app or service in a `static let` (dyl-lint `session_alloc`).
     public static func bounded(
         requestTimeout: TimeInterval = 15,
         resourceTimeout: TimeInterval = 60,

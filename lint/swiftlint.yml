@@ -86,7 +86,7 @@ custom_rules:
     name: "URLSession.shared"
     regex: '\bURLSession\.shared\b(?![^\n]*// lint:allow urlsession_shared:)'
     excluded_match_kinds: [comment, comment.mark, comment.url, doccomment, doccomment.field, string]
-    message: "URLSession.shared has 60-second request timeouts and the shared cache, so a stalled host blocks callers for a minute. Use URLSession.bounded() from DylCore."
+    message: "URLSession.shared has 60-second request timeouts and the shared cache, so a stalled host blocks callers for a minute. Use URLSession.boundedShared from DylCore."
     severity: warning
 
   forced_toolbar_background:

@@ -41,7 +41,7 @@ public enum Linter {
     public static let rules = [
         MainActorBlockingIO.rule, CancellationBlindPoll.rule, PublishedWriteOffMain.rule,
         PublishedWriteOffMain.transitionalRule, HotCallbackStateWrite.rule, FormatterAlloc.rule,
-        DelegateMainActorHop.rule,
+        DelegateMainActorHop.rule, SessionAlloc.rule,
     ]
 
     public static func lint(_ files: [ParsedFile]) -> LintReport {
@@ -56,6 +56,7 @@ public enum Linter {
             raw += CancellationBlindPoll.run(file)
             raw += FormatterAlloc.run(file)
             raw += DelegateMainActorHop.run(file)
+            raw += SessionAlloc.run(file)
         }
 
         let byPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })

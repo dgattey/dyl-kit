@@ -296,6 +296,23 @@ private func rules(_ report: LintReport) -> [String] { report.findings.map(\.rul
         #expect(report.findings.first?.line == 5)
     }
 
+    @Test func flagsPerCallBoundedSessionOnly() {
+        let report = lint(
+            """
+            import Foundation
+            private let artwork = URLSession.bounded(cache: .shared)
+            enum API {
+                static let session = URLSession.bounded()
+                static func load(_ url: URL) async throws -> Data {
+                    try await URLSession.bounded().data(from: url).0
+                }
+            }
+            """
+        )
+        #expect(rules(report) == ["session_alloc"])
+        #expect(report.findings.first?.line == 6)
+    }
+
     @Test func flagsMainActorHopInDelegateCallback() {
         let report = lint(
             """

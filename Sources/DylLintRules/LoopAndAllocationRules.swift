@@ -124,6 +124,44 @@ enum FormatterAlloc {
     }
 }
 
+/// `session_alloc`: `URLSession.bounded(...)` built per call. Each session opens its own connection pool and never
+/// shares it; keep one per app or service in a `static let` (Gattey Photos #15).
+enum SessionAlloc {
+    static let rule = "session_alloc"
+
+    static func run(_ file: ParsedFile) -> [Finding] {
+        let visitor = Visitor(file: file)
+        visitor.walk(file.tree)
+        return visitor.findings
+    }
+
+    private final class Visitor: SyntaxVisitor {
+        let file: ParsedFile
+        var findings: [Finding] = []
+
+        init(file: ParsedFile) {
+            self.file = file
+            super.init(viewMode: .sourceAccurate)
+        }
+
+        override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+            guard calleeName(node) == "URLSession.bounded", !FormatterAlloc.isHoisted(node) else {
+                return .visitChildren
+            }
+            findings.append(
+                file.finding(
+                    node,
+                    rule: rule,
+                    severity: .warning,
+                    "URLSession.bounded() builds a session, and its connection pool, on every call. Use "
+                        + "URLSession.boundedShared with URLRequest.timeoutInterval, or hoist it to a static let."
+                )
+            )
+            return .visitChildren
+        }
+    }
+}
+
 /// `delegate_mainactor_hop`: `Task { @MainActor in … }` directly inside a delegate callback. The hop runs later and
 /// races the next callback; Sconeos PR #6 removed six. Use `MainActor.assumeIsolated` when the callback arrives on
 /// main, or make the conformance `@MainActor`.

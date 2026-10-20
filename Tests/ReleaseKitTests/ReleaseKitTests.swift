@@ -61,6 +61,31 @@ private let sconeosModules = [
         #expect(ReleaseInfo.notesMarkdown(body: empty, fallbackTitle: "Fix the map") == "- Fix the map")
     }
 
+    /// Saga #52: `## Summary` with `### Changes` under it was cut at the subheading, and reviewer sections leaked in.
+    @Test func notesKeepDeeperSubheadingsButSkipReviewerSections() {
+        let body = """
+            ## Summary
+            Covers in the editor.
+            ### Changes
+            - Paste a cover image.
+            ### Test plan
+            - [x] Pasted three covers.
+            #### Notes for the test plan
+            - Uses the sample library.
+            ### Details
+            - Drop a cover file.
+            ## Release info
+            - [x] Minor
+            """
+        #expect(
+            ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "")
+                == "Covers in the editor.\n### Changes\n- Paste a cover image.\n### Details\n- Drop a cover file.")
+        #expect(ReleaseInfo.section("Description", in: "# Description\n- Faster sync.") == "- Faster sync.")
+        let html = NotesFormatter().html(body, version: "1.0.0")
+        #expect(html.contains("Paste a cover image.") && html.contains("Drop a cover file."))
+        #expect(!html.contains("Pasted three covers") && !html.contains("Changes"))
+    }
+
     @Test func commitMessageDropsThePRNumber() {
         let message = CommitMessage("Fix the map drag (#4)\n\n# Release notes\n\n- Map drags smoothly.\n")
         #expect(message.subject == "Fix the map drag")

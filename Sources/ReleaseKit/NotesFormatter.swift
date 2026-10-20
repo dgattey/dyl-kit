@@ -19,7 +19,7 @@ public struct NotesFormatter: Sendable {
         raw = raw.replacing(pattern: #"<!--[\s\S]*?-->"#, with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         for heading in ReleaseInfo.notesHeadings {
-            if let section = Self.pythonSection(heading, in: raw) {
+            if let section = ReleaseInfo.section(heading, in: raw) {
                 raw = section
                 break
             }
@@ -63,30 +63,6 @@ public struct NotesFormatter: Sendable {
             parts.append(#"<p style="margin: 0; line-height: 1.45;">Release v\#(escapeHTML(version))</p>"#)
         }
         return parts.joined(separator: "\n")
-    }
-
-    /// The formatter's own section lookup: it stops at a bare `-` rule and drops placeholder bullets afterwards.
-    private static func pythonSection(_ heading: String, in text: String) -> String? {
-        let escaped = regexEscaped(heading)
-        var inSection = false
-        var collected: [String] = []
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.matches(pattern: "(?i)^#+\\s*\(escaped)\\s*$") {
-                inSection = true
-                continue
-            }
-            guard inSection else { continue }
-            if trimmed.matches(pattern: #"^#+\s+\S"#)
-                || trimmed.matches(pattern: #"^-+\s*$"#)
-            {
-                break
-            }
-            collected.append(line)
-        }
-        let cleaned = collected.filter { !$0.matches(pattern: #"^\s*[-*]\s*$"#) }
-        let result = cleaned.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.isEmpty ? nil : result
     }
 
     func renderInline(_ text: String) -> String {

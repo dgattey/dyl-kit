@@ -5,7 +5,11 @@ import Foundation
 /// notes come from the first non-empty section in `notesHeadings`. The CI wrapper hands release-kit the merged PR's
 /// body; the merge commit message is the fallback when the wrapper's forge lookup fails.
 public enum ReleaseInfo {
-    public static let notesHeadings = ["Release notes", "Highlights", "What changed?", "Summary", "Overview"]
+    public static let notesHeadings = [
+        "Release notes", "Highlights", "What changed?", "Summary", "Overview", "Changes", "Description",
+    ]
+    /// Subsections of a notes section that are for reviewers, not users.
+    static let reviewerSubsections: Set = ["verification", "testing", "test plan", "screenshots", "release info"]
 
     /// The checked bump in `body`, or nil unless exactly one box is checked.
     public static func releaseType(in body: String) -> AppVersion.Bump? {
@@ -30,22 +34,29 @@ public enum ReleaseInfo {
         return fallbackTitle.isEmpty ? "" : "- \(fallbackTitle)"
     }
 
-    /// The lines under `# <heading>` up to the next heading or rule, minus empty `-` placeholders, or nil when empty.
+    /// The lines under `# <heading>` up to the next heading of the same or a higher level, or a rule. Deeper
+    /// subheadings stay, except reviewer-only ones (Verification, Testing, Screenshots...) and their contents. Empty
+    /// `*` placeholders are dropped. Nil when nothing is left.
     public static func section(_ heading: String, in body: String) -> String? {
-        let escaped = regexEscaped(heading)
-        var inSection = false
+        let wanted = heading.lowercased()
+        var sectionLevel: Int?
+        var skippedLevel: Int?
         var collected: [String] = []
         for line in body.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if !inSection {
-                inSection = trimmed.matches(pattern: "(?i)^#+\\s*\(escaped)\\s*$")
+            let subheading = trimmed.firstMatch(of: /^(#+)\s*(.*?)\s*$/).map { ($0.1.count, $0.2.lowercased()) }
+            guard let level = sectionLevel else {
+                if let (level, title) = subheading, title == wanted { sectionLevel = level }
                 continue
             }
-            if trimmed.matches(pattern: #"^#+\s+\S"#)
-                || trimmed.matches(pattern: #"^-+\s*$"#)
-                || line.contains("<!-- CURSOR_AGENT_PR_BODY_END -->")
-            {
-                break
+            if trimmed.matches(pattern: #"^-+\s*$"#) || line.contains("<!-- CURSOR_AGENT_PR_BODY_END -->") { break }
+            if let (subLevel, title) = subheading, !title.isEmpty {
+                if subLevel <= level { break }
+                if let skipped = skippedLevel, subLevel > skipped { continue }
+                skippedLevel = reviewerSubsections.contains(title) ? subLevel : nil
+                if skippedLevel != nil { continue }
+            } else if skippedLevel != nil {
+                continue
             }
             if line.matches(pattern: #"^\s*[-*]\s*$"#) { continue }
             collected.append(line)

@@ -23,17 +23,16 @@ public struct Checks: Sendable {
         var passed = true
         Log.step("manifest: \(DylAppManifest.fileName) OK")
 
-        if let swiftlint = Self.swiftLint {
+        switch swiftLint() {
+        case .success(let swiftlint):
             let status = try? Shell.run(
                 [swiftlint, "lint", "--strict", "--quiet", "--config", workspace.url(".swiftlint.yml").path],
                 cwd: workspace.root, allowFailure: true)
             if status != 0 { passed = false }
             Log.step("swiftlint: \(status == 0 ? "OK" : "failed")")
-        } else if ProcessInfo.processInfo.environment["CI"] != nil {
-            Log.warn("swiftlint isn't installed")
+        case .failure(let problem):
+            Log.step("swiftlint: failed: \(problem)")
             passed = false
-        } else {
-            Log.warn("swiftlint isn't installed; skipping tier 1 (brew install swiftlint)")
         }
 
         let files = Linter.parsedFiles(under: lintRoots.map { workspace.url($0).path })
@@ -51,12 +50,22 @@ public struct Checks: Sendable {
         return passed
     }
 
-    /// A `swiftlint` on `PATH` that runs. Version-manager shims with no version selected are on `PATH` but fail.
+    /// The `swiftlint` that `mise.toml` pins. A missing, broken or different linter fails the checks rather than
+    /// skipping tier 1; a version-manager shim with no version selected is on `PATH` but can't run.
     ///
-    /// - Blocking: runs `which` and `swiftlint version`.
-    static var swiftLint: String? {
-        guard let path = Shell.which("swiftlint"), (try? Shell.capture([path, "version"])) != nil else { return nil }
-        return path
+    /// - Blocking: reads `mise.toml` and runs `which` and `swiftlint version`.
+    func swiftLint() -> Result<String, ToolError> {
+        let mise = (try? String(contentsOf: workspace.url("mise.toml"), encoding: .utf8)) ?? ""
+        guard let pinned = mise.firstMatch(of: /swiftlint\s*=\s*"([^"]+)"/)?.1 else {
+            return .failure(ToolError("mise.toml doesn't pin swiftlint; add `swiftlint = \"<version>\"` under [tools]"))
+        }
+        let fix = "run `mise install` in the repo (mise.toml pins swiftlint \(pinned))"
+        guard let path = Shell.which("swiftlint") else { return .failure(ToolError("swiftlint isn't on PATH; \(fix)")) }
+        guard let version = try? Shell.capture([path, "version"], cwd: workspace.root) else {
+            return .failure(ToolError("\(path) doesn't run; \(fix)"))
+        }
+        guard version == pinned else { return .failure(ToolError("swiftlint is \(version); \(fix)")) }
+        return .success(path)
     }
 
     /// `checks`, then build and test the app and DylKit. The site has its own ubuntu job.

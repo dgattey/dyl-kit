@@ -79,15 +79,68 @@ private let sconeosModules = [
             "appcast-1.0.12.xml", "appcast-1.0.9.xml", "appcast-1.0.8.xml", "appcast-1.0.7-placeholder.xml",
         ])
         #expect(
-            CumulativeNotes.html(version: "1.0.13", newNotes: newNotes, history: all) + "\n"
+            CumulativeNotes.html(version: "1.0.13", build: "30", newNotes: newNotes, history: all) + "\n"
                 == (try fixture("cumulative/expected-1.0.13.html")))
         let capped = history(["appcast-1.0.12.xml", "appcast-1.0.9.xml"])
         #expect(
-            CumulativeNotes.html(version: "1.0.13", newNotes: newNotes, history: capped, maxVersions: 3) + "\n"
+            CumulativeNotes.html(
+                version: "1.0.13", build: "30", newNotes: newNotes, history: capped, maxVersions: 3) + "\n"
                 == (try fixture("cumulative/expected-1.0.13-max3.html")))
         #expect(
-            CumulativeNotes.html(version: "1.0.10", newNotes: newNotes, history: history(["live-1.0.9.xml"])) + "\n"
+            CumulativeNotes.html(
+                version: "1.0.10", build: "27", newNotes: newNotes, history: history(["live-1.0.9.xml"])) + "\n"
                 == (try fixture("cumulative/expected-1.0.10-live.html")))
+    }
+
+    @Test func stampsSectionsWithBuildsAndReadsThemBack() throws {
+        func feed(_ version: String, build: String, description: String) -> [AppcastItem] {
+            let xml = """
+                <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item>
+                <title>\(version)</title><sparkle:version>\(build)</sparkle:version>
+                <sparkle:shortVersionString>\(version)</sparkle:shortVersionString>
+                <description><![CDATA[\(description)]]></description>
+                </item></channel></rss>
+                """
+            return Appcast.items(in: Data(xml.utf8))
+        }
+        let li = #"<li style="\#(NotesFormatter.bulletStyle)">"#
+        let legacy = "<h3>1.0.9</h3><ul><li>Nine</li></ul><h3>1.0.8</h3><ul><li>Eight</li></ul>"
+            + "<h3>1.0.7</h3><p>Release v1.0.7</p><h3>1.0.6</h3><ul><li>Six</li></ul>"
+        let first = CumulativeNotes.html(
+            version: "1.0.10", build: "27", newNotes: "<ul><li>Ten</li></ul>",
+            history: [feed("1.0.9", build: "24", description: legacy)], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
+        let top = CumulativeNotes.topHeadingStyle
+        let previous = CumulativeNotes.previousHeadingStyle
+        #expect(
+            first == """
+                <style>.sparkle-installed-version, .sparkle-installed-version ~ section { display: none; }</style>
+                <section data-sparkle-version="27">
+                <h3 style="\(top)">1.0.10</h3>
+                <ul><li>Ten</li></ul>
+                </section>
+                <section data-sparkle-version="24">
+                <h3 style="\(previous)">1.0.9</h3>
+                <ul>\(li)Nine</li></ul>
+                </section>
+                <section data-sparkle-version="22">
+                <h3 style="\(previous)">1.0.8</h3>
+                <ul>\(li)Eight</li></ul>
+                </section>
+                <section data-sparkle-version="20" data-version="1.0.7"></section>
+                <section>
+                <h3 style="\(previous)">1.0.6</h3>
+                <ul>\(li)Six</li></ul>
+                </section>
+                """)
+
+        let second = CumulativeNotes.html(
+            version: "1.0.11", build: "30", newNotes: "<ul><li>Eleven</li></ul>",
+            history: [feed("1.0.10", build: "27", description: first)], maxVersions: 5)
+        #expect(second.components(separatedBy: "<style>").count == 2)
+        let stamps = second.matches(of: /<section( data-sparkle-version="(\d+)")?/).map { $0.2.map(String.init) ?? "-" }
+        #expect(stamps == ["30", "27", "24", "22", "20"])
+        #expect(second.contains("<h3 style=\"\(previous)\">1.0.10</h3>\n<ul>\(li)Ten</li></ul>"))
+        #expect(second.hasSuffix(#"<section data-sparkle-version="20" data-version="1.0.7"></section>"#))
     }
 
     @Test func parsesTheLiveAppcast() throws {
@@ -263,3 +316,4 @@ private let sconeosModules = [
         #expect(PathGlob("**/*.swift").matches("A.swift"))
     }
 }
+

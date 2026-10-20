@@ -182,7 +182,7 @@ public struct ReleasePipeline: Sendable {
 
     /// Cumulative HTML notes for the planned version, carrying forward the committed and live feeds.
     ///
-    /// - Blocking: reads the committed appcast and lists `Sources/`.
+    /// - Blocking: reads the committed appcast and its git history, and lists `Sources/`.
     public func releaseNotes(state: State, history: [[AppcastItem]]) throws -> String {
         let markdown = ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject)
         let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
@@ -190,10 +190,30 @@ public struct ReleasePipeline: Sendable {
         let local = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml"))
         return CumulativeNotes.html(
             version: state.version,
+            build: String(state.build),
             newNotes: formatter.html(markdown, version: state.version),
             history: [local] + history,
+            knownBuilds: try committedBuilds(),
             maxVersions: workspace.manifest.release.notesMaxVersions ?? 10
         )
+    }
+
+    /// The build each committed revision of the appcast shipped, keyed by version. Notes written before sections
+    /// carried build stamps get theirs from here; once carried forward, the stamps travel with the notes.
+    ///
+    /// - Blocking: runs git.
+    private func committedBuilds() throws -> [String: String] {
+        let path = "\(workspace.manifest.release.artifactsDir)/appcast.xml"
+        let revisions = try Shell.capture(
+            ["git", "log", "--format=%H", "--", path], cwd: workspace.root, allowFailure: true)
+        var builds: [String: String] = [:]
+        for revision in revisions.split(separator: "\n") {
+            let xml = try Shell.capture(["git", "show", "\(revision):\(path)"], cwd: workspace.root, allowFailure: true)
+            for item in Appcast.items(in: Data(xml.utf8)) where builds[item.displayVersion] == nil {
+                builds[item.displayVersion] = item.build
+            }
+        }
+        return builds
     }
 
     private func generateAppcast(edKeyFile: URL) throws -> URL {

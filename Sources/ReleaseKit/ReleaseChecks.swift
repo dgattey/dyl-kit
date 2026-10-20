@@ -58,6 +58,7 @@ public struct ReleaseChecks: Sendable {
         check("workflow_hygiene", checkWorkflowHygiene)
         check("pr_template_contract", checkPRTemplate)
         check("library_validation", checkLibraryValidation)
+        check("site_deploy", checkSiteDeploy)
         if let stagedAppcast, let stagedArchive {
             check("staged_release") {
                 checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
@@ -403,6 +404,40 @@ public struct ReleaseChecks: Sendable {
     }
 
     static let libraryValidationKey = "com.apple.security.cs.disable-library-validation"
+
+    /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
+    /// That command must still deploy release commits, which only touch the artifacts dir, and changes to what the
+    /// site builds from outside its root: `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45).
+    private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
+        var siteRoot = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
+        while !siteRoot.isEmpty, read("\(siteRoot)/package.json") == nil {
+            siteRoot = (siteRoot as NSString).deletingLastPathComponent
+        }
+        guard !siteRoot.isEmpty, let package = read("\(siteRoot)/package.json") else { return }
+        let file = "\(siteRoot)/vercel.json"
+        let config = read(file).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? [String: Any]
+        let command = (config?["ignoreCommand"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let prefix = "git diff --quiet HEAD^ HEAD -- "
+        guard command.hasPrefix(prefix) else {
+            findings.append(
+                error("site_deploy", file, "needs `\"ignoreCommand\": \"\(prefix)<paths>\"` so app-only commits don't deploy"))
+            return
+        }
+        let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
+            workspace.url(siteRoot).appending(path: String(path)).standardized.path
+        }
+        var needed = [manifest.release.artifactsDir]
+        for match in package.matches(of: /"file:([^"]+)"/) {
+            needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
+        }
+        if package.contains("\"@dylkit/web\"") { needed.append(DylAppManifest.fileName) }
+        for path in needed {
+            let absolute = path.hasPrefix("/") ? path : workspace.url(path).standardized.path
+            guard !watched.contains(where: { absolute == $0 || absolute.hasPrefix($0 + "/") }) else { continue }
+            let relative = absolute.replacingOccurrences(of: workspace.root.standardized.path + "/", with: "")
+            findings.append(error("site_deploy", file, "ignoreCommand skips commits that only change \(relative)"))
+        }
+    }
 
     // MARK: - Staged release and bundle
 

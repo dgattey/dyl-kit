@@ -261,7 +261,7 @@ private let sconeosModules = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
             "server/public", "Packages/DylKit/Package.swift",
             "Packages/DylKit/Sources/ReleaseKit/ReleasePipeline.swift", "ci/github/pr-body.sh",
-            "Sconeos.local.entitlements",
+            "Sconeos.local.entitlements", "server/package.json", "server/vercel.json",
         ] {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
@@ -310,6 +310,20 @@ private let sconeosModules = [
         let found = errors(ReleaseChecks(workspace: workspace).run())
         #expect(found["library_validation"]?.count == 1)
         #expect(found["min_os_consistency"] == ["MACOSX_DEPLOYMENT_TARGET is 15.0 but DylApp.toml says 14.0"])
+    }
+
+    /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
+    @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let config = #"{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- app" }"#
+        try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
+
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
+            "ignoreCommand skips commits that only change server/public",
+            "ignoreCommand skips commits that only change Packages/DylKit/web",
+            "ignoreCommand skips commits that only change DylApp.toml",
+        ])
     }
 
     @Test func legacyWorkflowFails() throws {

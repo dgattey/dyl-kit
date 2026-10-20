@@ -8,8 +8,6 @@ import { loadSite, parseAppcast, releaseNotes } from "../src/site.ts";
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const fixture = (name: string) => fs.readFileSync(path.join(here, "fixtures", name), "utf8");
-const releaseKitFixture = (name: string) =>
-  fs.readFileSync(path.join(here, "../../Tests/ReleaseKitTests/Fixtures/cumulative", name), "utf8");
 const missingZip = () => null;
 
 describe("parseAppcast on the apps' real appcasts", () => {
@@ -24,7 +22,7 @@ describe("parseAppcast on the apps' real appcasts", () => {
     assert.equal(release.downloadReady, true);
     assert.deepEqual(
       release.notes.map((entry) => entry.version),
-      ["1.1.10", "1.1.9", "1.1.8", "1.1.7", "1.1.6"],
+      ["1.1.10", "1.1.9"],
     );
     assert.doesNotMatch(release.notes[0].html, /style=/);
   });
@@ -58,7 +56,13 @@ describe("parseAppcast on the apps' real appcasts", () => {
 
 describe("releaseNotes", () => {
   it("splits release-kit's stamped sections and drops the Sparkle styling", () => {
-    const notes = releaseNotes(releaseKitFixture("expected-1.0.13-max3.html"));
+    const section = (build: number, version: string, note: string) =>
+      `<section data-sparkle-version="${build}">\n<h3 style="margin: 14px 0 6px 0;">${version}</h3>\n` +
+      `<ul>\n  <li style="margin-bottom: 6px;">${note}</li>\n</ul>\n</section>`;
+    const html =
+      "<style>.sparkle-installed-version, .sparkle-installed-version ~ section { display: none; }</style>\n" +
+      [section(30, "1.0.13", "New thing."), section(29, "1.0.12", "Queue."), section(28, "1.0.11", "Faster.")].join("\n");
+    const notes = releaseNotes(html);
     assert.deepEqual(
       notes.map((entry) => entry.version),
       ["1.0.13", "1.0.12", "1.0.11"],

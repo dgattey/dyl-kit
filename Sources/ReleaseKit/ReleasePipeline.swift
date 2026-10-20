@@ -35,19 +35,26 @@ public struct ReleasePipeline: Sendable {
 
     // MARK: Steps
 
-    /// Plans the release from the merge commit (or `body`, a PR body the wrapper wrote out), tags and the live
-    /// feed, then resets `build/release/` around the new plan.
+    /// Plans the release from the merged PR's body (`prBody`, which the forge wrapper fetched; the merge commit
+    /// message when that lookup failed), tags and the live feed, then resets `build/release/` around the new plan.
     ///
     /// - Blocking: runs git and writes the plan.
-    public func version(explicitBump: AppVersion.Bump?, body: String? = nil) async throws -> State {
+    public func version(explicitBump: AppVersion.Bump?, prBody: String? = nil) async throws -> State {
         let liveFeed = await LiveFeed.fetch(workspace.manifest.release.feedURL)
         let planner = VersionPlanner(workspace: workspace)
         let head = try planner.headCommitMessage()
-        let commit = body.map { CommitMessage(subject: head.subject, body: $0) } ?? head
-        if ReleaseInfo.releaseType(in: commit.body) == nil, explicitBump == nil {
-            Log.warn("no checked box under `# Release info` in the merge commit; defaulting to a patch release")
+        if prBody == nil { Log.warn("no PR body from the forge; reading `# Release info` from the merge commit") }
+        let commit: CommitMessage
+        let bump: AppVersion.Bump
+        if let explicitBump {
+            commit = CommitMessage(subject: head.subject, body: prBody ?? head.body)
+            bump = explicitBump
+        } else {
+            let source = try ReleaseInfo.source(prBody: prBody, commitBody: head.body)
+            commit = CommitMessage(subject: head.subject, body: source.body)
+            bump = source.bump
         }
-        let plan = try planner.plan(explicitBump: explicitBump, message: commit, liveFeed: liveFeed)
+        let plan = try planner.plan(bump: bump, liveFeed: liveFeed)
         let state = State(
             current: plan.current.description, version: plan.next.description, bump: plan.bump.rawValue,
             build: plan.build, subject: commit.subject, body: commit.body)

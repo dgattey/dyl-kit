@@ -36,10 +36,20 @@ private let sconeosModules = [
 }
 
 @Suite struct ReleaseInfoTests {
-    @Test func readsTheCheckedBump() {
+    @Test func readsExactlyOneCheckedBump() {
         #expect(ReleaseInfo.releaseType(in: "# Release info\n\n- [ ] Major\n- [x] Minor\n- [ ] Patch") == .minor)
         #expect(ReleaseInfo.releaseType(in: "- [X] major") == .major)
         #expect(ReleaseInfo.releaseType(in: "- [ ] Major\n- [ ] Minor") == nil)
+        #expect(ReleaseInfo.releaseType(in: "- [x] Major\n- [x] Minor") == nil)
+    }
+
+    @Test func prBodyWinsAndTheCommitIsTheFallback() throws {
+        let minor = "- [ ] Major\n- [x] Minor\n- [ ] Patch"
+        let patch = "- [ ] Major\n- [ ] Minor\n- [x] Patch"
+        #expect(try ReleaseInfo.source(prBody: minor, commitBody: patch).bump == .minor)
+        #expect(try ReleaseInfo.source(prBody: nil, commitBody: patch).bump == .patch)
+        #expect(try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: patch).bump == .patch)
+        #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4") }
     }
 
     @Test func notesComeFromTheFirstNonEmptySectionElseTheTitle() throws {
@@ -162,7 +172,7 @@ private let sconeosModules = [
         for path in [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
             "server/public", "Packages/DylKit/Package.swift",
-            "Packages/DylKit/Sources/ReleaseKit/ReleasePipeline.swift",
+            "Packages/DylKit/Sources/ReleaseKit/ReleasePipeline.swift", "ci/github/pr-body.sh",
         ] {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
@@ -218,6 +228,18 @@ private let sconeosModules = [
         #expect(found["forge_neutral"]?.contains { $0.contains("github-script") } == true)
         #expect(found["unused_ci_secret"]?.contains { $0.contains("GH_TOKEN") } == true)
         #expect(found["release_trigger_drift"] != nil)
+    }
+
+    @Test func onlyTheCIWrapperTalksToTheForge() throws {
+        let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
+        var workflows = try committed()
+        workflows["ci/github/lookup.sh"] = lookup
+        workflows["scripts/lookup.sh"] = lookup
+        let workspace = try scratchWorkspace(workflows: workflows)
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let found = errors(ReleaseChecks(workspace: workspace).run())
+        #expect(found["forge_neutral"]?.count == 1)
+        #expect(found["forge_neutral"]?.first?.contains("GitHub API") == true)
     }
 
     @Test func droppedReleaseInputDrifts() throws {

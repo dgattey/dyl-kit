@@ -14,17 +14,10 @@ public struct VersionPlanner: Sendable {
         public let build: Int
     }
 
-    /// The release the merge commit at `HEAD` asks for. `explicitBump` (a manual dispatch) wins over the
-    /// commit's `# Release info` checkbox, which defaults to patch.
+    /// The next release for `bump`.
     ///
     /// - Blocking: runs git and reads the committed appcast.
-    public func plan(
-        explicitBump: AppVersion.Bump? = nil, message: CommitMessage? = nil, liveFeed: [AppcastItem] = []
-    )
-        throws -> Plan
-    {
-        let commit = try message ?? headCommitMessage()
-        let bump = explicitBump ?? ReleaseInfo.releaseType(in: commit.body) ?? .patch
+    public func plan(bump: AppVersion.Bump, liveFeed: [AppcastItem] = []) throws -> Plan {
         let local = Appcast.items(at: workspace.artifactsDir.appending(path: "appcast.xml"))
         let current = Self.currentVersion(appcasts: [local, liveFeed], tags: try tags())
         let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? 1

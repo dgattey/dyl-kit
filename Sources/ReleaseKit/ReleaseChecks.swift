@@ -272,7 +272,7 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkSecrets(_ findings: inout [CheckFinding]) {
-        let readers = sourcesThatReadSecrets()
+        let readers = toolSources()
         var referenced: Set<String> = []
         for workflow in workflows {
             for match in workflow.text.matches(of: /(\w+):\s*\$\{\{\s*secrets\.(\w+)\s*\}\}/) {
@@ -303,7 +303,7 @@ public struct ReleaseChecks: Sendable {
         let text: String
     }
 
-    private func sourcesThatReadSecrets() -> [Source] {
+    private func toolSources() -> [Source] {
         var sources: [Source] = []
         for directory in ["scripts", "ci", "Packages/DylKit/Sources"] {
             let enumerator = FileManager.default.enumerator(atPath: workspace.url(directory).path)
@@ -320,15 +320,16 @@ public struct ReleaseChecks: Sendable {
         let forgeAPIs = [
             (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
             (#"api\.github\.com"#, "calls the GitHub API"),
-            (#"actions/github-script"#, "uses actions/github-script"),
-            (#"action-gh-release"#, "uploads a GitHub Release"),
+            (#"actions/github\-script"#, "uses the github-script action"),
+            (#"action\-gh\-release"#, "uploads a GitHub Release"),
         ]
-        for workflow in workflows where workflow.runsRelease {
-            for (pattern, problem) in forgeAPIs where workflow.text.matches(pattern: pattern) {
+        let releaseWorkflows = workflows.filter(\.runsRelease).map { Source(path: $0.path, text: $0.text) }
+        for source in releaseWorkflows + toolSources() where !source.path.hasPrefix("ci/github/") {
+            for (pattern, problem) in forgeAPIs where source.text.matches(pattern: pattern) {
                 findings.append(
                     error(
-                        "forge_neutral", workflow.path,
-                        "\(problem); release logic belongs in release-kit, which reads git and the appcast"))
+                        "forge_neutral", source.path,
+                        "\(problem); only the thin wrapper in ci/github/ may talk to the forge"))
             }
         }
     }

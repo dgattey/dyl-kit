@@ -1,18 +1,25 @@
 import DylToolSupport
 import Foundation
 
-/// The parsing contract with the shared PR template: `# Release info` checkboxes pick the bump, and the notes come
-/// from the first non-empty section in `notesHeadings`. The release reads this from the merge commit's message, so
-/// squash merges must use "Pull request title and description" as the default commit message.
+/// The parsing contract with the shared PR template: exactly one `# Release info` checkbox picks the bump, and the
+/// notes come from the first non-empty section in `notesHeadings`. The CI wrapper hands release-kit the merged PR's
+/// body; the merge commit message is the fallback when the wrapper's forge lookup fails.
 public enum ReleaseInfo {
     public static let notesHeadings = ["Release notes", "Highlights", "What changed?", "Summary", "Overview"]
 
-    /// The checked bump in `body`, or nil when none is checked.
+    /// The checked bump in `body`, or nil unless exactly one box is checked.
     public static func releaseType(in body: String) -> AppVersion.Bump? {
-        for bump in [AppVersion.Bump.major, .minor, .patch] where checked(bump, in: body) {
-            return bump
+        let checked = AppVersion.Bump.allCases.filter { isChecked($0, in: body) }
+        return checked.count == 1 ? checked[0] : nil
+    }
+
+    /// The PR body when it checks exactly one box, else the merge commit body when that does.
+    public static func source(prBody: String?, commitBody: String) throws -> (body: String, bump: AppVersion.Bump) {
+        for body in [prBody, commitBody].compactMap(\.self) {
+            if let bump = releaseType(in: body) { return (body, bump) }
         }
-        return nil
+        let tried = prBody == nil ? "the merge commit message" : "the PR body or the merge commit message"
+        throw ToolError("neither \(tried) checks exactly one box under `# Release info` (Major, Minor or Patch)")
     }
 
     /// Markdown for the update dialog: the first non-empty notes section, else `- <title>`.
@@ -47,7 +54,7 @@ public enum ReleaseInfo {
         return text.isEmpty ? nil : text
     }
 
-    private static func checked(_ bump: AppVersion.Bump, in body: String) -> Bool {
+    private static func isChecked(_ bump: AppVersion.Bump, in body: String) -> Bool {
         let name = bump.rawValue.capitalized
         return body.matches(pattern: "(?im)^\\s*-\\s*\\[[xX]\\]\\s*\(name)\\b")
     }

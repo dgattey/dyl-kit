@@ -44,15 +44,18 @@ private func readBody(_ path: String?) throws -> String? {
 extension ReleaseKitCommand {
     struct Version: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Plan the next version and build from the merge commit, tags and the live feed.")
+            abstract: "Plan the next version and build from the merged PR body, tags and the live feed.")
 
         @OptionGroup var options: RootOption
         @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
-        @Option(help: "Read the PR body from this file instead of the merge commit message.") var bodyFile: String?
+        @Option(help: "The merged PR's body, fetched by the forge wrapper. Empty or missing means the lookup failed.")
+        var prBodyFile: String?
 
         func run() async throws {
             let pipeline = ReleasePipeline(workspace: try options.workspace())
-            let state = try await pipeline.version(explicitBump: type.bump, body: try readBody(bodyFile))
+            let prBody = prBodyFile.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            let state = try await pipeline.version(explicitBump: type.bump, prBody: prBody)
             print("version=\(state.version)")
             print("build=\(state.build)")
         }

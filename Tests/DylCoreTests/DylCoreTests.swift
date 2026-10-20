@@ -3,6 +3,10 @@ import Testing
 
 @testable import DylCore
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
 @Suite struct AppVersionTests {
     @Test func parsesAndOrders() throws {
         #expect(AppVersion("v1.2.3") == AppVersion(major: 1, minor: 2, patch: 3))

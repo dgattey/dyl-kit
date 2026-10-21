@@ -30,14 +30,8 @@ struct DylAppManifestTests {
         #expect(manifest.app.bundleId == "com.example.Demo")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
         #expect(manifest.release.checkInterval == 3600)
-        #expect(manifest.launchPrefix == "DEMO")
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
         #expect(manifest.ios == nil)
-    }
-
-    @Test func launchPrefixKeepsLettersAndDigits() throws {
-        let text = Self.valid.replacingOccurrences(of: "name = \"Demo\"", with: "name = \"Scone OS!\"")
-        #expect(try DylAppManifest.decode(text).launchPrefix == "SCONEOS")
     }
 
     @Test func parsesCommentsTrailingCommasAndInlineTables() throws {
@@ -72,7 +66,6 @@ struct DylAppManifestTests {
         #expect(manifest.app.platforms.ios == "17.0")
         #expect(manifest.release.checkInterval == 3600)
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
-        #expect(manifest.launchPrefix == "SCONEOS")
     }
 
     @Test func reportsTheLineOfAnError() {
@@ -114,7 +107,6 @@ struct DylAppManifestTests {
             .appending(path: "Fixtures/SampleApp")
         let manifest = try DylAppManifest.load(root: root)
         #expect(manifest.app.name == "Sample")
-        #expect(manifest.launchPrefix == "SAMPLE")
         #expect(manifest.ios?.simulator == "iPhone 17 Pro")
     }
 

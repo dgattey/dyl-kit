@@ -9,11 +9,6 @@ public struct DylAppManifest: Equatable, Sendable {
     public var localValues: LocalValues?
     public var release: Release
 
-    /// Environment-variable prefix for launch overrides. The app name, uppercased, letters and digits only.
-    public var launchPrefix: String {
-        String(app.name.uppercased().filter { $0.isLetter || $0.isNumber })
-    }
-
     public struct App: Equatable, Sendable {
         public var name: String
         public var bundleId: String

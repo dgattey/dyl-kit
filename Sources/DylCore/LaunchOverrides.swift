@@ -1,15 +1,19 @@
 import Foundation
 
-/// Launch-time state for screenshots and agent runs, set by `devkit relaunch` and `devkit ios`. Option `name` reads
-/// the environment variable `<PREFIX>_<NAME>` (uppercased, dashes as underscores), then the argument `--name=value`
-/// or `--name value`. Callers pass `prefix` (the app name, uppercased, letters and digits only).
+/// Launch-time state for screenshots and agent runs, set by `devkit relaunch`, `capture` and `ios`. Option `name`
+/// reads the environment variable `DYLKIT_<NAME>` (uppercased, dashes as underscores) that devkit sets, then
+/// `<PREFIX>_<NAME>` when the app passes a prefix for its own scripts, then the argument `--name=value` or
+/// `--name value`. `AppWindow` applies the appearance and window size itself; apps only read `initialView`.
 public struct LaunchOverrides: Sendable {
-    public let prefix: String
+    /// The process's own overrides; what `AppWindow` and `AppUpdater` read unless handed others.
+    public static let current = LaunchOverrides()
+
+    public let prefix: String?
     private let environment: [String: String]
     private let arguments: [String]
 
     public init(
-        prefix: String,
+        prefix: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
@@ -24,8 +28,10 @@ public struct LaunchOverrides: Sendable {
 
     /// The option's value, lowercased, or nil when unset.
     public func value(_ name: String) -> String? {
-        if let value = environment[variable(name)]?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
-            return value.lowercased()
+        for variable in variables(name) {
+            if let value = environment[variable]?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
+                return value.lowercased()
+            }
         }
         let flag = "--\(name)"
         for (index, argument) in arguments.enumerated() {
@@ -38,15 +44,22 @@ public struct LaunchOverrides: Sendable {
         return nil
     }
 
-    /// `true` for `<PREFIX>_<NAME>=1|true|yes` or a bare `--name`.
+    /// `true` for `DYLKIT_<NAME>` or `<PREFIX>_<NAME>` set to `1|true|yes`, or a bare `--name`.
     public func flag(_ name: String) -> Bool {
-        if let value = environment[variable(name)]?.lowercased() { return ["1", "true", "yes"].contains(value) }
+        if let value = variables(name).lazy.compactMap({ environment[$0]?.lowercased() }).first {
+            return ["1", "true", "yes"].contains(value)
+        }
         return arguments.contains { $0.lowercased() == "--\(name)" }
     }
 
     public var appearance: Appearance? { value("appearance").flatMap(Appearance.init(rawValue:)) }
 
     public var initialView: String? { value("initial-view") }
+
+    /// `--initial-view` as one of the app's screens, or nil when unset or not one of them.
+    public func initialView<Screen: RawRepresentable>(as _: Screen.Type) -> Screen? where Screen.RawValue == String {
+        initialView.flatMap(Screen.init(rawValue:))
+    }
 
     /// Set by every devkit launch: the app must never take focus (no `NSApp.activate`, no raised windows).
     public var staysInBackground: Bool { flag("background") }
@@ -58,7 +71,8 @@ public struct LaunchOverrides: Sendable {
         return CGSize(width: parts[0], height: parts[1])
     }
 
-    private func variable(_ name: String) -> String {
-        "\(prefix)_\(name.uppercased().replacingOccurrences(of: "-", with: "_"))"
+    private func variables(_ name: String) -> [String] {
+        let suffix = name.uppercased().replacingOccurrences(of: "-", with: "_")
+        return ["DYLKIT_\(suffix)"] + (prefix.map { ["\($0)_\(suffix)"] } ?? [])
     }
 }

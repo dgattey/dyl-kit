@@ -24,12 +24,11 @@ public struct WindowCapture: Sendable {
         return capturesDir.appending(path: "\(name).png")
     }
 
-    /// Waits up to `timeout` for `pid` to show a normal window, then captures it without its shadow.
+    /// Waits up to `timeout` for `pid` to show a normal window, then captures it without its shadow once it stops
+    /// changing.
     ///
     /// - Blocking: polls the window list and runs `screencapture`.
-    public func capture(
-        pid: Int32, to output: URL, timeout: Duration = .seconds(15), settle: Duration = .seconds(2)
-    )
+    public func capture(pid: Int32, to output: URL, timeout: Duration = .seconds(15), settle: SettleWait = .init())
         async throws -> URL
     {
         let deadline = ContinuousClock.now + timeout
@@ -39,10 +38,9 @@ public struct WindowCapture: Sendable {
             if window == nil { try await Task.sleep(for: .milliseconds(250)) }
         }
         guard let window else { throw ToolError("pid \(pid) showed no window within \(timeout)") }
-        try await Task.sleep(for: settle)
-        try FileManager.default.createDirectory(
-            at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Shell.run(["screencapture", "-l", String(window), "-o", "-x", output.path])
+        try await settle.capture(to: output) { frame in
+            try Shell.run(["screencapture", "-l", String(window), "-o", "-x", frame.path])
+        }
         Log.step("captured window \(window) to \(output.path)")
         return output
     }

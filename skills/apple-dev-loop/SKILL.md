@@ -38,9 +38,10 @@ Run everything from the app repo through `./run dev …`, which builds `devkit` 
 - Only `build/` is ours. Never copy into, launch, kill or overwrite `/Applications/<App>.app` unless Dylan asks for a one-time install. `relaunch` only stops the process whose path is under `build/`.
 - Dev builds are their own app: `<App> Dev`, bundle ID `<bundle-id>.dev`, URL schemes with a `-dev` suffix, and no Sparkle keys, so the updater stays off. `relaunch` and `capture` never share the installed app's preferences, Sparkle state, container, Keychain items or logs. Never launch anything that carries the release bundle ID, such as the staged release in `build/release/stage/`; compare it as below instead. An OAuth or URL callback reaches a dev build only if the provider also allows the `-dev` scheme. Otherwise call that flow unverified in dev.
 - Launch with `open -g` only, capture with `screencapture -l <window>`, and run the simulator headless with `simctl`. Never use `osascript` (AppleScript `activate`, System Events keystrokes or menu clicks), `open` without `-g`, the app binary run directly, `open -a Simulator`, or a capture that raises a window. A screen you can't reach by a launch flag isn't verified on his Mac. Add an `--initial-view` for it or say it's unverified.
-- devkit launches set `<PREFIX>_BACKGROUND=1`. The app reads it as `LaunchOverrides.staysInBackground` and must never activate or raise a window under it. `DylUpdates` activates only in an installed release.
-- Never change the system appearance. Pass `--appearance light|dark`. The app reads `<PREFIX>_APPEARANCE` and sets its own appearance, and leaves it `nil` on a normal run.
-- Pick the starting screen with `--initial-view <name>` and the size with `--window-size 1280x800` instead of clicking through the UI.
+- devkit launches set `DYLKIT_BACKGROUND=1`. `LaunchOverrides.current.staysInBackground` reads it, and the app must never activate or raise a window under it. `DylUpdates` activates only in an installed release.
+- Never change the system appearance. Pass `--appearance light|dark`: devkit applies it to that one process through AppKit's launch arguments, or to the simulator with `simctl ui`, so every window, sheet and menu follows it with no app code.
+- Pick the starting screen with `--initial-view <name>` and the size with `--window-size 1280x800` instead of clicking through the UI. `AppWindow` applies the size by itself. The app maps the name to a screen with `LaunchOverrides.current.initialView(as: Screen.self)`, where `Screen` is a `String` enum of the names it accepts. Apps don't construct `LaunchOverrides` or pass `launch:` to `AppWindow`.
+- Captures wait for the screen to stop changing (spinners, fades, lazy loads) before saving, up to `--settle` seconds, 20 by default.
 - Captures go to `build/captures/`. When sharing one, copy it to a new, uniquely versioned filename so image caches never show a stale render.
 
 ## Verify a release build without launching it
@@ -60,5 +61,6 @@ Expect only the version, build number and code hashes to differ. `./run release 
 ## When a capture comes back wrong
 
 - A blank or black PNG means Screen Recording isn't granted to the process running `devkit`. Say so instead of retrying.
-- "No window" means the app hasn't drawn yet. Raise `--settle`.
+- "No window" means the app hasn't shown its window within 15 seconds; check that it launched at all.
+- "Still changing" means something animates forever, such as a looping spinner or a blinking caret. The capture is the last frame; look at it, and stop the animation under `--initial-view` if it hides what you're checking.
 - The iOS build takes its bundle ID and default simulator from the `[ios]` table of `DylApp.toml`.

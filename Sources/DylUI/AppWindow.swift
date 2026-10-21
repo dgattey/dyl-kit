@@ -6,9 +6,10 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The main window of a DylKit app: a unified toolbar without a title, the palette and its accent tint, the
-/// `--appearance` and `--window-size` launch overrides, the updater's launch check once the window is on screen, and
-/// "Check for Updates…" in the app menu next to the app's own commands.
+/// The main window of a DylKit app: a unified toolbar without a title, the palette and its accent tint, devkit's
+/// `--appearance` and `--window-size` launch overrides (read from `LaunchOverrides.current`, so the app passes
+/// nothing), the updater's launch check once the window is on screen, and "Check for Updates…" in the app menu next
+/// to the app's own commands.
 public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     private let title: String
     private let palette: any ThemePalette
@@ -20,7 +21,7 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     public init(
         _ title: String,
         palette: any ThemePalette,
-        launch: LaunchOverrides,
+        launch: LaunchOverrides = .current,
         defaultSize: CGSize,
         @ViewBuilder content: () -> Content,
         @CommandsBuilder commands: () -> AppCommands

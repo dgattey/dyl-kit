@@ -16,19 +16,25 @@ struct DevKitCommand: AsyncParsableCommand {
 
 extension Bundler.Configuration: ExpressibleByArgument {}
 
-enum AppearanceChoice: String, ExpressibleByArgument, CaseIterable {
-    case light, dark
-}
+extension LaunchOptions.Appearance: ExpressibleByArgument {}
 
 struct LaunchArguments: ParsableArguments {
-    @Option(help: "Render the app light or dark (the app applies it to itself, not the system).")
-    var appearance: AppearanceChoice?
-    @Option(help: "The view the app opens on.") var initialView: String?
-    @Option(help: "The window size in points, <width>x<height>.") var windowSize: String?
+    @Option(help: "Render the app light or dark: just this process (or the simulator), never the Mac's setting.")
+    var appearance: LaunchOptions.Appearance?
+    @Option(help: "The view the app opens on, read by the app through LaunchOverrides.current.initialView.")
+    var initialView: String?
+    @Option(help: "The window size in points, <width>x<height>, applied by AppWindow.") var windowSize: String?
 
     var options: LaunchOptions {
-        LaunchOptions(appearance: appearance?.rawValue, initialView: initialView, windowSize: windowSize)
+        LaunchOptions(appearance: appearance, initialView: initialView, windowSize: windowSize)
     }
+}
+
+struct SettleArguments: ParsableArguments {
+    @Option(help: "The most seconds to wait for the screen to stop changing before capturing anyway.")
+    var settle: Double = 20
+
+    var wait: SettleWait { SettleWait(timeout: .milliseconds(Int(settle * 1000))) }
 }
 
 extension DevKitCommand {
@@ -63,8 +69,8 @@ extension DevKitCommand {
             abstract: "Relaunch in the background and screenshot the main window into build/captures.")
 
         @OptionGroup var launch: LaunchArguments
+        @OptionGroup var settle: SettleArguments
         @Flag(help: "Capture the existing build without rebuilding.") var noBuild = false
-        @Option(help: "Seconds to let the window settle before capturing.") var settle: Double = 2
 
         func run() async throws {
             let workspace = try Workspace.locate()
@@ -74,7 +80,7 @@ extension DevKitCommand {
             let capture = WindowCapture(workspace: workspace)
             let label = [launch.appearance?.rawValue, launch.initialView].compactMap { $0 }.joined(separator: "-")
             let url = capture.defaultOutput(label: label.isEmpty ? nil : label)
-            print(try await capture.capture(pid: pid, to: url, settle: .milliseconds(Int(settle * 1000))).path)
+            print(try await capture.capture(pid: pid, to: url, settle: settle.wait).path)
         }
     }
 
@@ -86,6 +92,7 @@ extension DevKitCommand {
         @OptionGroup var launch: LaunchArguments
         @Flag(help: "Boot the simulator without Simulator.app, install and launch.") var run = false
         @Flag(help: "With --run, screenshot the simulator into build/captures.") var capture = false
+        @OptionGroup var settle: SettleArguments
         @Option(help: "The simulator, such as an iPad; defaults to [ios] simulator.") var simulator: String?
 
         func run() async throws {
@@ -95,10 +102,9 @@ extension DevKitCommand {
             guard run || capture else { return }
             let udid = try ios.run(options: launch.options, simulator: simulator)
             guard capture else { return }
-            try await Task.sleep(for: .seconds(3))
-            let label = ["ios", launch.appearance?.rawValue].compactMap { $0 }.joined(separator: "-")
+            let label = ["ios", launch.appearance?.rawValue, launch.initialView].compactMap { $0 }.joined(separator: "-")
             let output = WindowCapture(workspace: workspace).defaultOutput(label: label)
-            try ios.screenshot(udid: udid, to: output)
+            try await ios.screenshot(udid: udid, to: output, settle: settle.wait)
             print(output.path)
         }
     }

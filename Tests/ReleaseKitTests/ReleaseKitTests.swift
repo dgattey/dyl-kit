@@ -10,6 +10,10 @@ import CryptoKit
 @testable import ReleaseKit
 
 private let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures")
+private let packageRoot = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+/// A copy of Sconeos's release inputs, standing in for an app that uses DylKit.
+private let appRoot = packageRoot.appending(path: "Tests/Fixtures/sconeos-app")
 
 private func fixture(_ path: String) throws -> String {
     try String(contentsOf: fixtures.appending(path: path), encoding: .utf8)
@@ -312,11 +316,8 @@ private let sconeosModules = [
 
 @Suite struct InfoPlistTests {
     @Test func derivesTheAppKeysFromTheManifest() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-        let manifest = try DylAppManifest.load(root: root)
-        let key = try String(contentsOf: root.appending(path: "sparkle-public-key.txt"), encoding: .utf8)
+        let manifest = try DylAppManifest.load(root: appRoot)
+        let key = try String(contentsOf: appRoot.appending(path: "sparkle-public-key.txt"), encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let generated = InfoPlist.contents(
             manifest: manifest, shortVersion: "1.2.3", build: "45", sparklePublicKey: key)
@@ -360,26 +361,24 @@ private let sconeosModules = [
     }
 }
 
-/// Runs the tier 3 checks over a scratch copy of this repo's release files with a chosen set of workflows.
+/// Runs the tier 3 checks over a scratch app with DylKit vendored at `Packages/DylKit` and a chosen set of workflows.
 @Suite struct ReleaseChecksTests {
-    private static let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent()
-
     private static let committedWorkflows = ["release", "verify", "pr-check"].map { ".github/workflows/\($0).yml" }
 
     private func scratchWorkspace(workflows: [String: String]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
-        for path in [
+        let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
-            "server/public", "Packages/DylKit/Package.swift",
-            "Packages/DylKit/Sources/ReleaseKit/ReleasePipeline.swift", "ci/github/pr-body.sh",
-            "Sconeos.local.entitlements", "server/package.json", "server/vercel.json",
-        ] {
+            "server/public", "ci/github/pr-body.sh", "Sconeos.local.entitlements", "server/package.json",
+            "server/vercel.json",
+        ].map { ($0, appRoot.appending(path: $0)) }
+        let kitFiles = ["Package.swift", "Sources/ReleaseKit/ReleasePipeline.swift"]
+            .map { ("Packages/DylKit/\($0)", packageRoot.appending(path: $0)) }
+        for (path, source) in appFiles + kitFiles {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: Self.repoRoot.appending(path: path), to: destination)
+            try FileManager.default.copyItem(at: source, to: destination)
         }
         for (path, text) in workflows {
             let destination = root.appending(path: path)
@@ -392,7 +391,7 @@ private let sconeosModules = [
 
     private func committed() throws -> [String: String] {
         try Dictionary(uniqueKeysWithValues: Self.committedWorkflows.map {
-            ($0, try String(contentsOf: Self.repoRoot.appending(path: $0), encoding: .utf8))
+            ($0, try String(contentsOf: appRoot.appending(path: $0), encoding: .utf8))
         })
     }
 

@@ -1,0 +1,34 @@
+name: pr-check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions: {}
+
+jobs:
+  release-info:
+    # Edits only matter when they change a Release info checkbox; contains() is case-insensitive.
+    if: >-
+      github.event.action != 'edited' || (github.event.changes.body && (
+        contains(github.event.changes.body.from, '- [x] Major') != contains(github.event.pull_request.body, '- [x] Major') ||
+        contains(github.event.changes.body.from, '- [x] Minor') != contains(github.event.pull_request.body, '- [x] Minor') ||
+        contains(github.event.changes.body.from, '- [x] Patch') != contains(github.event.pull_request.body, '- [x] Patch')
+      ))
+    # Job-level so skipped edit runs don't cancel an in-flight check.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check exactly one Release info box
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          checked="$(printf '%s\n' "$PR_BODY" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
+          if [ "$checked" != "1" ]; then
+            echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
+            exit 1
+          fi
+          echo "Release info OK"

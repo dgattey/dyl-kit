@@ -112,13 +112,11 @@ struct DylAppManifestTests {
         }
     }
 
-    @Test func decodesTheRepoManifest() throws {
+    @Test func decodesSconeosManifest() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+            .appending(path: "Fixtures/sconeos-app")
         let manifest = try DylAppManifest.load(root: root)
         #expect(manifest.app.name == "Sconeos")
         #expect(manifest.launchPrefix == "SCONEOS")

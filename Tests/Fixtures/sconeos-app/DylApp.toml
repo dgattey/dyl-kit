@@ -1,0 +1,51 @@
+# Sconeos app manifest, read by devkit and release-kit.
+# Schema: Packages/DylKit/Sources/DylManifest/DylAppManifest.swift. `./run dev checks` validates it.
+
+[app]
+name = "Sconeos"
+bundle-id = "com.sconeos.SconeOS"
+platforms = { macos = "14.0", ios = "17.0" }
+category = "public.app-category.music"
+
+[build]
+product = "Sconeos"
+entitlements = "Sconeos.local.entitlements"
+icon-generator = "scripts/generate-icon.swift"
+
+[bundle]
+url-schemes = ["sconeos"]
+url-name = "com.sconeos.callback"
+bonjour-services = ["_sonos._tcp"]
+usage = { NSAppleEventsUsageDescription = "Sconeos reads the current Spotify track and pauses Spotify after a room starts playing it.", NSLocalNetworkUsageDescription = "Sconeos discovers and controls Sonos speakers on your local network." }
+
+[ios]
+bundle-id = "com.sconeos.Sconeos"
+simulator = "iPhone 17 Pro"
+
+[release]
+sparkle-public-key = "sparkle-public-key.txt"
+site-url = "https://sconeos.gattey.com"
+artifacts-dir = "server/public"
+check-interval = 3600
+# Only what ships in the app. Test release-kit or workflow changes with a manual workflow_dispatch run.
+inputs = [
+    "Sources/**",
+    "Packages/DylKit/Sources/DylCore/**",
+    "Packages/DylKit/Sources/DylUpdates/**",
+    "Packages/DylKit/Sources/DylUI/**",
+    "Packages/DylKit/Package.swift",
+    "Package.swift",
+    "Package.resolved",
+    "DylApp.toml",
+    "Sconeos.local.entitlements",
+    "sparkle-public-key.txt",
+    "scripts/generate-icon.swift",
+]
+
+# Read by @dylkit/web for sconeos.gattey.com. Screenshot paths are under release.artifacts-dir.
+[site]
+tagline = "The spatial audio controller for Sonos households and Spotify: a floorplan room map, discrete volume steps and instant scene grouping."
+accent = { light = "#9a5f12", dark = "#e2a547" }
+screenshots = [
+    { src = "sconeos-preview.png", alt = "Sconeos floorplan map and multi-room speaker controls on macOS" },
+]

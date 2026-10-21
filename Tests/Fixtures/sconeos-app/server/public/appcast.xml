@@ -1,0 +1,67 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Sconeos</title>
+        <item>
+            <title>1.0.11</title>
+            <pubDate>Tue, 20 Oct 2026 00:29:12 -0700</pubDate>
+            <link>https://sconeos.gattey.com</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/dgattey/scone-os/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>1.0.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3 style="margin: 0 0 6px 0; font-size: 13px;">1.0.11</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">When there's no Sonos system on the network you're on, Sconeos shows one "No Sonos system on this network" card. It no longer shows a wall of Offline rooms from home.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">On a network with a different Sonos system, Sconeos connects to that system and shows its rooms. The rooms saved from the last network don't come along.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Battery speakers like Move and Roam show Offline on the map when they can't be reached. Before, they showed a battery badge and looked online.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.10</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Sconeos no longer stalls the window at launch while it restores the Spotify session and reads saved room positions.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Moving or resetting a room pin no longer blocks the map while the change is written to disk.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.9</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Catch up on skipped updates:</strong> If you skipped versions, the update dialog now lists what changed in each one since, newest first (up to the last 10 versions).</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Full version history link:</strong> The update dialog links to the complete release history on GitHub.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.8</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Replaced the waveform icon with the new "Scone Cone" icon (a baked scone wedge speaker cone with honey-glass sound arcs) across macOS, iOS, the web landing icon, and the in-app sidebar emblem.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Fixed light, dark, and tinted app icon switching across macOS 26 and iOS 26 so the app icon and in-app emblem dynamically match the active appearance.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.7</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Fix Sparkle update signature validation:</strong> Pin ad-hoc signed app bundles to a bundle-identifier designated requirement (<code>designated =&gt; identifier "com.sconeos.SconeOS"</code>) so Sparkle updates succeed across builds instead of failing with code-signature error <code>-67050</code>.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Verify update signatures at release time:</strong> Require <code>sparkle:edSignature</code> and cryptographically verify it against <code>SUPublicEDKey</code> in <code>Info.plist</code> during release packaging.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.6</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Readable in-app update notes:</strong> Sparkle update dialogs now render concise, scannable HTML bullet points instead of raw PR markdown or blank descriptions.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Hourly background update checks:</strong> Sconeos now checks for updates every hour in addition to checking immediately on launch.</li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.5</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Switch launch update check to <code>checkForUpdatesInBackground()</code></strong></li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Align local <code>scripts/build-macos.sh</code> version defaults with <code>appcast.xml</code></strong></li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.4</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Eliminate all untyped <code>JSONSerialization</code> / <code>[String: Any]</code> parsing</strong></li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Off-main-thread I/O &amp; deferred cryptography</strong></li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Modern Swift 6 concurrency &amp; regex</strong></li>
+  <li style="margin-bottom: 6px; line-height: 1.45;"><strong>Tests</strong></li>
+</ul>
+<h3 style="margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;">1.0.2</h3>
+<ul>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Strip absolute build-machine / Xcode toolchain <code>LC_RPATH</code> entries (such as <code>/Applications/Xcode_26.5.app/.../usr/lib/swift-6.2/macosx</code>) from <code>Contents/MacOS/Sconeos</code> in <code>scripts/build-macos.sh</code> before signing, so <code>XprotectService</code> does not fail on missing CI runner rpaths when assessing the bundle on user Macs.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Clear extended attributes (<code>xattr -cr</code>) on the staged <code>Sconeos.app</code> bundle before inside-out Sparkle/app signing.</li>
+  <li style="margin-bottom: 6px; line-height: 1.45;">Add the <code>xattr -cr /Applications/Sconeos.app</code> fallback snippet to the download page's first-run instructions for MDM-managed Macs where <code>com.apple.systempolicy.managed</code> sets <code>DisableOverride = true</code> (which blocks System Settings → "Open Anyway" with <code>Error -60005 creating authorization</code>).</li>
+</ul>
+]]></description>
+            <enclosure url="https://sconeos.gattey.com/Sconeos-1.0.11.zip" length="72" type="application/octet-stream" sparkle:edSignature="nXruAHS2Ypg1hV72ON6+aYOsNhw+MEDNRVkl+ScKNPDTwxMYw1MZ5bvfX2X3YEahvePFXhWugDGACr8gTaL+AA=="/>
+        </item>
+    </channel>
+</rss>

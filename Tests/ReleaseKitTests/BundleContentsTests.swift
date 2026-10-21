@@ -201,3 +201,72 @@ import CryptoKit
         #expect(LiveComparison.compareVersions("13.5", "14.0") == .orderedAscending)
     }
 }
+
+/// Saga #57's manifest, which v0.1.0 rejected with `DylApp.toml:25: expected ]` at `[ios.info]`.
+@Suite struct SagaManifestTests {
+    private static let manifest = """
+        [app]
+        name = "Saga"
+        bundle-id = "com.dylangattey.Saga"
+        platforms = { macos = "26.0", ios = "26.0" }
+        category = "public.app-category.productivity"
+
+        [build]
+        product = "Saga"
+        entitlements = "Saga.entitlements"
+        resources = ["Sources/Saga/Saga.xcdatamodeld", "Sources/Saga/Assets.xcassets"]
+        icon = "Sources/Saga/AppIcon.icon"
+        accent-color = "AccentColor"
+
+        [local-values]
+        file = "Config.xcconfig"
+        keys = { ContentfulSpaceId = "CONTENTFUL_SPACE_ID", ContentfulAccessToken = "CONTENTFUL_ACCESS_TOKEN", SagaAPISecret = "SAGA_API_SECRET" }
+        defaults = { ContentfulSpaceId = "placeholder", ContentfulAccessToken = "placeholder", SagaAPISecret = "" }
+
+        [ios]
+        simulator = "iPhone 17 Pro"
+
+        [ios.info]
+        UIApplicationSceneManifest = { UIApplicationSupportsMultipleScenes = true }
+        UIApplicationSupportsIndirectInputEvents = true
+        UIStatusBarStyle = "UIStatusBarStyleDefault"
+        "UISupportedInterfaceOrientations~iphone" = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
+        "UISupportedInterfaceOrientations~ipad" = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
+
+        [release]
+        sparkle-public-key = "sparkle-public-key.txt"
+        site-url = "https://saga.gattey.com"
+        artifacts-dir = "server/public"
+        check-interval = 3600
+
+        [site]
+        tagline = "Your personal reading log."
+        accent = { light = "#264e3a", dark = "#4a7e65" }
+        screenshots = [
+            { src = "saga-preview.png", alt = "Saga on macOS" },
+        ]
+        """
+
+    @Test func iOSInfoReachesTheIOSPlistOnly() throws {
+        let manifest = try DylAppManifest.decode(Self.manifest)
+        let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylangattey.Saga", minimumOS: "26.0")
+        #expect(iOS["UIApplicationSceneManifest"] == .dictionary(["UIApplicationSupportsMultipleScenes": .boolean(true)]))
+        #expect(iOS["UIApplicationSupportsIndirectInputEvents"] == .boolean(true))
+        #expect(iOS["UIStatusBarStyle"] == .string("UIStatusBarStyleDefault"))
+        guard case .array(let iphone) = iOS["UISupportedInterfaceOrientations~iphone"],
+            case .array(let ipad) = iOS["UISupportedInterfaceOrientations~ipad"]
+        else { Issue.record("orientations missing"); return }
+        #expect(iphone.count == 3 && !iphone.contains(.string("UIInterfaceOrientationPortraitUpsideDown")))
+        #expect(ipad.count == 4)
+        #expect(InfoPlist.rawKeys(manifest, iOS: false).isDisjoint(with: ["UIStatusBarStyle"]))
+    }
+
+    /// #57 still lists `[release] inputs`; v0.2.0 names the fix instead of failing to parse.
+    @Test func leftoverInputsSaysToDeleteThem() {
+        let withInputs = Self.manifest.replacingOccurrences(
+            of: "check-interval = 3600\n", with: "check-interval = 3600\ninputs = [\n    \"Sources/**\",\n]\n")
+        #expect {
+            try DylAppManifest.decode(withInputs)
+        } throws: { "\($0)".contains("release.inputs") && "\($0)".contains("Delete it") }
+    }
+}

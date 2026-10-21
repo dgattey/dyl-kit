@@ -24,7 +24,8 @@ Then, in the app repo:
 
 - `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it.
 - A `./run` shim runs the tools: `swift build -c release --product devkit` (or `release-kit`, `dyl-lint`), then `exec .build/release/<tool>`.
-- `.swiftlint.yml` inherits the shared rules with `parent_config: .build/checkouts/dyl-kit/lint/swiftlint.yml`.
+- `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
+- `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
 - The download site depends on the `@dylkit/web` tarball attached to the matching release: `"@dylkit/web": "https://github.com/dgattey/dyl-kit/releases/download/v0.1.0/dylkit-web-0.1.0.tgz"`.
 
 The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skills.

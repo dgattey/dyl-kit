@@ -58,15 +58,15 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     private func windowDidAppear() {
         AppUpdater.shared.mainWindowDidAppear()
         #if os(macOS)
-        // Menus and alerts follow NSApp, not the SwiftUI color scheme.
+        // Menus and alerts follow the app's appearance, not the SwiftUI color scheme.
         if let appearance = launch.appearance {
-            NSApp.appearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
+            NSApplication.shared.appearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
         }
         // A restored frame wins over defaultSize, so screenshots set the size once the window exists.
         if let size = launch.windowSize {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(150))
-                for window in NSApp.windows where window.isVisible && window.frame.width > 300 {
+                for window in NSApplication.shared.windows where window.isVisible && window.frame.width > 300 {
                     window.setContentSize(size)
                 }
             }

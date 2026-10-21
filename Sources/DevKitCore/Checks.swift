@@ -21,10 +21,10 @@ public struct Checks: Sendable {
         var passed = true
         Log.step("manifest: \(DylAppManifest.fileName) OK")
 
-        switch swiftLint() {
-        case .success(let swiftlint):
+        switch swiftLint().flatMap({ swiftlint in lintConfigs().map { (swiftlint, $0) } }) {
+        case .success(let (swiftlint, configs)):
             let status = try? Shell.run(
-                [swiftlint, "lint", "--strict", "--quiet", "--config", workspace.url(".swiftlint.yml").path],
+                [swiftlint, "lint", "--strict", "--quiet"] + configs.flatMap { ["--config", $0] },
                 cwd: workspace.root, allowFailure: true)
             if status != 0 { passed = false }
             Log.step("swiftlint: \(status == 0 ? "OK" : "failed")")
@@ -64,6 +64,44 @@ public struct Checks: Sendable {
         }
         guard version == pinned else { return .failure(ToolError("swiftlint is \(version); \(fix)")) }
         return .success(path)
+    }
+
+    /// DylKit's shared config, then the app's `.swiftlint.yml` if it has one; SwiftLint reads repeated `--config`s
+    /// as parent and child. DylKit is found through SwiftPM, so a `.package(path:)` checkout works as well as a URL
+    /// one, which a `parent_config` path into `.build/checkouts` can't do.
+    ///
+    /// - Blocking: runs `swift package show-dependencies`.
+    func lintConfigs() -> Result<[String], ToolError> {
+        let local = workspace.url(".swiftlint.yml")
+        let localText = try? String(contentsOf: local, encoding: .utf8)
+        if let localText, localText.contains("parent_config:") {
+            return .failure(ToolError(".swiftlint.yml: remove `parent_config`; devkit passes DylKit's shared config itself"))
+        }
+        guard
+            let json = try? Shell.capture(
+                ["swift", "package", "show-dependencies", "--format", "json"], cwd: workspace.root),
+            let kit = Self.dylKitPath(dependenciesJSON: json)
+        else { return .failure(ToolError("can't find the dyl-kit package; run `swift package resolve`")) }
+        let shared = URL(fileURLWithPath: kit).appending(path: "lint/swiftlint.yml").path
+        return .success([shared] + (localText == nil ? [] : [local.path]))
+    }
+
+    private struct Dependency: Decodable {
+        let identity: String
+        let path: String
+        let dependencies: [Dependency]
+    }
+
+    /// The checkout of `dyl-kit` anywhere in `swift package show-dependencies --format json`'s tree.
+    static func dylKitPath(dependenciesJSON: String) -> String? {
+        guard let root = try? JSONDecoder().decode(Dependency.self, from: Data(dependenciesJSON.utf8)) else { return nil }
+        var queue = [root]
+        while !queue.isEmpty {
+            let node = queue.removeFirst()
+            if node.identity == "dyl-kit" { return node.path }
+            queue += node.dependencies
+        }
+        return nil
     }
 
     /// `checks`, then build and test the app. The site has its own ubuntu job.

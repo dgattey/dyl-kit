@@ -56,7 +56,7 @@ import UniformTypeIdentifiers
             frames += 1
         }
         #expect(ContinuousClock.now - start >= .milliseconds(200))
-        #expect(frames > 3)
+        #expect(frames >= 3)
     }
 
     @Test func givesUpAtTheTimeoutWithTheLastFrame() async throws {

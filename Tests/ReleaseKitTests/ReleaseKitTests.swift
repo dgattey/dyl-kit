@@ -388,7 +388,7 @@ private let sconeosModules = [
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
             "server/public", "ci/github/pr-body.sh", "Sample.entitlements", "server/package.json",
-            "server/vercel.json",
+            "server/vercel.json", "run",
         ].map { ($0, appRoot.appending(path: $0)) }
         for (path, source) in appFiles {
             let destination = root.appending(path: path)
@@ -448,6 +448,28 @@ private let sconeosModules = [
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
+    /// A fix to `./run`, `pr-body.sh` or the PR check reaches every app only if none keeps its own copy.
+    @Test func sharedFilesMatchDylKit() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let check = workspace.url(".github/workflows/pr-check.yml")
+        let stale = try String(contentsOf: check, encoding: .utf8).replacing(", synchronize]", with: "]")
+        try Data(stale.utf8).write(to: check)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: workspace.url("run").path)
+        try FileManager.default.removeItem(at: workspace.url("ci/github/pr-body.sh"))
+
+        let report = ReleaseChecks(workspace: workspace).run()
+        #expect(errors(report)["shared_files"] == [
+            "isn't executable; run `./run dev sync`",
+            "missing; run `./run dev sync`",
+            "differs from DylKit's copy; run `./run dev sync`",
+        ])
+
+        #expect(try SharedFiles.sync(root: workspace.root) == ["run", "ci/github/pr-body.sh", ".github/workflows/pr-check.yml"])
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["shared_files"] == nil)
+        #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
+    }
+
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
@@ -501,7 +523,8 @@ private let sconeosModules = [
         let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
         var scanned = 0
         while let relative = enumerator.nextObject() as? String {
-            guard relative.hasSuffix(".swift") else { continue }
+            // The ci/github/ wrapper's text, which forge_neutral allows in the app it's written to.
+            guard relative.hasSuffix(".swift"), relative != "ReleaseKit/SharedFiles.swift" else { continue }
             let text = try String(contentsOf: sources.appending(path: relative), encoding: .utf8)
             #expect(ReleaseChecks.forgeCalls(in: text).isEmpty, "Sources/\(relative)")
             scanned += 1

@@ -10,7 +10,7 @@ struct DevKitCommand: AsyncParsableCommand {
         commandName: "devkit",
         abstract: "Build, relaunch and capture the app in build/, and run every check a PR needs.",
         discussion: "Nothing here touches /Applications, steals focus or changes the system appearance.",
-        subcommands: [Build.self, Relaunch.self, Capture.self, IOS.self, Icons.self, Checks.self, Verify.self]
+        subcommands: [Build.self, Relaunch.self, Capture.self, IOS.self, Icons.self, Sync.self, Checks.self, Verify.self]
     )
 }
 
@@ -115,6 +115,16 @@ extension DevKitCommand {
 
         func run() throws {
             print(try SiteIcons(workspace: try Workspace.locate()).write().path)
+        }
+    }
+
+    struct Sync: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Write ./run, ci/github/pr-body.sh and the pr-check workflow as this DylKit version ships them.")
+
+        func run() throws {
+            let changed = try SharedFiles.sync(root: try Workspace.locate().root)
+            Log.step(changed.isEmpty ? "shared files: up to date" : "shared files: wrote \(changed.joined(separator: ", "))")
         }
     }
 

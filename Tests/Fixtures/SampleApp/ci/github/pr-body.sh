@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
+# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.
 # Usage: ci/github/pr-body.sh <merge-commit-sha> <out-file>
 # Writes the body of the GitHub PR that produced the commit to <out-file>, for `release-kit version
-# --pr-body-file`. When the lookup fails it leaves the file empty and release-kit falls back to the merge commit
-# message. This is the only GitHub-specific release step; an Origin wrapper does the same against its own API.
+# --pr-body-file`. When the lookup fails it leaves the file empty and release-kit falls back to the merge
+# commit message. This is the only GitHub-specific release step.
 set -uo pipefail
 
 sha="$1"

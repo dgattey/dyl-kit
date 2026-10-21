@@ -63,6 +63,7 @@ public struct ReleaseChecks: Sendable {
         check("site_icons", checkSiteIcons)
         check("resource_not_excluded", checkResourcesExcluded)
         check("local_values_ignored", checkLocalValuesIgnored)
+        check("shared_files", checkSharedFiles)
         if let stagedAppcast, let stagedArchive {
             check("staged_release") {
                 checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
@@ -79,6 +80,22 @@ public struct ReleaseChecks: Sendable {
 
     private func error(_ rule: String, _ file: String?, _ message: String) -> CheckFinding {
         CheckFinding(rule: rule, severity: .error, file: file, message: message)
+    }
+
+    private func checkSharedFiles(_ findings: inout [CheckFinding]) {
+        // Without `./run` there's no `./run dev`; SwiftPM runs a dependency's executables directly.
+        let fix = read("run") == nil ? "`swift run devkit sync`" : "`./run dev sync`"
+        for file in SharedFiles.all {
+            guard let text = read(file.path) else {
+                findings.append(error("shared_files", file.path, "missing; run \(fix)"))
+                continue
+            }
+            if text != file.contents {
+                findings.append(error("shared_files", file.path, "differs from DylKit's copy; run \(fix)"))
+            } else if file.executable, !FileManager.default.isExecutableFile(atPath: workspace.url(file.path).path) {
+                findings.append(error("shared_files", file.path, "isn't executable; run \(fix)"))
+            }
+        }
     }
 
     private var publicKey: String? {

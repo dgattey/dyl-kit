@@ -54,7 +54,7 @@ cd web && npm ci && npm test
 scripts/release-e2e.sh            # version, bundle, sign, appcast and check SampleApp with a throwaway Ed key
 ```
 
-CI runs the same on every PR; `release-e2e` runs only when release code or SampleApp changes.
+CI runs the same on every PR, with the Swift steps and `release-e2e.sh` sharing one macOS runner. Docs-only changes skip CI.
 
 ## Releasing DylKit
 

@@ -1,0 +1,10 @@
+---
+description: DylKit app workflow — checks before a PR and where the conventions live
+alwaysApply: true
+---
+
+Before opening or updating a PR, run `./run dev checks` (SwiftLint, `dyl-lint`, and `release-kit check`) and fix what it reports. Don't restate lint rules in code or docs; the findings explain themselves. Use `// lint:allow <rule>: <reason>` only for a verified benign hit.
+
+Never take focus on Dylan's Mac. Launch apps only with `open -g`, which is all `./run dev relaunch` and `./run dev capture` do. Never use `osascript` (AppleScript `activate`, System Events keystrokes or menu clicks), `open` without `-g`, the app binary run directly, `open -a Simulator`, or a capture that raises a window. If a check needs any of those, it doesn't run on his Mac: say what's unverified. `./run dev` builds `build/<App> Dev.app` under `<bundle-id>.dev` with no Sparkle keys, so it never touches the installed app's preferences, Sparkle state or logs. Never launch anything that carries the release bundle ID, such as the staged release. Verify releases by comparing Info.plist, signatures and entitlements (`apple-dev-loop` has the commands). On his Mac, stay inside the app's repo: scratch worktrees go under its `build/worktrees/`, captures under `build/captures/`. Never write outside it: not `~/Desktop`, not `/tmp`. These rules apply to prompts you write for other agents too.
+
+DylKit apps are SwiftPM only, with no Xcode project, and use `@Observable` state only. `apple-dev-loop` is the one guide to setup, building, testing, launching, screenshots and the iOS Simulator, and `apple-release` covers releasing, in CI and by hand. Link them; don't copy their steps into READMEs. Other conventions live in the DylKit plugin's skills.

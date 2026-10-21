@@ -110,7 +110,7 @@ private struct OpenSettingsButton: View {
     }
 }
 
-/// The Updates section: Sparkle's automatic-check preference and a manual check.
+/// The Updates section: Sparkle's automatic check and download preferences, and a manual check.
 public struct UpdatesSection: View {
     @Bindable private var updater = AppUpdater.shared
 
@@ -119,6 +119,8 @@ public struct UpdatesSection: View {
     public var body: some View {
         Section("Updates") {
             Toggle("Check for updates automatically", isOn: $updater.automaticallyChecksForUpdates)
+            Toggle("Automatically download and install updates", isOn: $updater.automaticallyDownloadsUpdates)
+                .disabled(!updater.automaticallyChecksForUpdates)
             LabeledContent("Version \(AppInfo.main.version ?? "–") (\(AppInfo.main.build ?? "–"))") {
                 CheckForUpdatesButton()
             }

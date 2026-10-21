@@ -20,6 +20,11 @@ public final class AppUpdater {
         didSet { controller.updater.automaticallyChecksForUpdates = automaticallyChecksForUpdates }
     }
 
+    /// Sparkle's "download and install automatically" preference, which only applies while automatic checks are on.
+    public var automaticallyDownloadsUpdates: Bool {
+        didSet { controller.updater.automaticallyDownloadsUpdates = automaticallyDownloadsUpdates }
+    }
+
     @ObservationIgnored private let isReleaseConfigured: Bool
     @ObservationIgnored private let controller: SPUStandardUpdaterController
     @ObservationIgnored private let presenter: UpdatePresenter
@@ -35,7 +40,7 @@ public final class AppUpdater {
         let controller = SPUStandardUpdaterController(
             startingUpdater: configured, updaterDelegate: updaterDelegate, userDriverDelegate: userDriverDelegate)
         let presenter = UpdatePresenter(
-            activateApp: { NSApp.activate(ignoringOtherApps: true) },
+            activateApp: { NSApplication.shared.activate(ignoringOtherApps: true) },
             showUpdateInFocus: { [weak controller] in controller?.checkForUpdates(nil) }
         )
         updaterDelegate.presenter = presenter
@@ -46,6 +51,7 @@ public final class AppUpdater {
         self.updaterDelegate = updaterDelegate
         self.userDriverDelegate = userDriverDelegate
         automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
+        automaticallyDownloadsUpdates = controller.updater.automaticallyDownloadsUpdates
         // SPUUpdater is main-actor isolated, so read canCheckForUpdates on the main actor, not in the KVO callback.
         canCheckObservation = controller.updater.observe(\.canCheckForUpdates, options: [.initial]) {
             [weak self] _, _ in
@@ -82,6 +88,7 @@ public final class AppUpdater {
     }
     #else
     public var automaticallyChecksForUpdates = false
+    public var automaticallyDownloadsUpdates = false
 
     private init() {}
 

@@ -1,6 +1,6 @@
 {
   "name": "@dylkit/web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Each DylKit app's <app>.gattey.com download site, built from its DylApp.toml and appcast.",
   "type": "module",

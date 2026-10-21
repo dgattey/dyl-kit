@@ -10,7 +10,9 @@ Every DylKit app builds the same way. READMEs and other skills link here instead
 ## Shape
 
 - SwiftPM only: the app is an executable target in the repo's `Package.swift`, and `DylApp.toml` holds the bundle, signing and release settings. There's no `.xcodeproj` or `.xcworkspace`, and `swiftpm_only` fails if one appears. Xcode is only the toolchain (`actool`, `simctl`, the SDKs); nobody opens a project in it.
-- Resources such as asset catalogs and Core Data models are SwiftPM resources. The bundler copies each resource `.bundle` into the app and gives it an `Info.plist`. The icon comes from `[build] icon-generator`.
+- Asset catalogs, Core Data models and mapping models go in `[build] resources`, and the bundler compiles them into the main bundle with `actool`, `momc` and `mapc`. The app's target must `exclude:` them, or SwiftPM also copies them raw (`resource_not_excluded`). Other SwiftPM resources ship as resource `.bundle`s, each with an `Info.plist`.
+- The icon is a committed Icon Composer `.icon` in `[build] icon`, or `[build] icon-generator`, a script that writes one into `build/`. `./run dev icons` writes the site's `favicon.ico`, `icon.png` and `apple-icon.png` from it into `[build] site-icons`.
+- Info.plist keys DylKit doesn't derive go in `[bundle.info]` (macOS and iOS) or `[ios.info]` (iOS only). `[local-values]` fills Info.plist strings such as API credentials in every build, from the environment variable, then the gitignored xcconfig it names, then its `defaults`. CI has no xcconfig, so a release ships the defaults unless the workflow sets the variable.
 - Swift 6 language mode, and state is `@Observable @MainActor` only, never `ObservableObject` (see `swiftui-viewmodels`).
 
 ## Setup
@@ -28,9 +30,10 @@ Run everything from the app repo through `./run dev …`, which builds `devkit` 
 | Rebuild and reopen behind the frontmost app | `./run dev relaunch` (add `--configuration release` for a Release build) |
 | Screenshot the main window into `build/captures/` | `./run dev capture --appearance dark` |
 | iOS Simulator, headless, with a screenshot | `./run dev ios --run --capture` (add `--simulator "<iPad name>"` for an iPad) |
-| Unit tests | `swift test` (DylKit's own tests run in its repo's CI) |
+| Unit tests | `swift test`. Test targets depend on `DylTestSupport` for ViewInspector and `AppDirectories.withTemporarySupportFolder`, so tests never read or write the real support folder |
 | Lint tiers 1–3 | `./run dev checks` |
 | What macOS CI runs: checks, build, then all tests | `./run dev verify` |
+| Refresh `./run`, `ci/github/pr-body.sh` and the PR check after bumping DylKit | `./run dev sync` |
 | Download site | `npm run dev` or `npm run build` in `server/` |
 
 ## Hard rules
@@ -46,17 +49,7 @@ Run everything from the app repo through `./run dev …`, which builds `devkit` 
 
 ## Verify a release build without launching it
 
-Compare the staged release with the installed one instead of opening either. Reading `/Applications` is fine. Changing or launching anything in it is not.
-
-```sh
-new=build/release/stage/<App>.app; old=/Applications/<App>.app
-diff <(plutil -p "$old/Contents/Info.plist") <(plutil -p "$new/Contents/Info.plist")
-codesign --verify --deep --strict --verbose=2 "$new"
-diff <(codesign -d -r- "$old" 2>&1) <(codesign -d -r- "$new" 2>&1)        # designated requirement must match
-diff <(codesign -d --entitlements - "$old" 2>&1) <(codesign -d --entitlements - "$new" 2>&1)
-```
-
-Expect only the version, build number and code hashes to differ. `./run release check` covers the feed side.
+After `./run release bundle`, `sign` and `appcast`, run `./run release check --live`. It downloads the release installs run now, from the live feed, and compares it with the staged one: designated requirement, entitlements, signature kind, Info.plist keys (with `[local-values]` printed only as lengths), the feed and a strict verify of the staged app. Expect only the version, build number and code hashes to differ. Never open either app to check.
 
 ## When a capture comes back wrong
 

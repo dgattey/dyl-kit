@@ -1,7 +1,7 @@
 {
   "name": "dylkit",
   "displayName": "DylKit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Skills and the always-on rule for DylKit apps: the dev loop, Sparkle releases, SwiftUI and concurrency conventions, logging, screenshots and PR triage.",
   "author": {
     "name": "Dylan Gattey"

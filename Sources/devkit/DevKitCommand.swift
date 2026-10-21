@@ -33,7 +33,7 @@ struct LaunchArguments: ParsableArguments {
 
 extension DevKitCommand {
     struct Build: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Bundle and ad-hoc sign build/<App>.app.")
+        static let configuration = CommandConfiguration(abstract: "Bundle and ad-hoc sign build/<App> Dev.app.")
 
         @Argument(help: "debug or release.") var configuration: Bundler.Configuration = .debug
 

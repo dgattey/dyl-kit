@@ -2,15 +2,16 @@ import DylToolSupport
 import Foundation
 import ReleaseKit
 
-/// Local app builds into `build/`, never `/Applications`, so the installed release keeps updating on its own.
+/// Local app builds into `build/`, never `/Applications`, so the installed release keeps updating on its own. They
+/// carry the dev identity, so they never share a bundle ID with the installed release.
 public struct DevBuild: Sendable {
     public let workspace: Workspace
 
     public init(workspace: Workspace) { self.workspace = workspace }
 
-    public var appURL: URL { workspace.buildDir.appending(path: "\(workspace.manifest.app.name).app") }
+    public var appURL: URL { workspace.buildDir.appending(path: "\(AppIdentity.dev.name(workspace.manifest)).app") }
 
-    /// Bundles and ad-hoc signs `build/<App>.app` with the last shipped version and the commit count as its build.
+    /// Bundles and ad-hoc signs `build/<App> Dev.app` with the last shipped version and the commit count as its build.
     ///
     /// - Blocking: runs `swift build`, `codesign` and `lsregister`.
     @discardableResult
@@ -20,9 +21,14 @@ public struct DevBuild: Sendable {
         let build = (try? Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? "1"
         try FileManager.default.createDirectory(at: workspace.buildDir, withIntermediateDirectories: true)
         let app = try Bundler(workspace: workspace)
-            .bundle(configuration: configuration, shortVersion: version, build: build, into: workspace.buildDir)
-        try Signer(entitlements: workspace.url(manifest.build.entitlements), bundleIdentifier: manifest.app.bundleId)
-            .sign(app)
+            .bundle(
+                configuration: configuration, identity: .dev, shortVersion: version, build: build,
+                into: workspace.buildDir)
+        try Signer(
+            entitlements: workspace.url(manifest.build.entitlements),
+            bundleIdentifier: AppIdentity.dev.bundleId(manifest)
+        )
+        .sign(app)
         let lsregister =
             "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework"
             + "/Support/lsregister"

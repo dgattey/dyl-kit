@@ -15,7 +15,7 @@ public struct Bundler: Sendable {
     /// - Blocking: runs `swift build`, the icon generator, `actool` and binary tools.
     @discardableResult
     public func bundle(
-        configuration: Configuration, shortVersion: String, build: String, into directory: URL
+        configuration: Configuration, identity: AppIdentity, shortVersion: String, build: String, into directory: URL
     )
         throws -> URL
     {
@@ -34,7 +34,7 @@ public struct Bundler: Sendable {
         let binary = binDir.appending(path: product)
         guard fileManager.fileExists(atPath: binary.path) else { throw ToolError("\(binary.path) wasn't built") }
 
-        let app = directory.appending(path: "\(manifest.app.name).app")
+        let app = directory.appending(path: "\(identity.name(manifest)).app")
         let contents = app.appending(path: "Contents")
         let macOS = contents.appending(path: "MacOS")
         let resources = contents.appending(path: "Resources")
@@ -56,7 +56,7 @@ public struct Bundler: Sendable {
             }
             if !hasPlist {
                 let name = bundle.deletingPathExtension().lastPathComponent
-                let plist = InfoPlist.resourceBundle(identifier: "\(manifest.app.bundleId).\(name)")
+                let plist = InfoPlist.resourceBundle(identifier: "\(identity.bundleId(manifest)).\(name)")
                 try InfoPlist.data(plist).write(to: destination.appending(path: "Info.plist"))
             }
         }
@@ -69,10 +69,13 @@ public struct Bundler: Sendable {
         let publicKey = try? String(contentsOf: workspace.url(manifest.release.sparklePublicKey), encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let plist = InfoPlist.contents(
-            manifest: manifest, shortVersion: shortVersion, build: build, sparklePublicKey: publicKey)
+            manifest: manifest, identity: identity, shortVersion: shortVersion, build: build,
+            sparklePublicKey: publicKey)
         try InfoPlist.data(plist).write(to: contents.appending(path: "Info.plist"))
         try Data("APPL????".utf8).write(to: contents.appending(path: "PkgInfo"))
-        if publicKey == nil { Log.warn("\(manifest.release.sparklePublicKey) is missing; the updater stays off") }
+        if identity == .release, publicKey == nil {
+            Log.warn("\(manifest.release.sparklePublicKey) is missing; the updater stays off")
+        }
         return app
     }
 

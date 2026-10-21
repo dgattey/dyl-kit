@@ -1,5 +1,5 @@
 # DylKit tier 1: regex rules for pitfalls that shipped in Dylan's apps. Apps inherit this with
-#   parent_config: Packages/DylKit/lint/swiftlint.yml
+#   parent_config: .build/checkouts/dyl-kit/lint/swiftlint.yml
 # and add their own `included` paths. `./run dev checks` runs it.
 #
 # The only escape hatch is a same-line `// lint:allow <rule>: <reason>` for a verified false positive or benign hit.

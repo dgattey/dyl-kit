@@ -69,7 +69,7 @@ let package = Package(
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",
-            dependencies: ["ReleaseKit", "DylManifest", "DylToolSupport"],
+            dependencies: ["ReleaseKit", "DylManifest", "DylToolSupport", "release-kit"],
             exclude: ["Fixtures"]
         ),
     ]

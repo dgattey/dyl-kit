@@ -107,7 +107,9 @@ public struct ReleasePipeline: Sendable {
         try? FileManager.default.removeItem(at: stageDir)
         try FileManager.default.createDirectory(at: stageDir, withIntermediateDirectories: true)
         return try Bundler(workspace: workspace)
-            .bundle(configuration: .release, shortVersion: state.version, build: String(state.build), into: stageDir)
+            .bundle(
+                configuration: .release, identity: .release, shortVersion: state.version, build: String(state.build),
+                into: stageDir)
     }
 
     /// Signs the staged app inside-out, verifies it, and zips it for Sparkle.
@@ -205,8 +207,8 @@ public struct ReleasePipeline: Sendable {
         let root = workspace.root
         let branch = try Shell.capture(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
         guard branch != "HEAD" else { return }
-        let lookup = ["git", "ls-remote", "--quiet", "--exit-code", "--heads", "origin", branch]
-        guard try Shell.run(lookup, cwd: root, allowFailure: true) == 0 else { return }
+        let lookup = ["git", "ls-remote", "--quiet", "--heads", "origin", branch]
+        guard try !Shell.capture(lookup, cwd: root, allowFailure: true).isEmpty else { return }
         try Shell.run(["git", "pull", "--ff-only", "--quiet", "origin", branch], cwd: root)
     }
 
@@ -292,6 +294,9 @@ public struct ReleasePipeline: Sendable {
         }
     }
 
+    /// The environment variable CI passes the Sparkle private key in.
+    public static let edKeyVariable = "SPARKLE_ED_PRIVATE_KEY_BASE64"
+
     /// The Sparkle private key: an explicit file, `SPARKLE_ED_PRIVATE_KEY_BASE64` (CI), or a local key file. Nil
     /// means `generate_appcast` reads the login Keychain, where `generate-sparkle-key.sh` stores it.
     ///
@@ -302,7 +307,7 @@ public struct ReleasePipeline: Sendable {
             return URL(fileURLWithPath: path)
         }
         let environment = ProcessInfo.processInfo.environment
-        if let encoded = environment["SPARKLE_ED_PRIVATE_KEY_BASE64"] {
+        if let encoded = environment[Self.edKeyVariable] {
             let key = try Self.edKeyFile(fromSecret: encoded)
             let file = FileManager.default.temporaryDirectory.appending(path: "dylkit-sparkle-\(UUID().uuidString).key")
             try key.write(to: file)
@@ -325,7 +330,7 @@ public struct ReleasePipeline: Sendable {
     static func edKeyFile(fromSecret secret: String) throws -> Data {
         let compact = secret.filter { !$0.isWhitespace }
         guard let decoded = Data(base64Encoded: compact) else {
-            throw ToolError("SPARKLE_ED_PRIVATE_KEY_BASE64 isn't valid base64")
+            throw ToolError("\(edKeyVariable) isn't valid base64")
         }
         return [32, 64].contains(decoded.count) ? Data(compact.utf8) : decoded
     }

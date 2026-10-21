@@ -12,8 +12,8 @@ import CryptoKit
 private let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures")
 private let packageRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-/// A copy of Sconeos's release inputs, standing in for an app that uses DylKit.
-private let appRoot = packageRoot.appending(path: "Tests/Fixtures/sconeos-app")
+/// The smallest DylKit app, standing in for one that uses DylKit.
+private let appRoot = packageRoot.appending(path: "Tests/Fixtures/SampleApp")
 
 private func fixture(_ path: String) throws -> String {
     try String(contentsOf: fixtures.appending(path: path), encoding: .utf8)
@@ -320,20 +320,38 @@ private let sconeosModules = [
         let key = try String(contentsOf: appRoot.appending(path: "sparkle-public-key.txt"), encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let generated = InfoPlist.contents(
-            manifest: manifest, shortVersion: "1.2.3", build: "45", sparklePublicKey: key)
+            manifest: manifest, identity: .release, shortVersion: "1.2.3", build: "45", sparklePublicKey: key)
         #expect(generated["CFBundleIdentifier"] == .string(manifest.app.bundleId))
         #expect(generated["CFBundleShortVersionString"] == .string("1.2.3"))
         #expect(generated["CFBundleVersion"] == .string("45"))
         #expect(generated["LSMinimumSystemVersion"] == .string(manifest.app.platforms.macos))
         #expect(generated["SUFeedURL"] == .string(manifest.release.feedURL))
         #expect(generated["SUPublicEDKey"] == .string(key))
-        #expect(generated["NSBonjourServices"] == .array([.string("_sonos._tcp")]))
+        #expect(generated["NSBonjourServices"] == .array([.string("_sample._tcp")]))
         #expect(generated["NSLocalNetworkUsageDescription"]?.string?.isEmpty == false)
         guard case .array(let urlTypes) = generated["CFBundleURLTypes"], case .dictionary(let urlType) = urlTypes.first
         else { Issue.record("no CFBundleURLTypes"); return }
-        #expect(urlType["CFBundleURLSchemes"] == .array([.string("sconeos")]))
+        #expect(urlType["CFBundleURLSchemes"] == .array([.string("sample")]))
         let roundTrip = try PropertyListDecoder().decode(Plist.self, from: try InfoPlist.data(generated))
         #expect(roundTrip == generated)
+    }
+}
+
+@Suite struct DevIdentityTests {
+    @Test func devBuildsNeverClaimTheInstalledApp() throws {
+        let manifest = try DylAppManifest.load(root: appRoot)
+        let generated = InfoPlist.contents(
+            manifest: manifest, identity: .dev, shortVersion: "1.2.3", build: "45", sparklePublicKey: "key")
+        #expect(generated["CFBundleIdentifier"] == .string("com.dylkit.Sample.dev"))
+        #expect(generated["CFBundleName"] == .string("Sample Dev"))
+        #expect(generated["CFBundleDisplayName"] == .string("Sample Dev"))
+        for key in ["SUFeedURL", "SUPublicEDKey", "SUEnableAutomaticChecks", "SUScheduledCheckInterval"] {
+            #expect(generated[key] == nil, "\(key)")
+        }
+        guard case .array(let urlTypes) = generated["CFBundleURLTypes"], case .dictionary(let urlType) = urlTypes.first
+        else { Issue.record("no CFBundleURLTypes"); return }
+        #expect(urlType["CFBundleURLSchemes"] == .array([.string("sample-dev")]))
+        #expect(urlType["CFBundleURLName"] == .string("com.dylkit.sample.callback-dev"))
     }
 }
 
@@ -361,7 +379,7 @@ private let sconeosModules = [
     }
 }
 
-/// Runs the tier 3 checks over a scratch app with DylKit vendored at `Packages/DylKit` and a chosen set of workflows.
+/// Runs the tier 3 checks over a scratch copy of the SampleApp with a chosen set of workflows.
 @Suite struct ReleaseChecksTests {
     private static let committedWorkflows = ["release", "verify", "pr-check"].map { ".github/workflows/\($0).yml" }
 
@@ -369,12 +387,10 @@ private let sconeosModules = [
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
-            "server/public", "ci/github/pr-body.sh", "Sconeos.local.entitlements", "server/package.json",
+            "server/public", "ci/github/pr-body.sh", "Sample.entitlements", "server/package.json",
             "server/vercel.json",
         ].map { ($0, appRoot.appending(path: $0)) }
-        let kitFiles = ["Package.swift", "Sources/ReleaseKit/ReleasePipeline.swift"]
-            .map { ("Packages/DylKit/\($0)", packageRoot.appending(path: $0)) }
-        for (path, source) in appFiles + kitFiles {
+        for (path, source) in appFiles {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -415,10 +431,10 @@ private let sconeosModules = [
     @Test func libraryValidationOffAndNoXcodeProject() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let entitlements = workspace.url("Sconeos.local.entitlements")
+        let entitlements = workspace.url("Sample.entitlements")
         let text = try String(contentsOf: entitlements, encoding: .utf8)
         try Data(text.replacing("disable-library-validation", with: "allow-jit").utf8).write(to: entitlements)
-        let project = workspace.url("Sconeos.xcodeproj/project.pbxproj")
+        let project = workspace.url("Sample.xcodeproj/project.pbxproj")
         try FileManager.default.createDirectory(at: project.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: project)
 
@@ -429,7 +445,7 @@ private let sconeosModules = [
 
         let report = ReleaseChecks(workspace: workspace).run()
         #expect(errors(report)["library_validation"]?.count == 1)
-        #expect(errorFiles(report)["swiftpm_only"] == ["Sconeos.xcodeproj"])
+        #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
@@ -440,7 +456,7 @@ private let sconeosModules = [
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            "server/vercel.json", "server/vercel.json", "server/vercel.json",
+            "server/vercel.json", "server/vercel.json",
         ])
     }
 
@@ -465,7 +481,7 @@ private let sconeosModules = [
         let workflow = ".github/workflows/release-macos.yml"
         let files = errorFiles(ReleaseChecks(workspace: workspace).run())
         #expect(files["forge_neutral"] == [workflow, workflow])
-        #expect(files["unused_ci_secret"] == [workflow])
+        #expect(files["unused_ci_secret"] == [workflow, workflow])
         #expect(files["release_trigger_drift"] == [workflow])
     }
 
@@ -477,6 +493,21 @@ private let sconeosModules = [
         let workspace = try scratchWorkspace(workflows: workflows)
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"] == ["scripts/lookup.sh"])
+    }
+
+    /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.
+    @Test func releaseKitNeverTalksToTheForge() throws {
+        let sources = packageRoot.appending(path: "Sources")
+        let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
+        var scanned = 0
+        while let relative = enumerator.nextObject() as? String {
+            guard relative.hasSuffix(".swift") else { continue }
+            let text = try String(contentsOf: sources.appending(path: relative), encoding: .utf8)
+            #expect(ReleaseChecks.forgeCalls(in: text).isEmpty, "Sources/\(relative)")
+            scanned += 1
+        }
+        #expect(scanned > 0)
+        #expect(ReleaseChecks.forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
     @Test func droppedReleaseInputDrifts() throws {
@@ -491,3 +522,48 @@ private let sconeosModules = [
     }
 }
 
+/// `release.yml` appends `release-kit version`'s stdout to `$GITHUB_OUTPUT`, which accepts only `key=value` lines.
+/// The scone-os #14 release failed when a `git ls-remote` ref leaked into it.
+@Suite struct VersionOutputTests {
+    private final class Marker {}
+
+    /// Where SwiftPM put `release-kit`, which this test target depends on so it's built.
+    private var releaseKit: URL {
+        Bundle(for: Marker.self).bundleURL.deletingLastPathComponent().appending(path: "release-kit")
+    }
+
+    private func git(_ arguments: [String], in directory: URL) throws {
+        _ = try Shell.capture(["git"] + arguments, cwd: directory)
+    }
+
+    @Test func stdoutIsOnlyTheOutputs() throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-version-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let origin = scratch.appending(path: "origin.git")
+        let app = scratch.appending(path: "app")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: appRoot, to: app)
+        try git(["init", "--quiet", "--bare", origin.path], in: scratch)
+        try git(["init", "--quiet", "-b", "main"], in: app)
+        try git(["add", "."], in: app)
+        let message = "Add a thing (#2)\n\n# Release notes\n\n- A thing.\n\n# Release info\n\n- [ ] Major\n- [x] Minor\n"
+        try git(
+            ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--quiet", "-m", message],
+            in: app)
+        try git(["remote", "add", "origin", origin.path], in: app)
+        try git(["push", "--quiet", "origin", "main"], in: app)
+
+        let process = Process()
+        process.executableURL = releaseKit
+        process.arguments = ["version", "--root", app.path]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        let output = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus == 0)
+        #expect(output == "version=1.1.0\nbuild=4\n")
+    }
+}

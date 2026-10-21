@@ -11,11 +11,9 @@ public struct Checks: Sendable {
 
     public init(workspace: Workspace) { self.workspace = workspace }
 
-    /// Directories `dyl-lint` reads: the app's sources and, in the repo that vendors it, DylKit's own.
+    /// Directories `dyl-lint` reads. DylKit lints its own sources in its own CI.
     public var lintRoots: [String] {
-        ["Sources", "Packages/DylKit/Sources"].filter {
-            FileManager.default.fileExists(atPath: workspace.url($0).path)
-        }
+        ["Sources"].filter { FileManager.default.fileExists(atPath: workspace.url($0).path) }
     }
 
     /// - Blocking: runs SwiftLint and reads every source file.
@@ -68,16 +66,12 @@ public struct Checks: Sendable {
         return .success(path)
     }
 
-    /// `checks`, then build and test the app and DylKit. The site has its own ubuntu job.
+    /// `checks`, then build and test the app. The site has its own ubuntu job.
     ///
     /// - Blocking: runs `swift`.
     public func verify() throws {
         guard run() else { throw ToolError("checks failed") }
         try Shell.run(["swift", "build"], cwd: workspace.root)
         try Shell.run(["swift", "test"], cwd: workspace.root)
-        let dylKit = workspace.url("Packages/DylKit")
-        if FileManager.default.fileExists(atPath: dylKit.appending(path: "Package.swift").path) {
-            try Shell.run(["swift", "test", "--package-path", dylKit.path], cwd: workspace.root)
-        }
     }
 }

@@ -11,7 +11,8 @@ public struct ToolError: Error, CustomStringConvertible, Sendable {
 /// Runs external commands for the host tools. Every call goes through `/usr/bin/env` so `PATH` lookup matches
 /// the shell the scripts used to run in.
 public enum Shell {
-    /// Runs `arguments`, streaming its output to this process's stdout and stderr.
+    /// Runs `arguments`, streaming all of its output to this process's stderr: stdout carries only the tool's own
+    /// results, which CI pipes into files such as `$GITHUB_OUTPUT`.
     ///
     /// - Blocking: waits for the child process.
     @discardableResult
@@ -22,6 +23,7 @@ public enum Shell {
         allowFailure: Bool = false
     ) throws -> Int32 {
         let process = makeProcess(arguments, cwd: cwd, environment: environment)
+        process.standardOutput = FileHandle.standardError
         try process.run()
         process.waitUntilExit()
         if process.terminationStatus != 0, !allowFailure {

@@ -5,16 +5,11 @@ on:
     branches: [main]
     paths:
       - 'Sources/**'
-      - 'Packages/DylKit/Sources/DylCore/**'
-      - 'Packages/DylKit/Sources/DylUpdates/**'
-      - 'Packages/DylKit/Sources/DylUI/**'
-      - 'Packages/DylKit/Package.swift'
       - 'Package.swift'
       - 'Package.resolved'
       - 'DylApp.toml'
-      - 'Sconeos.local.entitlements'
+      - 'Sample.entitlements'
       - 'sparkle-public-key.txt'
-      - 'scripts/generate-icon.swift'
   workflow_dispatch:
     inputs:
       release_type:
@@ -81,7 +76,7 @@ jobs:
     steps:
       - name: Wait for the site to serve the release
         env:
-          SITE: https://sconeos.gattey.com
+          SITE: https://sample.example.com
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           for _ in $(seq 60); do

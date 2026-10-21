@@ -112,14 +112,14 @@ struct DylAppManifestTests {
         }
     }
 
-    @Test func decodesSconeosManifest() throws {
+    @Test func decodesTheSampleAppManifest() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appending(path: "Fixtures/sconeos-app")
+            .appending(path: "Fixtures/SampleApp")
         let manifest = try DylAppManifest.load(root: root)
-        #expect(manifest.app.name == "Sconeos")
-        #expect(manifest.launchPrefix == "SCONEOS")
+        #expect(manifest.app.name == "Sample")
+        #expect(manifest.launchPrefix == "SAMPLE")
         #expect(manifest.ios?.simulator == "iPhone 17 Pro")
     }
 

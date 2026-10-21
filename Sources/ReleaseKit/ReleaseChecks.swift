@@ -273,7 +273,8 @@ public struct ReleaseChecks: Sendable {
             for match in workflow.text.matches(of: /(\w+):\s*\$\{\{\s*secrets\.(\w+)\s*\}\}/) {
                 let variable = String(match.1)
                 referenced.insert(String(match.2))
-                let readElsewhere = readers.contains { $0.text.contains(variable) }
+                let readElsewhere =
+                    Self.releaseKitVariables.contains(variable) || readers.contains { $0.text.contains(variable) }
                 let readInWorkflow = workflow.text.matches(pattern: #"\$\{?\#(variable)\b"#)
                 if !readElsewhere, !readInWorkflow {
                     findings.append(
@@ -293,6 +294,9 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    /// Environment variables release-kit itself reads, so a workflow that passes them to it uses them.
+    static let releaseKitVariables: Set<String> = [ReleasePipeline.edKeyVariable]
+
     private struct Source {
         let path: String
         let text: String
@@ -300,7 +304,7 @@ public struct ReleaseChecks: Sendable {
 
     private func toolSources() -> [Source] {
         var sources: [Source] = []
-        for directory in ["scripts", "ci", "Packages/DylKit/Sources"] {
+        for directory in ["scripts", "ci"] {
             let enumerator = FileManager.default.enumerator(atPath: workspace.url(directory).path)
             while let relative = enumerator?.nextObject() as? String {
                 let path = "\(directory)/\(relative)"
@@ -311,16 +315,21 @@ public struct ReleaseChecks: Sendable {
         return sources
     }
 
-    private func checkForgeNeutral(_ findings: inout [CheckFinding]) {
+    /// What in `text` talks to a forge directly. Only the thin wrapper in `ci/github/` may.
+    public static func forgeCalls(in text: String) -> [String] {
         let forgeAPIs = [
             (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
             (#"api\.github\.com"#, "calls the GitHub API"),
             (#"actions/github\-script"#, "uses the github-script action"),
             (#"action\-gh\-release"#, "uploads a GitHub Release"),
         ]
+        return forgeAPIs.filter { text.matches(pattern: $0.0) }.map(\.1)
+    }
+
+    private func checkForgeNeutral(_ findings: inout [CheckFinding]) {
         let releaseWorkflows = workflows.filter(\.runsRelease).map { Source(path: $0.path, text: $0.text) }
         for source in releaseWorkflows + toolSources() where !source.path.hasPrefix("ci/github/") {
-            for (pattern, problem) in forgeAPIs where source.text.matches(pattern: pattern) {
+            for problem in Self.forgeCalls(in: source.text) {
                 findings.append(
                     error(
                         "forge_neutral", source.path,

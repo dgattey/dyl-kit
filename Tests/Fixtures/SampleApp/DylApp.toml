@@ -1,0 +1,39 @@
+# SampleApp: the smallest DylKit app, used by DylKit's tests. Schema: Sources/DylManifest/DylAppManifest.swift.
+
+[app]
+name = "Sample"
+bundle-id = "com.dylkit.Sample"
+platforms = { macos = "14.0", ios = "17.0" }
+category = "public.app-category.utilities"
+
+[build]
+product = "Sample"
+entitlements = "Sample.entitlements"
+
+[bundle]
+url-schemes = ["sample"]
+url-name = "com.dylkit.sample.callback"
+bonjour-services = ["_sample._tcp"]
+usage = { NSLocalNetworkUsageDescription = "Sample finds other Samples on your local network." }
+
+[ios]
+bundle-id = "com.dylkit.Sample.ios"
+simulator = "iPhone 17 Pro"
+
+[release]
+sparkle-public-key = "sparkle-public-key.txt"
+site-url = "https://sample.invalid"
+artifacts-dir = "server/public"
+check-interval = 3600
+inputs = [
+    "Sources/**",
+    "Package.swift",
+    "Package.resolved",
+    "DylApp.toml",
+    "Sample.entitlements",
+    "sparkle-public-key.txt",
+]
+
+[site]
+tagline = "The smallest DylKit app."
+accent = { light = "#9a5f12", dark = "#e2a547" }

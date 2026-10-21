@@ -6,7 +6,6 @@ on:
       - '**.md'
       - 'docs/**'
       - 'server/**'
-      - 'Packages/DylKit/web/**'
       - '.cursor/**'
 
 concurrency:
@@ -23,10 +22,8 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
       - uses: actions/cache@v4
         with:
-          path: |
-            .build
-            Packages/DylKit/.build
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Packages/DylKit/Package.resolved') }}
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: swiftpm-${{ runner.os }}-
       - uses: jdx/mise-action@v2
         with:

@@ -109,11 +109,14 @@ public struct ResourceCompiler: Sendable {
         catalogs: [String], hasIcon: Bool, accentColor: String?, platform: Platform, minimumOS: String,
         output: String, partialPlist: String
     ) -> [String] {
-        ["xcrun", "actool"] + catalogs + ["--compile", output] + platform.actoolArguments
-            + ["--minimum-deployment-target", minimumOS]
-            + (hasIcon ? ["--app-icon", "AppIcon"] : [])
-            + (accentColor.map { ["--accent-color", $0] } ?? [])
-            + ["--output-partial-info-plist", partialPlist, "--errors", "--warnings"]
-            + ["--output-format", "human-readable-text"]
+        let groups: [[String]] = [
+            ["xcrun", "actool"], catalogs, ["--compile", output], platform.actoolArguments,
+            ["--minimum-deployment-target", minimumOS],
+            hasIcon ? ["--app-icon", "AppIcon"] : [],
+            accentColor.map { ["--accent-color", $0] } ?? [],
+            ["--output-partial-info-plist", partialPlist, "--errors", "--warnings"],
+            ["--output-format", "human-readable-text"],
+        ]
+        return groups.flatMap { $0 }
     }
 }

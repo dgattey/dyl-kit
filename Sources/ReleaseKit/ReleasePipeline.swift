@@ -2,14 +2,25 @@ import DylToolSupport
 import Foundation
 
 /// The release as separate steps, so a CI wrapper can run them one at a time: `version`, `bundle`, `sign`,
-/// `appcast`, `check`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` commits
-/// the artifacts and tags the release with plain git, so any forge (or none) can host it.
+/// `appcast`, `check`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` pushes the
+/// tag with plain git and hands the zip, appcast and `release.json` to the manifest's forge adapter; nothing is
+/// committed.
 public struct ReleasePipeline: Sendable {
     public let workspace: Workspace
+    let forge: any ForgeAdapter
+    private let transport: any HTTPTransport
 
-    public init(workspace: Workspace) { self.workspace = workspace }
+    public init(workspace: Workspace, transport: any HTTPTransport = URLSessionTransport()) {
+        self.workspace = workspace
+        self.transport = transport
+        forge = forgeAdapter(
+            for: workspace.manifest.release.forge, environment: ProcessInfo.processInfo.environment,
+            transport: transport)
+    }
 
     public var stagingDir: URL { workspace.buildDir.appending(path: "release") }
+    var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
+    var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
     private var planFile: URL { stagingDir.appending(path: "plan.json") }
     private var stageDir: URL { stagingDir.appending(path: "stage") }
 
@@ -26,20 +37,30 @@ public struct ReleasePipeline: Sendable {
             self.subject = subject
             self.body = body
         }
+
+        var tag: String { "v\(version)" }
+    }
+
+    /// Every item installs can be offered: the site's feed, which `SUFeedURL` polls, then the forge's latest feed.
+    /// Each is read strictly (see `Appcast.published`).
+    public func publishedFeeds() async throws -> [AppcastItem] {
+        async let site = Appcast.published(workspace.manifest.release.feedURL, transport: transport)
+        async let latest = Appcast.published(forge.latestAppcastURL, transport: transport)
+        return try await site + latest
     }
 
     // MARK: Steps
 
-    /// Plans the release from the merged PR's body (`prBody`, which the forge wrapper fetched; the merge commit
-    /// message when that lookup failed), tags and the live feed, then resets `build/release/` around the new plan.
+    /// Plans the release from the merged PR's body (the merge commit message when there's no PR or the forge can't
+    /// return it), tags and the published feeds, then resets `build/release/` around the new plan. A release tag
+    /// already at HEAD is resumed instead (see `plan`).
     ///
     /// - Blocking: runs git and writes the plan.
-    public func version(explicitBump: AppVersion.Bump?, prBody: String? = nil) async throws -> State {
-        let liveFeed = await Appcast.fetch(workspace.manifest.release.feedURL)
+    public func version(explicitBump: AppVersion.Bump?, pullRequest: Int?) async throws -> State {
+        let published = try await publishedFeeds()
+        let prBody = await pullRequestBody(pullRequest)
+        try Shell.run(["git", "fetch", "--quiet", "--tags", "origin"], cwd: workspace.root, allowFailure: true)
         let head = CommitMessage(try Shell.capture(["git", "log", "-1", "--format=%B"], cwd: workspace.root))
-        try fastForwardToRemote()
-        if prBody == nil { Log.warn("no PR body from the forge; reading `# Release info` from the merge commit") }
-        let subject = head.subject
         let body: String
         let bump: AppVersion.Bump
         if let explicitBump {
@@ -50,45 +71,99 @@ public struct ReleasePipeline: Sendable {
             body = source.body
             bump = source.bump
         }
-        let published = [Appcast.items(at: workspace.appcastURL), liveFeed]
-        let current = Self.currentVersion(appcasts: published, tags: try tags())
         let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? 1
-        let state = State(
-            version: current.bumped(bump).description, build: Self.nextBuild(commitCount: commitCount, appcasts: published),
-            subject: subject, body: body)
+        let plan = Self.plan(
+            headTags: try tags("--points-at", "HEAD"), tags: try tags("--list"), published: published,
+            commitCount: commitCount, bump: bump)
+        let state: State
+        switch plan {
+        case .next(let version, let build, let current):
+            state = State(version: version.description, build: build, subject: head.subject, body: body)
+            Log.step("releasing \(version) (build \(build), \(bump.rawValue) bump from \(current))")
+        case .resumed(let version, let build):
+            state = State(version: version.description, build: build, subject: head.subject, body: body)
+            Log.step("HEAD is already tagged \(state.tag); resuming that release (build \(build))")
+        }
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: stagingDir)
         try fileManager.createDirectory(at: stagingDir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(state).write(to: planFile)
-        Log.step("releasing \(state.version) (build \(state.build), \(bump.rawValue) bump from \(current))")
         return state
+    }
+
+    /// What `version` decides.
+    enum Plan: Equatable {
+        /// The current version bumped, at the next build.
+        case next(AppVersion, build: Int, bumpedFrom: AppVersion)
+        /// The version a release tag at HEAD names. Only `publish` tags, so an earlier run of this release got that far;
+        /// GitHub re-runs whole jobs, and bumping again would publish the same commit twice.
+        case resumed(AppVersion, build: Int)
+    }
+
+    /// A resumed release keeps the build it published with, or takes the next build when it never went out.
+    static func plan(
+        headTags: [String], tags: [String], published: [AppcastItem], commitCount: Int, bump: AppVersion.Bump
+    ) -> Plan {
+        let build = nextBuild(commitCount: commitCount, published: published)
+        let tagged = headTags.filter { $0.matches(pattern: #"^v\d+\.\d+\.\d+$"#) }.compactMap { AppVersion($0) }
+        if let version = tagged.max() {
+            let shipped = published.filter { AppVersion($0.displayVersion) == version }.newest
+            return .resumed(version, build: shipped?.build ?? build)
+        }
+        let current = currentVersion(published: published, tags: tags)
+        return .next(current.bumped(bump), build: build, bumpedFrom: current)
+    }
+
+    private func pullRequestBody(_ number: Int?) async -> String? {
+        let fallback = "reading `# Release info` from the merge commit"
+        guard let number else {
+            Log.warn("no --pr; \(fallback)")
+            return nil
+        }
+        do {
+            let body = try await forge.pullRequestBody(number: number)
+            return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : body
+        } catch {
+            Log.warn("couldn't read PR #\(number) from the forge (\(error)); \(fallback)")
+            return nil
+        }
     }
 
     /// The version the last release shipped, which dev builds carry until the next one.
     ///
-    /// - Blocking: runs git and reads the committed appcast.
+    /// - Blocking: runs git.
     public func shippedVersion() throws -> AppVersion {
-        Self.currentVersion(appcasts: [Appcast.items(at: workspace.appcastURL)], tags: try tags())
+        Self.currentVersion(published: [], tags: try tags("--list"))
     }
 
     /// The highest of every published version and tag, or 1.0.0 for a first release.
-    static func currentVersion(appcasts: [[AppcastItem]], tags: [String]) -> AppVersion {
-        let published = appcasts.flatMap { $0 }.compactMap { AppVersion($0.displayVersion) }
+    static func currentVersion(published: [AppcastItem], tags: [String]) -> AppVersion {
+        let shipped = published.compactMap { AppVersion($0.displayVersion) }
         let tagged = tags.filter { $0.matches(pattern: #"^v?\d+\.\d+\.\d+$"#) }.compactMap { AppVersion($0) }
-        return (published + tagged).max() ?? AppVersion(major: 1, minor: 0, patch: 0)
+        return (shipped + tagged).max() ?? AppVersion(major: 1, minor: 0, patch: 0)
     }
 
     /// The commit count, raised above every build number already published so Sparkle always sees an upgrade.
-    static func nextBuild(commitCount: Int, appcasts: [[AppcastItem]]) -> Int {
-        let published = appcasts.flatMap { $0 }.compactMap { $0.build.flatMap { Int($0) } }.max() ?? 0
-        return max(commitCount, published + 1)
+    static func nextBuild(commitCount: Int, published: [AppcastItem]) -> Int {
+        max(commitCount, (published.newest?.build ?? 0) + 1)
+    }
+
+    /// Publishing must never offer installs an older build than they can already get. Equal is a re-run of a publish
+    /// that already went out.
+    static func refuseRegression(staged: [AppcastItem], published: [AppcastItem]) throws {
+        guard let stagedBuild = staged.newest?.build else { throw ToolError("the staged appcast has no items") }
+        if let publishedBuild = published.newest?.build, stagedBuild < publishedBuild {
+            throw ToolError(
+                "staged build \(stagedBuild) is below the published build \(publishedBuild); a newer release shipped "
+                    + "after `release-kit version` planned this one")
+        }
     }
 
     /// - Blocking: runs git.
-    private func tags() throws -> [String] {
-        try Shell.capture(["git", "tag", "--list"], cwd: workspace.root, allowFailure: true)
+    private func tags(_ selection: String...) throws -> [String] {
+        try Shell.capture(["git", "tag"] + selection, cwd: workspace.root, allowFailure: true)
             .split(separator: "\n").map(String.init)
     }
 
@@ -135,11 +210,11 @@ public struct ReleasePipeline: Sendable {
         return archive
     }
 
-    /// Writes the notes, runs Sparkle's `generate_appcast`, fails closed unless the new signature verifies against
-    /// the key baked into the app, runs the release checks against the staged feed, then installs the archive and
-    /// feed into the artifacts directory.
+    /// Writes the notes, runs Sparkle's `generate_appcast` with enclosures on the forge, fails closed unless the new
+    /// signature verifies against the key baked into the app, runs the release checks against the published feeds,
+    /// then writes `release.json` beside the appcast.
     ///
-    /// - Blocking: runs Sparkle's tools and writes artifacts.
+    /// - Blocking: runs Sparkle's tools and writes into `build/release/`.
     @discardableResult
     public func appcast(edKeyFile: URL?) async throws -> URL {
         let state = try state()
@@ -147,70 +222,55 @@ public struct ReleasePipeline: Sendable {
         guard FileManager.default.fileExists(atPath: archive.path) else {
             throw ToolError("no archive at \(archive.path); run `release-kit sign` first")
         }
-        let liveFeed = await Appcast.fetch(workspace.manifest.release.feedURL)
-        let notes = try releaseNotes(state: state, history: [liveFeed])
+        let published = try await publishedFeeds()
+        let notes = try releaseNotes(state: state, history: published)
         try Data((notes + "\n").utf8).write(
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
-        let appcast = try generateAppcast(edKeyFile: edKeyFile)
+        let appcast = try generateAppcast(edKeyFile: edKeyFile, downloadPrefix: forge.downloadPrefix(tag: state.tag))
         try verifySignature(appcast: appcast, archive: archive, app: stagedApp)
-        try install(archive: archive, appcast: appcast, liveFeed: liveFeed)
+        let report = ReleaseChecks(workspace: workspace).run(staged: stagedRelease(state, published: published))
+        report.print()
+        guard report.passed else { throw ToolError("release checks failed") }
+        guard let item = try Appcast.items(at: appcast).newest else { throw ToolError("\(appcast.path) has no items") }
+        try PublishedRelease(item).write(to: stagedReleaseJSON)
+        Log.step("wrote \(stagedReleaseJSON.path)")
         return appcast
     }
 
-    /// Release checks against the staged feed, then copies the archive and feed into the artifacts directory.
-    private func install(archive: URL, appcast: URL, liveFeed: [AppcastItem]) throws {
-        let report = ReleaseChecks(workspace: workspace)
-            .run(stagedAppcast: appcast, stagedArchive: archive, liveFeed: liveFeed)
-        report.print()
-        guard report.passed else { throw ToolError("release checks failed") }
-
-        let fileManager = FileManager.default
-        let artifacts = workspace.artifactsDir
-        try fileManager.createDirectory(at: artifacts, withIntermediateDirectories: true)
-        let prefix = "\(workspace.manifest.app.name)-"
-        for old in try fileManager.contentsOfDirectory(atPath: artifacts.path)
-        where old.hasPrefix(prefix) && old.hasSuffix(".zip") {
-            try fileManager.removeItem(at: artifacts.appending(path: old))
-        }
-        try fileManager.copyItem(at: archive, to: artifacts.appending(path: archive.lastPathComponent))
-        let destination = workspace.appcastURL
-        try? fileManager.removeItem(at: destination)
-        try fileManager.copyItem(at: appcast, to: destination)
-        Log.step("wrote \(workspace.manifest.release.artifactsDir)/\(archive.lastPathComponent) and appcast.xml")
+    func stagedRelease(_ state: State, published: [AppcastItem]) -> ReleaseChecks.StagedRelease {
+        ReleaseChecks.StagedRelease(
+            appcast: stagedAppcast, archive: archiveURL(state), downloadPrefix: forge.downloadPrefix(tag: state.tag),
+            published: published)
     }
 
-    /// Commits the artifacts, tags `v<version>`, and pushes both atomically to the current branch.
+    /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and publishes the
+    /// staged zip, appcast and `release.json` through the forge. Re-running after a partial publish finishes it.
     ///
     /// - Blocking: runs git.
-    public func publish(push: Bool) throws {
-        let version = try state().version
-        let root = workspace.root
-        try Shell.run(["git", "add", workspace.manifest.release.artifactsDir], cwd: root)
-        let staged = try Shell.run(["git", "diff", "--staged", "--quiet"], cwd: root, allowFailure: true)
-        guard staged != 0 else {
-            Log.step("no artifact changes to publish")
-            return
+    public func publish() async throws {
+        let state = try state()
+        let assets = ReleaseAssets(zip: archiveURL(state), appcast: stagedAppcast, releaseJSON: stagedReleaseJSON)
+        for file in assets.all where !FileManager.default.fileExists(atPath: file.path) {
+            throw ToolError("no \(file.path); run `release-kit appcast` first")
         }
-        try Shell.run(["git", "commit", "-m", "Release v\(version)"], cwd: root)
-        try Shell.run(["git", "tag", "v\(version)"], cwd: root)
-        guard push else { return }
-        let branch = try Shell.capture(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
-        try Shell.run(["git", "push", "--atomic", "origin", "HEAD:\(branch)", "refs/tags/v\(version)"], cwd: root)
+        try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
+        let root = workspace.root
+        let head = try Shell.capture(["git", "rev-parse", "HEAD"], cwd: root)
+        let tagged = try Shell.capture(
+            ["git", "rev-parse", "--quiet", "--verify", "refs/tags/\(state.tag)^{commit}"], cwd: root,
+            allowFailure: true)
+        if tagged.isEmpty {
+            try Shell.run(["git", "tag", state.tag], cwd: root)
+        } else if tagged != head {
+            throw ToolError("\(state.tag) already tags \(tagged), not HEAD (\(head))")
+        }
+        try Shell.run(["git", "push", "origin", "refs/tags/\(state.tag)"], cwd: root)
+        try await forge.publish(
+            tag: state.tag, title: "\(workspace.manifest.app.name) \(state.version)",
+            notes: ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject), assets: assets)
     }
 
     // MARK: Helpers
-
-    /// A queued release job checks out its own merge commit, behind the release an earlier job pushed, so `publish`
-    /// would push a non-fast-forward. Catch up before planning, so tags and the committed appcast are current too.
-    /// Branches that aren't on `origin` are left alone.
-    private func fastForwardToRemote() throws {
-        let root = workspace.root
-        let branch = try Shell.capture(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd: root)
-        guard branch != "HEAD" else { return }
-        let lookup = ["git", "ls-remote", "--quiet", "--heads", "origin", branch]
-        guard try !Shell.capture(lookup, cwd: root, allowFailure: true).isEmpty else { return }
-        try Shell.run(["git", "pull", "--ff-only", "--quiet", "origin", branch], cwd: root)
-    }
 
     var stagedApp: URL { stageDir.appending(path: "\(workspace.manifest.app.name).app") }
 
@@ -218,19 +278,18 @@ public struct ReleasePipeline: Sendable {
         stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).zip")
     }
 
-    /// Cumulative HTML notes for the planned version, carrying forward the committed and live feeds.
+    /// Cumulative HTML notes for the planned version, carrying forward the published feeds.
     ///
-    /// - Blocking: reads the committed appcast and its git history, and lists `Sources/`.
-    public func releaseNotes(state: State, history: [[AppcastItem]]) throws -> String {
+    /// - Blocking: reads the committed appcast's git history and lists `Sources/`.
+    public func releaseNotes(state: State, history: [AppcastItem]) throws -> String {
         let markdown = ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject)
         let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
         let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + modules.sorted())
-        let local = Appcast.items(at: workspace.appcastURL)
         return CumulativeNotes.html(
             version: state.version,
             build: String(state.build),
             newNotes: formatter.html(markdown, version: state.version),
-            history: [local] + history,
+            history: [history],
             knownBuilds: try committedBuilds()
         )
     }
@@ -246,14 +305,16 @@ public struct ReleasePipeline: Sendable {
         var builds: [String: String] = [:]
         for revision in revisions.split(separator: "\n") {
             let xml = try Shell.capture(["git", "show", "\(revision):\(path)"], cwd: workspace.root, allowFailure: true)
-            for item in Appcast.items(in: Data(xml.utf8)) where builds[item.displayVersion] == nil {
-                builds[item.displayVersion] = item.build
+            // History can't be fixed, so a revision that doesn't parse (or the one that deleted the file) adds nothing.
+            let items = (try? Appcast.items(in: Data(xml.utf8), source: "\(revision):\(path)")) ?? []
+            for item in items where builds[item.displayVersion] == nil {
+                builds[item.displayVersion] = String(item.build)
             }
         }
         return builds
     }
 
-    private func generateAppcast(edKeyFile: URL?) throws -> URL {
+    private func generateAppcast(edKeyFile: URL?, downloadPrefix: String) throws -> URL {
         let tool = workspace.sparkleTool("generate_appcast")
         guard FileManager.default.isExecutableFile(atPath: tool.path) else {
             throw ToolError("\(tool.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
@@ -266,23 +327,21 @@ public struct ReleasePipeline: Sendable {
             try FileManager.default.copyItem(at: stagingDir.appending(path: name), to: feed.appending(path: name))
         }
         let site = workspace.manifest.release.siteUrl
-        let prefix = site.hasSuffix("/") ? site : site + "/"
         // The site's notes section lists every version the appcast carries, so it's the dialog's "full notes" link.
         let key = edKeyFile.map { ["--ed-key-file", $0.path] } ?? []
         try Shell.run(
             [
-                tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", prefix,
-                "--link", site, "--full-release-notes-url", prefix + "#release-notes",
+                tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", downloadPrefix,
+                "--link", site, "--full-release-notes-url", site + "/#release-notes",
             ] + key + [feed.path])
-        let appcast = stagingDir.appending(path: "appcast.xml")
-        try? FileManager.default.removeItem(at: appcast)
-        try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: appcast)
+        try? FileManager.default.removeItem(at: stagedAppcast)
+        try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: stagedAppcast)
         try? FileManager.default.removeItem(at: feed)
-        return appcast
+        return stagedAppcast
     }
 
     private func verifySignature(appcast: URL, archive: URL, app: URL) throws {
-        guard let item = Appcast.items(at: appcast).first, let signature = item.edSignature, !signature.isEmpty else {
+        guard let item = try Appcast.items(at: appcast).first, let signature = item.edSignature, !signature.isEmpty else {
             throw ToolError("generate_appcast wrote no sparkle:edSignature to \(appcast.path)")
         }
         guard let publicKey = InfoPlist.read(app.appending(path: "Contents/Info.plist"))?["SUPublicEDKey"]?.string

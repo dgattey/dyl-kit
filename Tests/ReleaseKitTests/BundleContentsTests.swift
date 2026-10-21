@@ -106,12 +106,11 @@ import CryptoKit
     private var publicKey: String { key.publicKey.rawRepresentation.base64EncodedString() }
     private let feedURL = "https://sample.example.com/appcast.xml"
 
-    private func item(_ version: String, build: String, archive: Data, signedBy signer: Curve25519.Signing.PrivateKey? = nil)
+    private func item(_ version: String, build: Int, archive: Data, signedBy signer: Curve25519.Signing.PrivateKey? = nil)
         throws -> AppcastItem
     {
-        var item = AppcastItem()
+        var item = AppcastItem(build: build)
         item.shortVersion = version
-        item.build = build
         item.enclosureURL = "https://sample.example.com/Sample-\(version).zip"
         item.enclosureLength = archive.count
         item.edSignature = try (signer ?? key).signature(for: archive).base64EncodedString()
@@ -136,10 +135,10 @@ import CryptoKit
     {
         let liveArchive = Data("live".utf8)
         let stagedArchive = Data("staged".utf8)
-        let liveItem = try item("1.0.0", build: "10", archive: liveArchive)
-        var live = snapshot(version: "1.0.0", build: "10", feed: [liveItem], archive: liveArchive)
+        var live = snapshot(
+            version: "1.0.0", build: "10", feed: [try item("1.0.0", build: 10, archive: liveArchive)], archive: liveArchive)
         var staged = snapshot(
-            version: "1.1.0", build: "11", feed: [try item("1.1.0", build: "11", archive: stagedArchive), liveItem],
+            version: "1.1.0", build: "11", feed: [try item("1.1.0", build: 11, archive: stagedArchive)],
             archive: stagedArchive)
         try mutate(&live, &staged)
         return LiveComparison(
@@ -163,17 +162,11 @@ import CryptoKit
     @Test func aRotatedKeyOrOldBuildFails() throws {
         let rotated = try comparison { _, staged in
             let other = Curve25519.Signing.PrivateKey()
-            staged.feed[0] = try item("1.1.0", build: "11", archive: staged.archive, signedBy: other)
+            staged.feed[0] = try item("1.1.0", build: 11, archive: staged.archive, signedBy: other)
         }
         #expect(rules(rotated) == ["live_ed_signature"])
         let stale = try comparison { _, staged in staged.info["CFBundleVersion"] = .string("10") }
         #expect(Set(rules(stale)) == ["live_build_increases", "staged_appcast_matches_app"])
-    }
-
-    /// A staged feed generated from a stale checkout drops or rewrites the live item.
-    @Test func staleStagedFeedFails() throws {
-        let stale = try comparison { _, staged in staged.feed.removeLast() }
-        #expect(rules(stale) == ["staged_appcast_carries_live"])
     }
 
     @Test func signingChangesFailAndARaisedMinimumOSWarns() throws {
@@ -238,6 +231,10 @@ import CryptoKit
         site-url = "https://saga.gattey.com"
         artifacts-dir = "server/public"
         check-interval = 3600
+
+        [release.forge]
+        kind = "github"
+        repo = "dgattey/saga"
 
         [site]
         tagline = "Your personal reading log."

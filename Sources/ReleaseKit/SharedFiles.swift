@@ -11,7 +11,7 @@ public enum SharedFiles {
 
     static let header = "Written by `devkit sync` from DylKit. Change DylKit's copy, not this one."
 
-    public static let all: [File] = [run, prBody, prCheck]
+    public static let all: [File] = [run, prCheck, release]
 
     static let run = File(
         path: "run", contents: #"""
@@ -34,37 +34,6 @@ public enum SharedFiles {
             swift build --package-path "$root" -c release --product "$tool" -q >&2
             export DYLKIT_ROOT="$root"
             exec "$root/.build/release/$tool" "$@"
-
-            """#, executable: true)
-
-    static let prBody = File(
-        path: "ci/github/pr-body.sh", contents: #"""
-            #!/usr/bin/env bash
-            # \#(header)
-            # Usage: ci/github/pr-body.sh <merge-commit-sha> <out-file>
-            # Writes the body of the GitHub PR that produced the commit to <out-file>, for `release-kit version
-            # --pr-body-file`. When the lookup fails it leaves the file empty and release-kit falls back to the merge
-            # commit message. This is the only GitHub-specific release step.
-            set -uo pipefail
-
-            sha="$1"
-            out="$2"
-            : >"$out"
-
-            response="$(curl -fsSL --max-time 20 \
-              -H "Authorization: Bearer ${GITHUB_TOKEN:?}" \
-              -H "Accept: application/vnd.github+json" \
-              "${GITHUB_API_URL:-https://api.github.com}/repos/${GITHUB_REPOSITORY:?}/commits/$sha/pulls")" || {
-              echo "::warning::couldn't look up the PR for $sha; release-kit will read the merge commit message"
-              exit 0
-            }
-
-            jq -r --arg sha "$sha" '(map(select(.merge_commit_sha == $sha)) + .)[0].body // empty' <<<"$response" >"$out" || : >"$out"
-            if [[ -s "$out" ]]; then
-              echo "read the PR body for $sha"
-            else
-              echo "::warning::no PR body for $sha; release-kit will read the merge commit message"
-            fi
 
             """#, executable: true)
 
@@ -111,6 +80,112 @@ public enum SharedFiles {
                         exit 1
                       fi
                       echo "Release info OK"
+
+            """#, executable: false)
+
+    /// Every app releases the same way: a merged PR plans its version from tags and its Release info box, and
+    /// release-kit hands the assets to the forge, so nothing is committed to main. Releases queue without cancelling.
+    static let release = File(
+        path: ".github/workflows/release.yml", contents: #"""
+            # \#(header)
+            name: release
+
+            on:
+              pull_request:
+                types: [closed]
+                branches: [main]
+                paths-ignore:
+                  - '**.md'
+                  - 'docs/**'
+                  - 'server/**'
+                  - 'Tests/**'
+                  - '.github/**'
+                  - '.cursor/**'
+              workflow_dispatch:
+                inputs:
+                  release_type:
+                    description: 'Bump type; auto reads the Release info checkbox in the merge commit'
+                    required: false
+                    default: auto
+                    type: choice
+                    options: [auto, patch, minor, major]
+
+            permissions:
+              contents: write
+              pull-requests: read
+
+            jobs:
+              release:
+                if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+                # Job-level, so a PR closed without merging never queues behind a release.
+                concurrency:
+                  group: release-${{ github.repository }}
+                  cancel-in-progress: false
+                runs-on: macos-26
+                timeout-minutes: 30
+                outputs:
+                  version: ${{ steps.version.outputs.version }}
+                  site: ${{ steps.version.outputs.site }}
+                steps:
+                  - uses: actions/checkout@v4
+                    with:
+                      ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+                      # Every tag plans the version, and build numbers count commits.
+                      fetch-depth: 0
+                  - name: Select Xcode
+                    run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+                  - uses: actions/cache@v4
+                    with:
+                      path: .build
+                      key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+                      restore-keys: swiftpm-${{ runner.os }}-
+                  - name: Plan the version
+                    id: version
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                      RELEASE_TYPE: ${{ inputs.release_type || 'auto' }}
+                      PR_NUMBER: ${{ github.event.pull_request.number }}
+                    run: |
+                      set -o pipefail
+                      ./run release version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
+                  - name: Bundle
+                    run: ./run release bundle
+                  - name: Sign
+                    run: ./run release sign
+                  - name: Appcast
+                    env:
+                      SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
+                    run: ./run release appcast
+                  - name: Check
+                    run: ./run release check
+                  - name: Publish
+                    env:
+                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    run: ./run release publish
+
+              # Waiting for the deploy is plain polling, so it runs on ubuntu instead of billing macOS minutes.
+              live-site:
+                needs: release
+                runs-on: ubuntu-latest
+                timeout-minutes: 17
+                permissions: {}
+                steps:
+                  - name: Wait for the site to serve the release
+                    env:
+                      SITE: ${{ needs.release.outputs.site }}
+                      VERSION: ${{ needs.release.outputs.version }}
+                    run: |
+                      for _ in $(seq 60); do
+                        feed="$(curl -fsSL "$SITE/appcast.xml" || true)"
+                        page="$(curl -fsSL "$SITE" || true)"
+                        if grep -qF "<sparkle:shortVersionString>$VERSION<" <<<"$feed" && grep -qF "Version $VERSION" <<<"$page"; then
+                          echo "$SITE serves $VERSION"
+                          exit 0
+                        fi
+                        sleep 15
+                      done
+                      echo "::error::$SITE didn't serve $VERSION within 15 minutes"
+                      exit 1
 
             """#, executable: false)
 

@@ -23,8 +23,7 @@ public struct ReleaseSnapshot: Sendable {
         self.archive = archive
     }
 
-    /// The item with the highest `sparkle:version`.
-    var newest: AppcastItem? { feed.max { (Int($0.build ?? "") ?? 0) < (Int($1.build ?? "") ?? 0) } }
+    var newest: AppcastItem? { feed.newest }
 
     func string(_ key: String) -> String? { info[key]?.string }
 }
@@ -54,7 +53,6 @@ public struct LiveComparison: Sendable {
         "live_bundle_id", "live_executable", "live_public_key", "live_feed_url", "live_min_os", "live_build_increases",
         "staged_appcast_matches_app", "live_codesign", "live_designated_requirement", "live_entitlements",
         "live_signing_scheme", "live_ed_signature", "live_enclosure_length", "live_feed_valid",
-        "staged_appcast_carries_live",
     ]
 
     public func findings() -> [CheckFinding] {
@@ -90,20 +88,20 @@ public struct LiveComparison: Sendable {
         }
         let liveNewest = live.newest
         let stagedBuild = staged.string("CFBundleVersion").flatMap { Int($0) }
-        let liveBuild = liveNewest?.build.flatMap { Int($0) }
-        if !(stagedBuild.flatMap { new in liveBuild.map { new > $0 } } ?? false) {
+        if !(stagedBuild.flatMap { new in liveNewest.map { new > $0.build } } ?? false) {
             fail(
                 "live_build_increases",
                 "staged CFBundleVersion \(show(staged.string("CFBundleVersion"))) must be above the live feed's "
-                    + "sparkle:version \(show(liveNewest?.build))")
+                    + "sparkle:version \(show(liveNewest.map { String($0.build) }))")
         }
         let stagedItem = staged.newest
-        if stagedItem?.build != staged.string("CFBundleVersion")
+        let stagedItemBuild = stagedItem.map { String($0.build) }
+        if stagedItemBuild != staged.string("CFBundleVersion")
             || stagedItem?.shortVersion != staged.string("CFBundleShortVersionString")
         {
             fail(
                 "staged_appcast_matches_app",
-                "staged appcast is \(show(stagedItem?.shortVersion)) (\(show(stagedItem?.build))), the app is "
+                "staged appcast is \(show(stagedItem?.shortVersion)) (\(show(stagedItemBuild))), the app is "
                     + "\(show(staged.string("CFBundleShortVersionString"))) (\(show(staged.string("CFBundleVersion"))))")
         }
         if let stagedCodesignFailure { fail("live_codesign", stagedCodesignFailure) }
@@ -134,17 +132,6 @@ public struct LiveComparison: Sendable {
                 "live_enclosure_length",
                 "staged enclosure length \(stagedItem?.enclosureLength.map(String.init) ?? "missing") != archive size "
                     + "\(staged.archive.count)")
-        }
-        if let liveNewest,
-            !staged.feed.contains(where: {
-                $0.build == liveNewest.build && $0.edSignature == liveNewest.edSignature
-                    && $0.enclosureURL == liveNewest.enclosureURL
-            })
-        {
-            fail(
-                "staged_appcast_carries_live",
-                "the staged appcast doesn't carry the live item \(show(liveNewest.shortVersion)) "
-                    + "(\(show(liveNewest.build))) unchanged; it was built from a stale feed")
         }
         return findings
     }
@@ -198,9 +185,8 @@ public struct LiveComparison: Sendable {
     }
 }
 
-/// Collects both snapshots on macOS: the staged release from `build/release/`, and the live one by fetching the
-/// manifest's feed (redirects included), downloading its newest enclosure and unzipping it with `ditto`. Plain
-/// HTTPS only, so it works the same on any forge.
+/// Collects both snapshots on macOS: the staged release from `build/release/`, and the live one from the newest item
+/// across the site's feed and the forge's latest feed, by downloading its enclosure and unzipping it with `ditto`.
 public struct LiveChecks: Sendable {
     public let workspace: Workspace
 
@@ -213,17 +199,17 @@ public struct LiveChecks: Sendable {
         guard let state = try? pipeline.state() else { throw missing }
         let stagedApp = pipeline.stagedApp
         let stagedArchive = pipeline.archiveURL(state)
-        let stagedAppcast = pipeline.stagingDir.appending(path: "appcast.xml")
+        let stagedAppcast = pipeline.stagedAppcast
         for url in [stagedApp, stagedArchive, stagedAppcast] where !FileManager.default.fileExists(atPath: url.path) {
             throw missing
         }
 
         let feedURL = workspace.manifest.release.feedURL
-        let liveFeedData = try await Appcast.download(feedURL)
-        let liveFeed = Appcast.items(in: liveFeedData)
-        guard let newest = liveFeed.max(by: { (Int($0.build ?? "") ?? 0) < (Int($1.build ?? "") ?? 0) }),
-            let enclosure = newest.enclosureURL
-        else { throw ToolError("the live feed at \(feedURL) has no item with an enclosure") }
+        let published = try await pipeline.publishedFeeds()
+        guard let enclosure = published.newest?.enclosureURL else {
+            throw ToolError(
+                "neither \(feedURL) nor \(pipeline.forge.latestAppcastURL) has an item with an enclosure to compare with")
+        }
         let liveArchive = try await Appcast.download(enclosure)
 
         let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-live-\(UUID().uuidString)")
@@ -241,15 +227,15 @@ public struct LiveChecks: Sendable {
         let codesignFailure = try Shell.run(verify, quiet: true, allowFailure: true) == 0
             ? nil : try Shell.capture(verify, includeStderr: true, allowFailure: true)
         let comparison = LiveComparison(
-            live: try snapshot(app: liveApp, feed: liveFeed, archive: liveArchive),
+            live: try snapshot(app: liveApp, feed: published, archive: liveArchive),
             staged: try snapshot(
-                app: stagedApp, feed: Appcast.items(at: stagedAppcast), archive: try Data(contentsOf: stagedArchive)),
+                app: stagedApp, feed: try Appcast.items(at: stagedAppcast),
+                archive: try Data(contentsOf: stagedArchive)),
             manifestFeedURL: feedURL,
             stagedCodesignFailure: codesignFailure.map { $0.isEmpty ? "codesign --verify failed" : $0 },
             redactedKeys: Set(workspace.manifest.localValues?.keys.keys.map { $0 } ?? []))
 
-        var report = ReleaseChecks(workspace: workspace)
-            .run(stagedAppcast: stagedAppcast, stagedArchive: stagedArchive, liveFeed: liveFeed)
+        var report = ReleaseChecks(workspace: workspace).run(staged: pipeline.stagedRelease(state, published: published))
         report.checked += LiveComparison.rules
         report.findings += comparison.findings()
         return (report, comparison.infoDiff())

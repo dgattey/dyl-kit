@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
 # Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: version, bundle, sign,
-# appcast, check. Then it asserts what Sparkle relies on: the pinned designated requirement, a strict verify of the
-# whole bundle, and nested XPC services that keep Sparkle's own entitlements.
+# appcast, check. Then it asserts what Sparkle relies on: an enclosure on the forge's download for the tag (in the
+# appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
+# services that keep Sparkle's own entitlements.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +16,6 @@ release_kit="$kit/.build/debug/release-kit"
 rm -rf "$work"
 cp -R "$kit/Tests/Fixtures/SampleApp" "$work"
 cd "$work"
-rm -f server/public/appcast.xml server/public/*.zip
 sed -i '' "s|.package(path: \"../../..\")|.package(path: \"$kit\")|" Package.swift
 
 # Sparkle's private key file is the base64 Ed25519 seed; SUPublicEDKey is the base64 public key.
@@ -28,11 +28,18 @@ git init -q
 git add -A
 git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qm "Sample"
 
-"$release_kit" version --type minor
+version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
 "$release_kit" bundle
 "$release_kit" sign
 "$release_kit" appcast --ed-key-file ed.key
 "$release_kit" check
+
+repo="$(sed -n 's/^repo = "\(.*\)"/\1/p' DylApp.toml)"
+download="https://github.com/$repo/releases/download/v$version/Sample-$version.zip"
+grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appcast's enclosure isn't $download"
+[[ -f build/release/release.json ]] || fail "appcast wrote no build/release/release.json"
+[[ "$(plutil -extract download raw -o - build/release/release.json)" == "$download" ]] ||
+  fail "release.json's download isn't $download"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

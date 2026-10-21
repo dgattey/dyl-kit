@@ -44,20 +44,19 @@ private func readBody(_ path: String?) throws -> String? {
 extension ReleaseKitCommand {
     struct Version: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Plan the next version and build from the merged PR body, tags and the live feed.")
+            abstract: "Plan the next version and build from the merged PR body, tags and the published feeds.")
 
         @OptionGroup var options: RootOption
         @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
-        @Option(help: "The merged PR's body, fetched by the forge wrapper. Empty or missing means the lookup failed.")
-        var prBodyFile: String?
+        @Option(help: "The merged PR, whose body release-kit reads from the forge. Without it, the merge commit's.")
+        var pr: Int?
 
         func run() async throws {
-            let pipeline = ReleasePipeline(workspace: try options.workspace())
-            let prBody = prBodyFile.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
-                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-            let state = try await pipeline.version(explicitBump: type.bump, prBody: prBody)
+            let workspace = try options.workspace()
+            let state = try await ReleasePipeline(workspace: workspace).version(explicitBump: type.bump, pullRequest: pr)
             print("version=\(state.version)")
             print("build=\(state.build)")
+            print("site=\(workspace.manifest.release.siteUrl)")
         }
     }
 
@@ -84,7 +83,7 @@ extension ReleaseKitCommand {
 
     struct Appcast: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Write the notes and appcast, verify the EdDSA signature, and install the artifacts.")
+            abstract: "Write the notes, appcast and release.json, verify the EdDSA signature, and check the release.")
 
         @OptionGroup var options: RootOption
         @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, a local key file, or the Keychain.")
@@ -120,15 +119,14 @@ extension ReleaseKitCommand {
         }
     }
 
-    struct Publish: ParsableCommand {
+    struct Publish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Commit the artifacts, tag v<version>, and push both with plain git.")
+            abstract: "Tag v<version>, push the tag, and publish the zip, appcast and release.json to the forge.")
 
         @OptionGroup var options: RootOption
-        @Flag(help: "Commit and tag without pushing.") var noPush = false
 
-        func run() throws {
-            try ReleasePipeline(workspace: try options.workspace()).publish(push: !noPush)
+        func run() async throws {
+            try await ReleasePipeline(workspace: try options.workspace()).publish()
         }
     }
 
@@ -148,8 +146,7 @@ extension ReleaseKitCommand {
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
-            let live = await ReleaseKit.Appcast.fetch(workspace.manifest.release.feedURL)
-            print(try pipeline.releaseNotes(state: state, history: [live]))
+            print(try pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
         }
     }
 }

@@ -33,10 +33,8 @@ public enum CumulativeNotes {
         let items = history.joined()
         let parsed = items.map { sections($0) }
         var builds: [String: String] = [:]
-        for item in items where !normalize(item.displayVersion).isEmpty {
-            if let itemBuild = item.build, !itemBuild.isEmpty, builds[normalize(item.displayVersion)] == nil {
-                builds[normalize(item.displayVersion)] = itemBuild
-            }
+        for item in items where !normalize(item.displayVersion).isEmpty && builds[normalize(item.displayVersion)] == nil {
+            builds[normalize(item.displayVersion)] = String(item.build)
         }
         for entry in parsed.joined() where builds[entry.version] == nil {
             builds[entry.version] = entry.build

@@ -120,7 +120,7 @@ extension DevKitCommand {
 
     struct Sync: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Write ./run, ci/github/pr-body.sh and the pr-check workflow as this DylKit version ships them.")
+            abstract: "Write ./run and the pr-check and release workflows as this DylKit version ships them.")
 
         func run() throws {
             let changed = try SharedFiles.sync(root: try Workspace.locate().root)

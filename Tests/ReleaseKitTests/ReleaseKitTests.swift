@@ -19,6 +19,11 @@ private func fixture(_ path: String) throws -> String {
     try String(contentsOf: fixtures.appending(path: path), encoding: .utf8)
 }
 
+/// `items` in an RSS channel that declares Sparkle's namespace.
+func sparkleFeed(_ items: String) -> String {
+    #"<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>\#(items)</channel></rss>"#
+}
+
 private let sconeosModules = [
     "SconeDomain", "SconeStore", "SconeUI", "SconeosApp", "SonosProtocolBoundary", "SpotifyBridge",
 ]
@@ -198,28 +203,31 @@ private let sconeosModules = [
 }
 
 @Suite struct CumulativeNotesTests {
-    private func feed(_ items: [(version: String, description: String)]) -> [AppcastItem] {
+    private func feed(_ items: [(version: String, build: Int, description: String)]) throws -> [AppcastItem] {
         let body = items.map { item in
-            "<item><title>\(item.version)</title><description><![CDATA[\(item.description)]]></description></item>"
+            "<item><title>\(item.version)</title><sparkle:version>\(item.build)</sparkle:version>"
+                + "<description><![CDATA[\(item.description)]]></description></item>"
         }
-        return Appcast.items(in: Data("<rss><channel>\(body.joined())</channel></rss>".utf8))
+        return try Appcast.items(in: Data(sparkleFeed(body.joined()).utf8), source: "feed")
     }
 
-    /// The committed feed wins over a stale live one, version-less placeholders drop out, and `Version`/`v`
-    /// prefixes on legacy headings are normalized.
-    @Test func mergesFeedsNewestFirstDedupedAndCapped() {
-        let committed = feed([("1.0.12", "<h3>1.0.12</h3><ul><li>Twelve</li></ul><h3>1.0.11</h3><ul><li>Eleven</li></ul>")])
-        let live = feed([
-            ("1.0.11", "<h3>1.0.11</h3><ul><li>Stale eleven</li></ul>"),
-            ("1.0.7", "<p>Release v1.0.7</p>"),
-            ("1.0.6", "<h3>Version 1.0.6</h3><ul><li>Older &amp; wiser.</li></ul><h3>v1.0.5</h3><ul><li>Five</li></ul>"),
+    /// The committed feed wins over a stale live one, placeholder notes drop out, and `Version`/`v` prefixes on
+    /// legacy headings are normalized.
+    @Test func mergesFeedsNewestFirstDedupedAndCapped() throws {
+        let committed = try feed([
+            ("1.0.12", 29, "<h3>1.0.12</h3><ul><li>Twelve</li></ul><h3>1.0.11</h3><ul><li>Eleven</li></ul>"),
+        ])
+        let live = try feed([
+            ("1.0.11", 28, "<h3>1.0.11</h3><ul><li>Stale eleven</li></ul>"),
+            ("1.0.7", 20, "<p>Release v1.0.7</p>"),
+            ("1.0.6", 19, "<h3>Version 1.0.6</h3><ul><li>Older &amp; wiser.</li></ul><h3>v1.0.5</h3><ul><li>Five</li></ul>"),
         ])
         func versions(_ html: String) -> [String] { html.matches(of: /<h3[^>]*>([^<]+)<\/h3>/).map { String($0.1) } }
 
         let new = "<ul><li>New</li></ul>"
         let all = CumulativeNotes.html(version: "1.0.13", build: "30", newNotes: new, history: [committed, live])
         #expect(versions(all) == ["1.0.13", "1.0.12", "1.0.11", "1.0.6", "1.0.5"])
-        #expect(all.contains("Eleven") && !all.contains("Stale") && !all.contains("1.0.7"))
+        #expect(all.contains("Eleven") && !all.contains("Stale") && !all.contains("Release v1.0.7"))
         #expect(all.contains("Older &amp; wiser."))
         let capped = CumulativeNotes.html(
             version: "1.0.13", build: "30", newNotes: new, history: [committed, live], maxVersions: 3)
@@ -227,22 +235,23 @@ private let sconeosModules = [
     }
 
     @Test func stampsSectionsWithBuildsAndReadsThemBack() throws {
-        func feed(_ version: String, build: String, description: String) -> [AppcastItem] {
-            let xml = """
-                <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item>
+        func feed(_ version: String, build: String, description: String) throws -> [AppcastItem] {
+            let xml = sparkleFeed(
+                """
+                <item>
                 <title>\(version)</title><sparkle:version>\(build)</sparkle:version>
                 <sparkle:shortVersionString>\(version)</sparkle:shortVersionString>
                 <description><![CDATA[\(description)]]></description>
-                </item></channel></rss>
-                """
-            return Appcast.items(in: Data(xml.utf8))
+                </item>
+                """)
+            return try Appcast.items(in: Data(xml.utf8), source: "feed")
         }
         let li = #"<li style="\#(NotesFormatter.bulletStyle)">"#
         let legacy = "<h3>1.0.9</h3><ul><li>Nine</li></ul><h3>1.0.8</h3><ul><li>Eight</li></ul>"
             + "<h3>1.0.7</h3><p>Release v1.0.7</p><h3>1.0.6</h3><ul><li>Six</li></ul>"
         let first = CumulativeNotes.html(
             version: "1.0.10", build: "27", newNotes: "<ul><li>Ten</li></ul>",
-            history: [feed("1.0.9", build: "24", description: legacy)], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
+            history: [try feed("1.0.9", build: "24", description: legacy)], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
         let top = CumulativeNotes.topHeadingStyle
         let previous = CumulativeNotes.previousHeadingStyle
         #expect(
@@ -269,7 +278,7 @@ private let sconeosModules = [
 
         let second = CumulativeNotes.html(
             version: "1.0.11", build: "30", newNotes: "<ul><li>Eleven</li></ul>",
-            history: [feed("1.0.10", build: "27", description: first)], maxVersions: 5)
+            history: [try feed("1.0.10", build: "27", description: first)], maxVersions: 5)
         #expect(second.components(separatedBy: "<style>").count == 2)
         let stamps = second.matches(of: /<section( data-sparkle-version="(\d+)")?/).map { $0.2.map(String.init) ?? "-" }
         #expect(stamps == ["30", "27", "24", "22", "20"])
@@ -280,26 +289,55 @@ private let sconeosModules = [
     @Test func parsesTheLiveAppcast() throws {
         let item = try #require(Appcast.items(at: fixtures.appending(path: "sconeos-appcast.xml")).first)
         #expect(item.displayVersion == "1.0.9")
-        #expect(item.build == "24")
+        #expect(item.build == 24)
         #expect(item.minimumSystemVersion == "14.0")
         #expect(item.enclosureURL == "https://sconeos.gattey.com/Sconeos-1.0.9.zip")
         #expect(item.edSignature?.isEmpty == false)
         #expect(item.enclosureLength ?? 0 > 0)
+        #expect(item.publishedAt == (try Date("2026-10-16T22:42:54Z", strategy: .iso8601)))
+        #expect(item.hardwareRequirements.isEmpty)
     }
 }
 
 @Suite struct VersioningTests {
-    private let feed = Appcast.items(at: fixtures.appending(path: "sconeos-appcast.xml"))
+    private func feed() throws -> [AppcastItem] { try Appcast.items(at: fixtures.appending(path: "sconeos-appcast.xml")) }
 
-    @Test func currentVersionIsTheHighestKnown() {
-        #expect(ReleasePipeline.currentVersion(appcasts: [feed], tags: ["v1.0.5"]).description == "1.0.9")
-        #expect(ReleasePipeline.currentVersion(appcasts: [], tags: ["v2.0.0", "junk"]).description == "2.0.0")
-        #expect(ReleasePipeline.currentVersion(appcasts: [], tags: []).description == "1.0.0")
+    @Test func currentVersionIsTheHighestKnown() throws {
+        #expect(ReleasePipeline.currentVersion(published: try feed(), tags: ["v1.0.5"]).description == "1.0.9")
+        #expect(ReleasePipeline.currentVersion(published: [], tags: ["v2.0.0", "junk"]).description == "2.0.0")
+        #expect(ReleasePipeline.currentVersion(published: [], tags: []).description == "1.0.0")
     }
 
-    @Test func buildNumberStaysAboveThePublishedOne() {
-        #expect(ReleasePipeline.nextBuild(commitCount: 10, appcasts: [feed]) == 25)
-        #expect(ReleasePipeline.nextBuild(commitCount: 300, appcasts: [feed]) == 300)
+    @Test func buildNumberStaysAboveThePublishedOne() throws {
+        #expect(ReleasePipeline.nextBuild(commitCount: 10, published: try feed()) == 25)
+        #expect(ReleasePipeline.nextBuild(commitCount: 300, published: try feed()) == 300)
+    }
+
+    /// GitHub re-runs whole jobs, so a run that already tagged HEAD replans that release instead of bumping past it.
+    @Test func aReleaseTagAtHeadResumesThatRelease() throws {
+        let published = try feed()
+        let v109 = try #require(AppVersion("1.0.9"))
+        let v110 = try #require(AppVersion("1.1.0"))
+        func plan(_ headTags: [String]) -> ReleasePipeline.Plan {
+            ReleasePipeline.plan(
+                headTags: headTags, tags: ["v1.0.5", "v1.0.9"] + headTags, published: published, commitCount: 10,
+                bump: .minor)
+        }
+        #expect(plan(["v1.0.9"]) == .resumed(v109, build: 24))
+        #expect(plan(["nightly", "v1.1.0"]) == .resumed(v110, build: 25))
+        #expect(plan(["nightly"]) == .next(v110, build: 25, bumpedFrom: v109))
+    }
+
+    /// A release that shipped after this one was planned would be undercut; an equal build is a publish re-run.
+    @Test func publishRefusesABuildBelowThePublishedOne() throws {
+        let published = [AppcastItem(build: 30), AppcastItem(build: 31)]
+        #expect(throws: ToolError.self) {
+            try ReleasePipeline.refuseRegression(staged: [AppcastItem(build: 30)], published: published)
+        }
+        try ReleasePipeline.refuseRegression(staged: [AppcastItem(build: 31)], published: published)
+        try ReleasePipeline.refuseRegression(staged: [AppcastItem(build: 32)], published: published)
+        try ReleasePipeline.refuseRegression(staged: [AppcastItem(build: 1)], published: [])
+        #expect(throws: ToolError.self) { try ReleasePipeline.refuseRegression(staged: [], published: published) }
     }
 
     @Test func parsesOrdersAndBumpsVersions() throws {
@@ -387,8 +425,7 @@ private let sconeosModules = [
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
-            "server/public", "ci/github/pr-body.sh", "Sample.entitlements", "server/package.json",
-            "server/vercel.json", "run",
+            "Sample.entitlements", "server/package.json", "server/vercel.json", "run",
         ].map { ($0, appRoot.appending(path: $0)) }
         for (path, source) in appFiles {
             let destination = root.appending(path: path)
@@ -427,6 +464,47 @@ private let sconeosModules = [
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
     }
 
+    private static let downloadPrefix = "https://github.com/o/r/releases/download/v1.0.9/"
+
+    /// Stages `item` as the appcast `appcast` writes, and checks it against `published`.
+    private func checkStaged(_ item: String, published: [AppcastItem]) throws -> [String: [String]] {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let pipeline = ReleasePipeline(workspace: workspace)
+        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
+        try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
+        let staged = ReleaseChecks.StagedRelease(
+            appcast: pipeline.stagedAppcast, archive: pipeline.stagingDir.appending(path: "Sample-1.0.9.zip"),
+            downloadPrefix: Self.downloadPrefix, published: published)
+        return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
+    }
+
+    /// A re-run of a release that went out stages its build and version again; any other build at or below the
+    /// published one would undercut it.
+    @Test func stagedBuildBeatsThePublishedOneUnlessItsARerun() throws {
+        let staged = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
+            + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip"/></item>"#
+        func published(_ version: String, _ build: Int) -> [AppcastItem] {
+            var item = AppcastItem(build: build)
+            item.shortVersion = version
+            return [item]
+        }
+        #expect(try checkStaged(staged, published: published("1.0.8", 23))["build_number_monotonic"] == nil)
+        #expect(try checkStaged(staged, published: published("1.0.9", 24))["build_number_monotonic"] == nil)
+        #expect(try checkStaged(staged, published: published("1.0.8", 24))["build_number_monotonic"]?.count == 1)
+        #expect(try checkStaged(staged, published: published("1.0.9", 25))["build_number_monotonic"]?.count == 1)
+    }
+
+    /// Every check that reads the staged appcast fails on an item without an integer build instead of skipping it.
+    @Test func aStagedItemWithoutAnIntegerBuildFailsEveryCheckThatReadsIt() throws {
+        let staged = #"<item><title>1.0.9</title><sparkle:version>24b</sparkle:version>"#
+            + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip"/></item>"#
+        let failed = try checkStaged(staged, published: [AppcastItem(build: 1)])
+        for rule in ["min_os_consistency", "appcast_signature", "staged_release"] {
+            #expect(failed[rule]?.count == 1 && failed[rule]?.first?.contains("24b") == true, "\(rule): \(failed)")
+        }
+    }
+
     /// Photos #9: library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
     @Test func libraryValidationOffAndNoXcodeProject() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
@@ -448,7 +526,7 @@ private let sconeosModules = [
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
-    /// A fix to `./run`, `pr-body.sh` or the PR check reaches every app only if none keeps its own copy.
+    /// A fix to `./run`, the PR check or the release workflow reaches every app only if none keeps its own copy.
     @Test func sharedFilesMatchDylKit() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -456,16 +534,18 @@ private let sconeosModules = [
         let stale = try String(contentsOf: check, encoding: .utf8).replacing(", synchronize]", with: "]")
         try Data(stale.utf8).write(to: check)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: workspace.url("run").path)
-        try FileManager.default.removeItem(at: workspace.url("ci/github/pr-body.sh"))
+        try FileManager.default.removeItem(at: workspace.url(".github/workflows/release.yml"))
 
         let report = ReleaseChecks(workspace: workspace).run()
         #expect(errors(report)["shared_files"] == [
             "isn't executable; run `./run dev sync`",
-            "missing; run `./run dev sync`",
             "differs from DylKit's copy; run `./run dev sync`",
+            "missing; run `./run dev sync`",
         ])
 
-        #expect(try SharedFiles.sync(root: workspace.root) == ["run", "ci/github/pr-body.sh", ".github/workflows/pr-check.yml"])
+        #expect(
+            try SharedFiles.sync(root: workspace.root)
+                == ["run", ".github/workflows/pr-check.yml", ".github/workflows/release.yml"])
         #expect(errors(ReleaseChecks(workspace: workspace).run())["shared_files"] == nil)
         #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
     }
@@ -504,27 +584,32 @@ private let sconeosModules = [
         let files = errorFiles(ReleaseChecks(workspace: workspace).run())
         #expect(files["forge_neutral"] == [workflow, workflow])
         #expect(files["unused_ci_secret"] == [workflow, workflow])
-        #expect(files["release_trigger_drift"] == [workflow])
     }
 
-    @Test func onlyTheCIWrapperTalksToTheForge() throws {
+    @Test func appScriptsNeverTalkToTheForge() throws {
         let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
         var workflows = try committed()
         workflows["ci/github/lookup.sh"] = lookup
         workflows["scripts/lookup.sh"] = lookup
         let workspace = try scratchWorkspace(workflows: workflows)
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"] == ["scripts/lookup.sh"])
+        #expect(
+            errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]
+                == ["scripts/lookup.sh", "ci/github/lookup.sh"])
     }
 
     /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.
     @Test func releaseKitNeverTalksToTheForge() throws {
         let sources = packageRoot.appending(path: "Sources")
         let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
+        let allowed = [
+            "ReleaseKit/GitHubAdapter.swift", "ReleaseKit/OriginAdapter.swift",
+            // pr-check.yml's text, which isn't a release workflow.
+            "ReleaseKit/SharedFiles.swift",
+        ]
         var scanned = 0
         while let relative = enumerator.nextObject() as? String {
-            // The ci/github/ wrapper's text, which forge_neutral allows in the app it's written to.
-            guard relative.hasSuffix(".swift"), relative != "ReleaseKit/SharedFiles.swift" else { continue }
+            guard relative.hasSuffix(".swift"), !allowed.contains(relative) else { continue }
             let text = try String(contentsOf: sources.appending(path: relative), encoding: .utf8)
             #expect(ReleaseChecks.forgeCalls(in: text).isEmpty, "Sources/\(relative)")
             scanned += 1
@@ -583,17 +668,6 @@ private let sconeosModules = [
         _ = try Shell.capture(["git", "add", "-f", "Config.xcconfig"], cwd: workspace.root)
         #expect(try ruleErrors()?.first?.contains("is committed") == true)
     }
-
-    @Test func droppedReleaseInputDrifts() throws {
-        var workflows = try committed()
-        workflows[".github/workflows/release.yml"] = workflows[".github/workflows/release.yml"]?
-            .replacingOccurrences(of: "      - 'DylApp.toml'\n", with: "")
-        let workspace = try scratchWorkspace(workflows: workflows)
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(
-            errorFiles(ReleaseChecks(workspace: workspace).run())["release_trigger_drift"]
-                == [".github/workflows/release.yml"])
-    }
 }
 
 /// `release.yml` appends `release-kit version`'s stdout to `$GITHUB_OUTPUT`, which accepts only `key=value` lines.
@@ -638,6 +712,6 @@ private let sconeosModules = [
         process.waitUntilExit()
 
         #expect(process.terminationStatus == 0)
-        #expect(output == "version=1.1.0\nbuild=4\n")
+        #expect(output == "version=1.1.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n")
     }
 }

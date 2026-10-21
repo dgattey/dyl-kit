@@ -64,13 +64,19 @@ public struct Bundler: Sendable {
         let sparkle = try locateFramework("Sparkle", binDir: binDir)
         try Shell.run(["ditto", sparkle.path, frameworks.appending(path: "Sparkle.framework").path])
 
-        try installIcons(resources: resources)
+        try copyGeneratedIcns(into: resources)
+        let generated = try ResourceCompiler(workspace: workspace)
+            .compile(into: resources, platform: .macOS, minimumOS: manifest.app.platforms.macos)
 
         let publicKey = try? String(contentsOf: workspace.url(manifest.release.sparklePublicKey), encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let plist = InfoPlist.contents(
-            manifest: manifest, identity: identity, shortVersion: shortVersion, build: build,
-            sparklePublicKey: publicKey)
+        let localValues = ResolvedLocalValues.resolve(workspace)
+        if manifest.localValues != nil { Log.step(localValues.summary) }
+        let plist = InfoPlist.finalizing(
+            InfoPlist.contents(
+                manifest: manifest, identity: identity, shortVersion: shortVersion, build: build,
+                sparklePublicKey: publicKey),
+            generated: generated, rawKeys: InfoPlist.rawKeys(manifest, iOS: false), localValues: localValues)
         try InfoPlist.data(plist).write(to: contents.appending(path: "Info.plist"))
         try Data("APPL????".utf8).write(to: contents.appending(path: "PkgInfo"))
         if identity == .release, publicKey == nil {
@@ -152,28 +158,17 @@ public struct Bundler: Sendable {
         }
     }
 
-    /// Copies the `.icns` files and compiles the icon source into `Assets.car`.
-    private func installIcons(resources: URL) throws {
+    /// The light and dark `.icns` an icon generator writes next to its `.icon`, for macOS before 26. `actool` writes
+    /// `AppIcon.icns` itself afterwards, over the generator's.
+    private func copyGeneratedIcns(into resources: URL) throws {
+        guard workspace.manifest.build.iconGenerator != nil else { return }
         let fileManager = FileManager.default
-        let buildDir = workspace.buildDir
-        let catalog = try generateIcons()
         for name in ["AppIcon.icns", "AppIcon-Light.icns", "AppIcon-Dark.icns"] {
-            let source = buildDir.appending(path: name)
+            let source = workspace.buildDir.appending(path: name)
             if fileManager.fileExists(atPath: source.path) {
                 try fileManager.copyItem(at: source, to: resources.appending(path: name))
             }
         }
-        guard let catalog, Shell.which("xcrun") != nil else { return }
-        let partial = buildDir.appending(path: "assetcatalog_generated_info.plist")
-        try Shell.run(
-            [
-                "xcrun", "actool", catalog.path, "--compile", resources.path, "--platform", "macosx",
-                "--minimum-deployment-target", workspace.manifest.app.platforms.macos, "--app-icon", "AppIcon",
-                "--output-partial-info-plist", partial.path,
-            ],
-            allowFailure: true
-        )
-        try? fileManager.removeItem(at: partial)
     }
 
     private func modificationDate(_ url: URL) -> Date {

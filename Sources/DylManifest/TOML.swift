@@ -1,9 +1,10 @@
 import Foundation
 
 /// A TOML value, limited to what `DylApp.toml` uses.
-enum TOMLValue: Equatable, Sendable {
+public enum TOMLValue: Equatable, Sendable {
     case string(String)
     case integer(Int)
+    case boolean(Bool)
     case array([TOMLValue])
     case table([String: TOMLValue])
 }
@@ -23,6 +24,18 @@ struct TOMLDocument: Sendable {
 
     subscript(key: String) -> TOMLValue? { values[key] }
 
+    /// The direct children of the table at `key`, whether it's a `[header]` or an inline table.
+    func children(of key: String) -> [String: TOMLValue] {
+        if case .table(let entries) = values[key] { return entries }
+        let prefix = key + "."
+        var result: [String: TOMLValue] = [:]
+        for (name, value) in values where name.hasPrefix(prefix) {
+            let child = name.dropFirst(prefix.count)
+            if !child.contains(".") { result[String(child)] = value }
+        }
+        return result
+    }
+
     fileprivate mutating func set(_ key: String, _ value: TOMLValue, line: Int) throws(TOMLError) {
         guard values[key] == nil else { throw TOMLError(line: line, message: "duplicate key `\(key)`") }
         values[key] = value
@@ -33,8 +46,8 @@ struct TOMLDocument: Sendable {
     }
 }
 
-/// The TOML subset `DylApp.toml` needs: `[table]` headers, bare keys, basic strings, integers, multi-line arrays
-/// and inline tables, with `#` comments.
+/// The TOML subset `DylApp.toml` needs: `[table]` and `[dotted.table]` headers, bare, quoted and dotted keys, basic
+/// strings, integers, booleans, multi-line arrays and inline tables, with `#` comments.
 enum TOML {
     static func parse(_ text: String) throws(TOMLError) -> TOMLDocument {
         var scanner = Scanner(characters: Array(text))
@@ -46,11 +59,11 @@ enum TOML {
             let line = scanner.line
             if next == "[" {
                 scanner.index += 1
-                table = try scanner.key()
+                table = try scanner.dottedKey()
                 try scanner.expect("]")
                 document.lines[table] = document.lines[table] ?? line
             } else {
-                let key = try scanner.key()
+                let key = try scanner.dottedKey()
                 try scanner.expect("=")
                 try document.set(table.isEmpty ? key : "\(table).\(key)", try scanner.value(), line: line)
             }
@@ -89,8 +102,26 @@ private struct Scanner {
         index += 1
     }
 
+    /// `a.b."c~d"`, joined with dots. Keys are stored dotted, so a quoted key can't contain one.
+    mutating func dottedKey() throws(TOMLError) -> String {
+        var parts = [try key()]
+        while true {
+            skip(newlines: false)
+            guard peek == "." else { return parts.joined(separator: ".") }
+            index += 1
+            parts.append(try key())
+        }
+    }
+
     mutating func key() throws(TOMLError) -> String {
         skip(newlines: false)
+        if peek == "\"" {
+            let quoted = try string()
+            guard !quoted.isEmpty, !quoted.contains(".") else {
+                throw error("quoted keys must be non-empty and can't contain `.`")
+            }
+            return quoted
+        }
         var bare = ""
         while let character = peek, character.isLetter || character.isNumber || "-_".contains(character) {
             bare.append(character)
@@ -140,8 +171,13 @@ private struct Scanner {
                 word.append(character)
                 index += 1
             }
-            guard let integer = Int(word) else { throw error("unsupported value `\(word)`") }
-            return .integer(integer)
+            switch word {
+            case "true": return .boolean(true)
+            case "false": return .boolean(false)
+            default:
+                guard let integer = Int(word) else { throw error("unsupported value `\(word)`") }
+                return .integer(integer)
+            }
         }
     }
 

@@ -96,13 +96,25 @@ extension ReleaseKitCommand {
         }
     }
 
-    struct Check: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Tier 3 release checks against the repo.")
+    struct Check: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Tier 3 release checks against the repo; --live also compares the staged release with the live one.")
 
         @OptionGroup var options: RootOption
+        @Flag(help: "Compare the staged release (after version, bundle, sign, appcast) with what installs run now.")
+        var live = false
 
-        func run() throws {
-            let report = ReleaseChecks(workspace: try options.workspace()).run()
+        func run() async throws {
+            let workspace = try options.workspace()
+            let report: CheckReport
+            if live {
+                let (liveReport, diff) = try await LiveChecks(workspace: workspace).run()
+                report = liveReport
+                Log.step("Info.plist, live → staged:")
+                for line in diff { FileHandle.standardError.write(Data("  \(line)\n".utf8)) }
+            } else {
+                report = ReleaseChecks(workspace: workspace).run()
+            }
             report.print()
             if !report.passed { throw ExitCode.failure }
         }

@@ -60,6 +60,9 @@ public struct ReleaseChecks: Sendable {
         check("pr_template_contract", checkPRTemplate)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
+        check("site_icons", checkSiteIcons)
+        check("resource_not_excluded", checkResourcesExcluded)
+        check("local_values_ignored", checkLocalValuesIgnored)
         if let stagedAppcast, let stagedArchive {
             check("staged_release") {
                 checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
@@ -203,6 +206,11 @@ public struct ReleaseChecks: Sendable {
             )
         }
 
+        /// A workflow that ships what it built. A PR dry run that stops before publishing isn't one.
+        var publishes: Bool {
+            text.matches(pattern: #"(?:release-kit|run release) publish\b|\bgh\s+release\s+create|generate_appcast"#)
+        }
+
         /// Items of the `paths:` list under `on.push`.
         var pushPaths: [String]? {
             let lines = text.components(separatedBy: "\n")
@@ -239,29 +247,23 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    /// Files every app's release depends on, whatever else its `paths:` lists.
+    static let requiredReleasePaths = [DylAppManifest.fileName, "Package.resolved"]
+
+    /// The publishing workflow's `paths:` is the one list of release inputs.
     private func checkTriggerDrift(_ findings: inout [CheckFinding]) {
-        for workflow in workflows where workflow.runsRelease {
-            let expected = Set(workspace.manifest.release.inputs)
+        for workflow in workflows where workflow.publishes {
             guard let paths = workflow.pushPaths else {
                 findings.append(
                     error("release_trigger_drift", workflow.path, "release runs on every push; add `paths:`"))
                 continue
             }
-            let actual = Set(paths)
-            let missing = expected.subtracting(actual).sorted()
-            let extra = actual.subtracting(expected).sorted()
+            let missing = Self.requiredReleasePaths.filter { !paths.contains($0) }
             if !missing.isEmpty {
                 findings.append(
                     error(
                         "release_trigger_drift", workflow.path,
-                        "doesn't trigger on release inputs \(missing.joined(separator: ", ")) from DylApp.toml"))
-            }
-            if !extra.isEmpty {
-                findings.append(
-                    error(
-                        "release_trigger_drift", workflow.path,
-                        "triggers on \(extra.joined(separator: ", ")), which DylApp.toml's release.inputs doesn't list")
-                )
+                        "`paths:` doesn't include \(missing.joined(separator: ", ")), which every release reads"))
             }
         }
     }
@@ -339,7 +341,7 @@ public struct ReleaseChecks: Sendable {
     }
 
     private func checkWorkflowHygiene(_ findings: inout [CheckFinding]) {
-        for workflow in workflows where workflow.runsRelease {
+        for workflow in workflows where workflow.publishes {
             if !workflow.text.contains("concurrency:") || !workflow.text.contains("cancel-in-progress: false") {
                 findings.append(
                     error(
@@ -396,6 +398,13 @@ public struct ReleaseChecks: Sendable {
             siteRoot = (siteRoot as NSString).deletingLastPathComponent
         }
         guard !siteRoot.isEmpty, let package = read("\(siteRoot)/package.json") else { return }
+        if let path = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"file:([^"]+)"/)?.1 {
+            findings.append(
+                error(
+                    "site_deploy", "\(siteRoot)/package.json",
+                    "@dylkit/web is a `file:\(path)` dependency, which Vercel can't build; depend on the release "
+                        + "tarball instead: \"\(Self.webTarballURL)\""))
+        }
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -409,7 +418,7 @@ public struct ReleaseChecks: Sendable {
             workspace.url(siteRoot).appending(path: String(path)).standardized.path
         }
         var needed = [manifest.release.artifactsDir]
-        for match in package.matches(of: /"file:([^"]+)"/) {
+        for match in package.matches(of: /"(?!@dylkit\/web")[^"]+"\s*:\s*"file:([^"]+)"/) {
             needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
         }
         if package.contains("\"@dylkit/web\"") { needed.append(DylAppManifest.fileName) }
@@ -418,6 +427,58 @@ public struct ReleaseChecks: Sendable {
             guard !watched.contains(where: { absolute == $0 || absolute.hasPrefix($0 + "/") }) else { continue }
             let relative = absolute.replacingOccurrences(of: workspace.root.standardized.path + "/", with: "")
             findings.append(error("site_deploy", file, "ignoreCommand skips commits that only change \(relative)"))
+        }
+    }
+
+    /// What `devkit icons` writes into `[build] site-icons`.
+    public static let siteIconNames = ["favicon.ico", "icon.png", "apple-icon.png"]
+
+    /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release.
+    static let webTarballURL =
+        "https://github.com/dgattey/dyl-kit/releases/download/v<version>/dylkit-web-<version>.tgz"
+
+    private func checkSiteIcons(_ findings: inout [CheckFinding]) {
+        guard let directory = manifest.build.siteIcons else { return }
+        for name in Self.siteIconNames
+        where !FileManager.default.fileExists(atPath: workspace.url("\(directory)/\(name)").path) {
+            findings.append(error("site_icons", "\(directory)/\(name)", "missing; run `./run dev icons`"))
+        }
+    }
+
+    /// SwiftPM copies a listed resource verbatim into a resource bundle unless the target excludes it, so the app
+    /// would ship it twice, once uncompiled. Resources outside every target's directory are invisible to SwiftPM.
+    private func checkResourcesExcluded(_ findings: inout [CheckFinding]) {
+        guard !manifest.build.resources.isEmpty, let package = read("Package.swift") else { return }
+        let excluded = Set(
+            package.matches(of: /exclude\s*:\s*\[([^\]]*)\]/).flatMap { block in
+                block.1.matches(of: /"([^"]+)"/).map { String($0.1) }
+            })
+        let targetRoots = ["Sources/", "Tests/"]
+            + package.matches(of: /path\s*:\s*"([^"]+)"/).map { String($0.1).trimmingSuffix("/") + "/" }
+        for resource in manifest.build.resources where targetRoots.contains(where: resource.hasPrefix) {
+            let components = resource.split(separator: "/")
+            let candidates = (0..<components.count).map { components[$0...].joined(separator: "/") }
+            if !candidates.contains(where: excluded.contains) {
+                findings.append(
+                    error(
+                        "resource_not_excluded", "Package.swift",
+                        "\(resource) is in [build] resources but not in its target's `exclude:`"))
+            }
+        }
+    }
+
+    /// Local values are credentials; their file must never be committed.
+    private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {
+        guard let file = manifest.localValues?.file else { return }
+        let root = workspace.root
+        let tracked = (try? Shell.run(
+            ["git", "ls-files", "--error-unmatch", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
+        let ignored = (try? Shell.run(
+            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
+        if tracked {
+            findings.append(error("local_values_ignored", file, "is committed; `git rm --cached` it and rotate its values"))
+        } else if !ignored {
+            findings.append(error("local_values_ignored", file, "isn't in .gitignore"))
         }
     }
 

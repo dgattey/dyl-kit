@@ -212,9 +212,9 @@ public struct ReleasePipeline: Sendable {
         try Shell.run(["git", "pull", "--ff-only", "--quiet", "origin", branch], cwd: root)
     }
 
-    private var stagedApp: URL { stageDir.appending(path: "\(workspace.manifest.app.name).app") }
+    var stagedApp: URL { stageDir.appending(path: "\(workspace.manifest.app.name).app") }
 
-    private func archiveURL(_ state: State) -> URL {
+    func archiveURL(_ state: State) -> URL {
         stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).zip")
     }
 

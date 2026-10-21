@@ -12,7 +12,8 @@ public struct ToolError: Error, CustomStringConvertible, Sendable {
 /// the shell the scripts used to run in.
 public enum Shell {
     /// Runs `arguments`, streaming all of its output to this process's stderr: stdout carries only the tool's own
-    /// results, which CI pipes into files such as `$GITHUB_OUTPUT`.
+    /// results, which CI pipes into files such as `$GITHUB_OUTPUT`. `quiet` discards the output instead, for probes
+    /// where only the exit status matters.
     ///
     /// - Blocking: waits for the child process.
     @discardableResult
@@ -20,10 +21,12 @@ public enum Shell {
         _ arguments: [String],
         cwd: URL? = nil,
         environment: [String: String] = [:],
+        quiet: Bool = false,
         allowFailure: Bool = false
     ) throws -> Int32 {
         let process = makeProcess(arguments, cwd: cwd, environment: environment)
-        process.standardOutput = FileHandle.standardError
+        process.standardOutput = quiet ? FileHandle.nullDevice : FileHandle.standardError
+        if quiet { process.standardError = FileHandle.nullDevice }
         try process.run()
         process.waitUntilExit()
         if process.terminationStatus != 0, !allowFailure {
@@ -32,18 +35,21 @@ public enum Shell {
         return process.terminationStatus
     }
 
-    /// Runs `arguments` and returns its stdout with surrounding whitespace trimmed. Stderr passes through.
+    /// Runs `arguments` and returns its stdout with surrounding whitespace trimmed. Stderr passes through, or is
+    /// captured too with `includeStderr`, for tools like `codesign -d` that report on stderr.
     ///
     /// - Blocking: waits for the child process.
     public static func capture(
         _ arguments: [String],
         cwd: URL? = nil,
         environment: [String: String] = [:],
+        includeStderr: Bool = false,
         allowFailure: Bool = false
     ) throws -> String {
         let process = makeProcess(arguments, cwd: cwd, environment: environment)
         let pipe = Pipe()
         process.standardOutput = pipe
+        if includeStderr { process.standardError = pipe }
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()

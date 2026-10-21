@@ -38,20 +38,13 @@ public struct IOSBuild: Sendable {
             try fileManager.copyItem(at: products.appending(path: name), to: appURL.appending(path: name))
         }
 
-        var plist = InfoPlist.iOSContents(manifest: manifest, bundleId: bundleId, minimumOS: minimumOS)
-        if let catalog = try Bundler(workspace: workspace).generateIcons() {
-            let partial = workspace.buildDir.appending(path: "ios/assetcatalog_generated_info.plist")
-            try Shell.run(
-                [
-                    "xcrun", "actool", catalog.path, "--compile", appURL.path, "--platform", "iphonesimulator",
-                    "--minimum-deployment-target", minimumOS, "--app-icon", "AppIcon",
-                    "--output-partial-info-plist", partial.path,
-                ],
-                allowFailure: true
-            )
-            plist.merge(InfoPlist.read(partial) ?? [:]) { _, generated in generated }
-            try? fileManager.removeItem(at: partial)
-        }
+        let generated = try ResourceCompiler(workspace: workspace)
+            .compile(into: appURL, platform: .iOSSimulator, minimumOS: minimumOS)
+        let localValues = ResolvedLocalValues.resolve(workspace)
+        if manifest.localValues != nil { Log.step(localValues.summary) }
+        let plist = InfoPlist.finalizing(
+            InfoPlist.iOSContents(manifest: manifest, bundleId: bundleId, minimumOS: minimumOS),
+            generated: generated, rawKeys: InfoPlist.rawKeys(manifest, iOS: true), localValues: localValues)
         try InfoPlist.data(plist).write(to: appURL.appending(path: "Info.plist"))
         try Shell.run(["codesign", "--force", "--sign", "-", appURL.path])
         Log.step("built \(appURL.path)")

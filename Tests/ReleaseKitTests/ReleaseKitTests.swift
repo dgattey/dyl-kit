@@ -9,11 +9,11 @@ import CryptoKit
 
 @testable import ReleaseKit
 
-private let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures")
-private let packageRoot = URL(fileURLWithPath: #filePath)
+let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures")
+let packageRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 /// The smallest DylKit app, standing in for one that uses DylKit.
-private let appRoot = packageRoot.appending(path: "Tests/Fixtures/SampleApp")
+let appRoot = packageRoot.appending(path: "Tests/Fixtures/SampleApp")
 
 private func fixture(_ path: String) throws -> String {
     try String(contentsOf: fixtures.appending(path: path), encoding: .utf8)
@@ -508,6 +508,57 @@ private let sconeosModules = [
         }
         #expect(scanned > 0)
         #expect(ReleaseChecks.forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
+    }
+
+    /// Photos: a `file:` @dylkit/web points into `.build/checkouts`, which Vercel never has.
+    @Test func fileDependencyOnTheWebPackageSaysToUseTheTarball() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let package = workspace.url("server/package.json")
+        let text = try String(contentsOf: package, encoding: .utf8)
+            .replacing(/"@dylkit\/web": "[^"]+"/, with: #""@dylkit/web": "file:../.build/checkouts/dyl-kit/web""#)
+        try Data(text.utf8).write(to: package)
+
+        let messages = errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] ?? []
+        #expect(messages.count == 1)
+        #expect(messages.first?.contains("releases/download/v<version>/dylkit-web-<version>.tgz") == true)
+    }
+
+    /// Saga: SwiftPM copies an un-excluded `.xcdatamodeld` raw into the resource bundle.
+    @Test func bundledResourcesMustBeExcludedFromTheTarget() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let manifest = workspace.url("DylApp.toml")
+        let text = try String(contentsOf: manifest, encoding: .utf8).replacingOccurrences(
+            of: "entitlements = \"Sample.entitlements\"\n",
+            with: "entitlements = \"Sample.entitlements\"\nresources = [\"Sources/SampleApp/Model.xcdatamodeld\", \"Resources/Assets.xcassets\"]\n")
+        try Data(text.utf8).write(to: manifest)
+        #expect(errors(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["resource_not_excluded"]?.count == 1)
+
+        let packageFile = workspace.url("Package.swift")
+        let package = try String(contentsOf: packageFile, encoding: .utf8)
+            .replacingOccurrences(of: "name: \"SampleApp\",\n", with: "name: \"SampleApp\",\n            exclude: [\"Model.xcdatamodeld\"],\n")
+        try Data(package.utf8).write(to: packageFile)
+        #expect(errors(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["resource_not_excluded"] == nil)
+    }
+
+    @Test func localValuesFileMustBeIgnoredAndUntracked() throws {
+        let workspace = try scratchWorkspace(workflows: try committed())
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let manifest = workspace.url("DylApp.toml")
+        let text = try String(contentsOf: manifest, encoding: .utf8)
+            + "\n[local-values]\nfile = \"Config.xcconfig\"\nkeys = { Token = \"TOKEN\" }\n"
+        try Data(text.utf8).write(to: manifest)
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: workspace.root)
+        func ruleErrors() throws -> [String]? {
+            errors(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["local_values_ignored"]
+        }
+        #expect(try ruleErrors() == ["isn't in .gitignore"])
+        try Data("Config.xcconfig\n".utf8).write(to: workspace.url(".gitignore"))
+        #expect(try ruleErrors() == nil)
+        try Data("TOKEN = secret\n".utf8).write(to: workspace.url("Config.xcconfig"))
+        _ = try Shell.capture(["git", "add", "-f", "Config.xcconfig"], cwd: workspace.root)
+        #expect(try ruleErrors()?.first?.contains("is committed") == true)
     }
 
     @Test func droppedReleaseInputDrifts() throws {

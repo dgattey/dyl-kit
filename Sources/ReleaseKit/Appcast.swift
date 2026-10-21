@@ -1,4 +1,5 @@
 import DylCore
+import DylToolSupport
 import Foundation
 
 #if canImport(FoundationNetworking)
@@ -42,6 +43,17 @@ public enum Appcast {
     }
 
     private static let session = URLSession.bounded(requestTimeout: 20)
+    private static let downloads = URLSession.bounded(requestTimeout: 120)
+
+    /// `url`'s body after redirects, or an error naming what failed. For `check --live`, where a missing feed or
+    /// enclosure is a finding rather than a first release.
+    public static func download(_ url: String) async throws -> Data {
+        guard let parsed = URL(string: url) else { throw ToolError("\(url) isn't a URL") }
+        let (data, response) = try await downloads.data(from: parsed)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { throw ToolError("\(url) answered HTTP \(status)") }
+        return data
+    }
 
     /// What users' updaters see right now. A failed fetch reads as an empty feed: a first release has none.
     public static func fetch(_ url: String) async -> [AppcastItem] {

@@ -1,23 +1,20 @@
 import Foundation
 
 /// Launch-time state for screenshots and agent runs, set by `devkit relaunch`, `capture` and `ios`. Option `name`
-/// reads the environment variable `DYLKIT_<NAME>` (uppercased, dashes as underscores) that devkit sets, then
-/// `<PREFIX>_<NAME>` when the app passes a prefix for its own scripts, then the argument `--name=value` or
-/// `--name value`. `AppWindow` applies the appearance and window size itself; apps only read `initialView`.
+/// reads the environment variable `DYLKIT_<NAME>` (uppercased, dashes as underscores) that devkit sets, then the
+/// argument `--name=value` or `--name value`. `AppWindow` applies the appearance and window size itself; apps only
+/// read `initialView`.
 public struct LaunchOverrides: Sendable {
-    /// The process's own overrides; what `AppWindow` and `AppUpdater` read unless handed others.
+    /// The process's own overrides, which `AppWindow` and `AppUpdater` read.
     public static let current = LaunchOverrides()
 
-    public let prefix: String?
     private let environment: [String: String]
     private let arguments: [String]
 
     public init(
-        prefix: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
-        self.prefix = prefix
         self.environment = environment
         self.arguments = arguments
     }
@@ -28,10 +25,8 @@ public struct LaunchOverrides: Sendable {
 
     /// The option's value, lowercased, or nil when unset.
     public func value(_ name: String) -> String? {
-        for variable in variables(name) {
-            if let value = environment[variable]?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
-                return value.lowercased()
-            }
+        if let value = environment[variable(name)]?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
+            return value.lowercased()
         }
         let flag = "--\(name)"
         for (index, argument) in arguments.enumerated() {
@@ -44,11 +39,9 @@ public struct LaunchOverrides: Sendable {
         return nil
     }
 
-    /// `true` for `DYLKIT_<NAME>` or `<PREFIX>_<NAME>` set to `1|true|yes`, or a bare `--name`.
+    /// `true` for `DYLKIT_<NAME>=1|true|yes` or a bare `--name`.
     public func flag(_ name: String) -> Bool {
-        if let value = variables(name).lazy.compactMap({ environment[$0]?.lowercased() }).first {
-            return ["1", "true", "yes"].contains(value)
-        }
+        if let value = environment[variable(name)]?.lowercased() { return ["1", "true", "yes"].contains(value) }
         return arguments.contains { $0.lowercased() == "--\(name)" }
     }
 
@@ -71,8 +64,7 @@ public struct LaunchOverrides: Sendable {
         return CGSize(width: parts[0], height: parts[1])
     }
 
-    private func variables(_ name: String) -> [String] {
-        let suffix = name.uppercased().replacingOccurrences(of: "-", with: "_")
-        return ["DYLKIT_\(suffix)"] + (prefix.map { ["\($0)_\(suffix)"] } ?? [])
+    private func variable(_ name: String) -> String {
+        "DYLKIT_\(name.uppercased().replacingOccurrences(of: "-", with: "_"))"
     }
 }

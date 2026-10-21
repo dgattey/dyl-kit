@@ -13,7 +13,6 @@ import AppKit
 public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     private let title: String
     private let palette: any ThemePalette
-    private let launch: LaunchOverrides
     private let defaultSize: CGSize
     private let content: Content
     private let commands: AppCommands
@@ -21,14 +20,12 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     public init(
         _ title: String,
         palette: any ThemePalette,
-        launch: LaunchOverrides = .current,
         defaultSize: CGSize,
         @ViewBuilder content: () -> Content,
         @CommandsBuilder commands: () -> AppCommands
     ) {
         self.title = title
         self.palette = palette
-        self.launch = launch
         self.defaultSize = defaultSize
         self.content = content()
         self.commands = commands()
@@ -52,12 +49,14 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
         #endif
     }
 
+    private var launch: LaunchOverrides { .current }
+
     private var colorScheme: ColorScheme? {
         launch.appearance.map { $0 == .dark ? .dark : .light }
     }
 
     private func windowDidAppear() {
-        AppUpdater.shared.mainWindowDidAppear(launch: launch)
+        AppUpdater.shared.mainWindowDidAppear()
         #if os(macOS)
         // Menus and alerts follow NSApp, not the SwiftUI color scheme.
         if let appearance = launch.appearance {

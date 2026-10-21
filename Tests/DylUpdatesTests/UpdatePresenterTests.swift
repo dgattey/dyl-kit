@@ -16,9 +16,9 @@ import Sparkle
         let installed = URL(filePath: "/Applications/Sconeos.app")
         let userInstalled = URL(filePath: "/Users/dylan/Applications/Sconeos.app")
         let devBuild = URL(filePath: "/Users/dylan/repos/scone-os/build/Sconeos.app")
-        let quiet = LaunchOverrides(prefix: "SCONEOS", environment: [:], arguments: [])
-        let devkit = LaunchOverrides(prefix: "SCONEOS", environment: ["SCONEOS_BACKGROUND": "1"], arguments: [])
-        let agentArgs = LaunchOverrides(prefix: "SCONEOS", environment: [:], arguments: ["--background"])
+        let quiet = LaunchOverrides(environment: [:], arguments: [])
+        let devkit = LaunchOverrides(environment: ["DYLKIT_BACKGROUND": "1"], arguments: [])
+        let agentArgs = LaunchOverrides(environment: [:], arguments: ["--background"])
 
         #expect(UpdatePresenter.mayActivate(app: release, bundleURL: installed, launch: quiet))
         #expect(UpdatePresenter.mayActivate(app: release, bundleURL: userInstalled, launch: quiet))

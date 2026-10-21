@@ -32,7 +32,7 @@ final class UpdatePresenter {
     }
 
     /// Only an installed release takes focus. A dev build under `build/`, a test runner, or anything devkit or an
-    /// agent launched (`<PREFIX>_BACKGROUND`) never does.
+    /// agent launched (`DYLKIT_BACKGROUND`) never does.
     nonisolated static func mayActivate(app: AppInfo, bundleURL: URL, launch: LaunchOverrides) -> Bool {
         app.isReleaseConfigured
             && bundleURL.deletingLastPathComponent().lastPathComponent == "Applications"

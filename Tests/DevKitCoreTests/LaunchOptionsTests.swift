@@ -24,14 +24,13 @@ import Testing
         #expect(Launcher.openArguments(app, options: LaunchOptions()).last == app.path)
     }
 
-    @Test func overridesReadDevkitNamesThenTheAppPrefixThenArguments() {
+    @Test func overridesReadDevkitVariablesThenArguments() {
         enum Screen: String { case group, living }
         let devkit = LaunchOverrides(environment: ["DYLKIT_INITIAL_VIEW": "Living"], arguments: [])
         #expect(devkit.initialView(as: Screen.self) == .living)
-        let script = LaunchOverrides(prefix: "SCONEOS", environment: ["SCONEOS_INITIAL_VIEW": "group"], arguments: [])
-        #expect(script.initialView(as: Screen.self) == .group)
-        let both = LaunchOverrides(
-            prefix: "SCONEOS", environment: ["DYLKIT_APPEARANCE": "dark", "SCONEOS_APPEARANCE": "light"], arguments: [])
+        let appPrefixed = LaunchOverrides(environment: ["SCONEOS_INITIAL_VIEW": "group"], arguments: [])
+        #expect(appPrefixed.initialView == nil)
+        let both = LaunchOverrides(environment: ["DYLKIT_APPEARANCE": "dark"], arguments: ["--appearance=light"])
         #expect(both.appearance == .dark)
         let flags = LaunchOverrides(environment: [:], arguments: ["--initial-view", "nowhere", "--window-size=10x20"])
         #expect(flags.initialView(as: Screen.self) == nil)

@@ -78,7 +78,7 @@ let package = Package(
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
         .testTarget(name: "DylUpdatesTests", dependencies: ["DylCore", "DylUpdates"]),
         .testTarget(name: "DylTestSupportTests", dependencies: ["DylCore", "DylTestSupport"]),
-        .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore"]),
+        .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore", "DylManifest"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",

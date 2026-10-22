@@ -1,3 +1,5 @@
+import DylManifest
+import Foundation
 import Testing
 
 @testable import DevKitCore
@@ -8,5 +10,14 @@ import Testing
         #expect(try IOSBuild.scheme(for: "Sample", in: ["SampleApp"]) == "SampleApp")
         #expect(try IOSBuild.scheme(for: "Sample", in: ["SampleApp", "Sample-Package"]) == "SampleApp")
         #expect(throws: (any Error).self) { try IOSBuild.scheme(for: "Sample", in: ["One", "Two"]) }
+    }
+
+    @Test func simulatorBuildsNeverCarryTheReleaseBundleId() throws {
+        let toml = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appending(path: "../Fixtures/SampleApp/DylApp.toml")
+        let text = try String(contentsOf: toml, encoding: .utf8)
+        #expect(IOSBuild.devBundleId(try DylAppManifest.decode(text)) == "com.dylkit.Sample.ios.dev")
+        let withoutIOSId = text.replacingOccurrences(of: #"bundle-id = "com.dylkit.Sample.ios""#, with: "")
+        #expect(IOSBuild.devBundleId(try DylAppManifest.decode(withoutIOSId)) == "com.dylkit.Sample.dev")
     }
 }

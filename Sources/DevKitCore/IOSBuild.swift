@@ -1,3 +1,4 @@
+import DylManifest
 import DylToolSupport
 import Foundation
 import ReleaseKit
@@ -11,7 +12,12 @@ public struct IOSBuild: Sendable {
 
     private var derivedData: URL { workspace.buildDir.appending(path: "ios/DerivedData") }
     public var appURL: URL { workspace.buildDir.appending(path: "\(workspace.manifest.app.name)-iOS.app") }
-    private var bundleId: String { workspace.manifest.ios?.bundleId ?? workspace.manifest.app.bundleId }
+    private var bundleId: String { Self.devBundleId(workspace.manifest) }
+
+    /// The `[ios]` bundle ID with `.dev`, so the simulator build never shares an identity with the release.
+    static func devBundleId(_ manifest: DylAppManifest) -> String {
+        "\(manifest.ios?.bundleId ?? manifest.app.bundleId).dev"
+    }
 
     /// - Blocking: runs `xcodebuild`, `actool` and `codesign`.
     @discardableResult

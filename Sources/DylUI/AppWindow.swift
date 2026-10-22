@@ -20,6 +20,7 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
     private let resizability: WindowResizability
     private let content: Content
     private let commands: AppCommands
+    @Environment(\.openWindow) private var openWindow
 
     public init(
         _ title: String,
@@ -40,7 +41,8 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
     }
 
     public var body: some Scene {
-        let window = WindowGroup(title) {
+        BackgroundLaunch.openMainWindowIfNoneAppears(openWindow)
+        return WindowGroup(title, id: mainWindowID) {
             MainWindowContent(palette: palette, content: content)
         }
         .windowToolbarStyle(toolbarStyle)
@@ -50,11 +52,25 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
             CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             commands
         }
-        // Built against the macOS 26 SDK, a plain launch otherwise opens no main window.
-        if #available(macOS 15, *) {
-            return window.defaultLaunchBehavior(.presented)
-        } else {
-            return window
+    }
+}
+
+private let mainWindowID = "main"
+
+/// Built against the macOS 26 SDK, SwiftUI presents the first window only once the app activates, and a devkit
+/// launch never activates. So a background launch opens the main window itself when SwiftUI hasn't within a second.
+@MainActor
+private enum BackgroundLaunch {
+    private static var scheduled = false
+
+    static func openMainWindowIfNoneAppears(_ openWindow: OpenWindowAction) {
+        guard LaunchOverrides.current.staysInBackground, !scheduled else { return }
+        scheduled = true
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            if !NSApplication.shared.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+                openWindow(id: mainWindowID)
+            }
         }
     }
 }

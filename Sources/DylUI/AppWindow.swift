@@ -6,16 +6,74 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The main window of a DylKit app: a unified toolbar without a title, the palette and its accent tint, devkit's
-/// `--appearance` and `--window-size` launch overrides (read from `LaunchOverrides.current`, so the app passes
-/// nothing), the updater's launch check once the window is on screen, and "Check for Updates…" in the app menu next
-/// to the app's own commands.
-public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
+#if os(macOS)
+/// The main window of a DylKit app: the palette and its accent tint, devkit's `--appearance` and `--window-size`
+/// launch overrides (read from `LaunchOverrides.current`, so the app passes nothing), the updater's launch check once
+/// the window is on screen, and "Check for Updates…" in the app menu next to the app's own commands. The toolbar
+/// style and resizability are the app's; the defaults are a unified toolbar without a title that never shrinks
+/// below its content.
+public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToolbarStyle>: Scene {
     private let title: String
     private let palette: any ThemePalette
     private let defaultSize: CGSize
+    private let toolbarStyle: Toolbar
+    private let resizability: WindowResizability
     private let content: Content
     private let commands: AppCommands
+
+    public init(
+        _ title: String,
+        palette: any ThemePalette,
+        defaultSize: CGSize,
+        toolbarStyle: Toolbar,
+        resizability: WindowResizability = .contentMinSize,
+        @ViewBuilder content: () -> Content,
+        @CommandsBuilder commands: () -> AppCommands
+    ) {
+        self.title = title
+        self.palette = palette
+        self.defaultSize = defaultSize
+        self.toolbarStyle = toolbarStyle
+        self.resizability = resizability
+        self.content = content()
+        self.commands = commands()
+    }
+
+    public var body: some Scene {
+        WindowGroup(title) {
+            MainWindowContent(palette: palette, content: content)
+        }
+        .windowToolbarStyle(toolbarStyle)
+        .defaultSize(LaunchOverrides.current.windowSize ?? defaultSize)
+        .windowResizability(resizability)
+        .commands {
+            CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
+            commands
+        }
+    }
+}
+
+extension AppWindow where Toolbar == UnifiedWindowToolbarStyle {
+    public init(
+        _ title: String,
+        palette: any ThemePalette,
+        defaultSize: CGSize,
+        resizability: WindowResizability = .contentMinSize,
+        @ViewBuilder content: () -> Content,
+        @CommandsBuilder commands: () -> AppCommands
+    ) {
+        self.init(
+            title, palette: palette, defaultSize: defaultSize, toolbarStyle: .unified(showsTitle: false),
+            resizability: resizability, content: content, commands: commands)
+    }
+}
+#else
+/// The main window of a DylKit app: the palette and its accent tint, the `--appearance` launch override, and the
+/// updater hook. It takes the macOS arguments too, so shared app code needs no `#if`.
+public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
+    private let title: String
+    private let palette: any ThemePalette
+    private let content: Content
 
     public init(
         _ title: String,
@@ -26,27 +84,26 @@ public struct AppWindow<Content: View, AppCommands: Commands>: Scene {
     ) {
         self.title = title
         self.palette = palette
-        self.defaultSize = defaultSize
         self.content = content()
-        self.commands = commands()
     }
 
     public var body: some Scene {
         WindowGroup(title) {
-            content
-                .palette(palette)
-                .preferredColorScheme(colorScheme)
-                .onAppear(perform: windowDidAppear)
+            MainWindowContent(palette: palette, content: content)
         }
-        #if os(macOS)
-        .windowToolbarStyle(.unified(showsTitle: false))
-        .defaultSize(launch.windowSize ?? defaultSize)
-        .windowResizability(.contentMinSize)
-        .commands {
-            CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
-            commands
-        }
-        #endif
+    }
+}
+#endif
+
+private struct MainWindowContent<Content: View>: View {
+    let palette: any ThemePalette
+    let content: Content
+
+    var body: some View {
+        content
+            .palette(palette)
+            .preferredColorScheme(colorScheme)
+            .onAppear(perform: windowDidAppear)
     }
 
     private var launch: LaunchOverrides { .current }

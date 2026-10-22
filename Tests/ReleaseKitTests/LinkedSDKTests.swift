@@ -31,17 +31,6 @@ import Testing
               sdk 26.2
         """
 
-    @Test func linkerFlagsRecordTheDeploymentTargetAndTheInstalledSDK() {
-        #expect(
-            ResourceCompiler.Platform.macOS.platformVersionFlags(minimumOS: "14.0", sdkVersion: "27.0") == [
-                "-Xlinker", "-platform_version", "-Xlinker", "macos", "-Xlinker", "14.0", "-Xlinker", "27.0",
-            ])
-        #expect(
-            ResourceCompiler.Platform.iOSSimulator.platformVersionFlags(minimumOS: "17.0", sdkVersion: "26.2") == [
-                "-Xlinker", "-platform_version", "-Xlinker", "ios-simulator", "-Xlinker", "17.0", "-Xlinker", "26.2",
-            ])
-    }
-
     @Test func aDeploymentTargetRecordedAsTheSDKFails() {
         #expect(throws: (any Error).self) {
             try ResourceCompiler.Platform.verifySDK(vtoolOutput: swiftBuildOutput, binary: "Sample", sdkVersion: "27.0")

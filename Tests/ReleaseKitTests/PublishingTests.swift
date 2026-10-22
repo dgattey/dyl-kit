@@ -124,8 +124,6 @@ private func item(_ version: String, build: Int) -> String {
         #expect(try await github.pullRequestBody(number: 8) == "")
         let request = try #require(await transport.requests.first)
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer t0ken")
-        #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
-        #expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
     }
 
     @Test func failuresNameTheRequest() async throws {

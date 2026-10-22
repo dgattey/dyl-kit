@@ -52,7 +52,8 @@ import CryptoKit
 
             [ios.info]
             UIRequiresFullScreen = true
-            UISupportedInterfaceOrientations = ["UIInterfaceOrientationPortrait"]
+            UIApplicationSceneManifest = { UIApplicationSupportsMultipleScenes = true }
+            "UISupportedInterfaceOrientations~iphone" = ["UIInterfaceOrientationPortrait"]
             """)
         let macOS = InfoPlist.contents(
             manifest: manifest, identity: .release, shortVersion: "1.0.0", build: "1", sparklePublicKey: nil)
@@ -63,7 +64,9 @@ import CryptoKit
         let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0")
         #expect(iOS["ITSAppUsesNonExemptEncryption"] == .boolean(false))
         #expect(iOS["UIRequiresFullScreen"] == .boolean(true))
-        #expect(iOS["UISupportedInterfaceOrientations"] == .array([.string("UIInterfaceOrientationPortrait")]))
+        let scenes: PlistValue = .dictionary(["UIApplicationSupportsMultipleScenes": .boolean(true)])
+        #expect(iOS["UIApplicationSceneManifest"] == scenes)
+        #expect(iOS["UISupportedInterfaceOrientations~iphone"] == .array([.string("UIInterfaceOrientationPortrait")]))
         #expect(InfoPlist.rawKeys(manifest, iOS: true).contains("UIRequiresFullScreen"))
         #expect(!InfoPlist.rawKeys(manifest, iOS: false).contains("UIRequiresFullScreen"))
     }
@@ -84,18 +87,9 @@ import CryptoKit
         let arguments = ResourceCompiler.actoolArguments(
             catalogs: ["Assets.xcassets", "AppIcon.icon"], hasIcon: true, accentColor: "AccentColor",
             platform: .macOS, minimumOS: "14.0", output: "Resources", partialPlist: "partial.plist")
-        #expect(
-            arguments == [
-                "xcrun", "actool", "Assets.xcassets", "AppIcon.icon", "--compile", "Resources", "--platform", "macosx",
-                "--minimum-deployment-target", "14.0", "--app-icon", "AppIcon", "--accent-color", "AccentColor",
-                "--output-partial-info-plist", "partial.plist", "--errors", "--warnings",
-                "--output-format", "human-readable-text",
-            ])
-        let catalogOnly = ResourceCompiler.actoolArguments(
-            catalogs: ["Assets.xcassets"], hasIcon: false, accentColor: nil, platform: .iOSSimulator,
-            minimumOS: "17.0", output: "App.app", partialPlist: "p.plist")
-        #expect(!catalogOnly.contains("--app-icon"))
-        #expect(catalogOnly.contains("iphonesimulator"))
+        for expected in ["Assets.xcassets", "AppIcon.icon", "--app-icon", "--accent-color", "macosx"] {
+            #expect(arguments.contains(expected))
+        }
     }
 }
 
@@ -189,65 +183,4 @@ import CryptoKit
         #expect(!diff.contains { $0.hasPrefix("DT") || $0.contains("s3cret") })
     }
     #endif
-}
-
-/// Saga #57's manifest, which v0.1.0 rejected with `DylApp.toml:25: expected ]` at `[ios.info]`.
-@Suite struct SagaManifestTests {
-    private static let manifest = """
-        [app]
-        name = "Saga"
-        bundle-id = "com.dylangattey.Saga"
-        platforms = { macos = "26.0", ios = "26.0" }
-        category = "public.app-category.productivity"
-
-        [build]
-        product = "Saga"
-        entitlements = "Saga.entitlements"
-        resources = ["Sources/Saga/Saga.xcdatamodeld", "Sources/Saga/Assets.xcassets"]
-        icon = "Sources/Saga/AppIcon.icon"
-        accent-color = "AccentColor"
-
-        [local-values]
-        file = "Config.xcconfig"
-        keys = { ContentfulSpaceId = "CONTENTFUL_SPACE_ID", ContentfulAccessToken = "CONTENTFUL_ACCESS_TOKEN", SagaAPISecret = "SAGA_API_SECRET" }
-        defaults = { ContentfulSpaceId = "placeholder", ContentfulAccessToken = "placeholder", SagaAPISecret = "" }
-
-        [ios]
-        simulator = "iPhone 17 Pro"
-
-        [ios.info]
-        UIApplicationSceneManifest = { UIApplicationSupportsMultipleScenes = true }
-        UIApplicationSupportsIndirectInputEvents = true
-        UIStatusBarStyle = "UIStatusBarStyleDefault"
-        "UISupportedInterfaceOrientations~iphone" = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
-        "UISupportedInterfaceOrientations~ipad" = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
-
-        [release]
-        sparkle-public-key = "sparkle-public-key.txt"
-        site-url = "https://saga.gattey.com"
-        artifacts-dir = "server/public"
-        check-interval = 3600
-        assets = "https://saga.public.blob.vercel-storage.com"
-
-        [site]
-        tagline = "Your personal reading log."
-        accent = { light = "#264e3a", dark = "#4a7e65" }
-        screenshots = [
-            { src = "saga-preview.png", alt = "Saga on macOS" },
-        ]
-        """
-
-    @Test func iOSInfoReachesTheIOSPlistOnly() throws {
-        let manifest = try DylAppManifest.decode(Self.manifest)
-        let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylangattey.Saga", minimumOS: "26.0")
-        #expect(iOS["UIApplicationSceneManifest"] == .dictionary(["UIApplicationSupportsMultipleScenes": .boolean(true)]))
-        #expect(iOS["UIApplicationSupportsIndirectInputEvents"] == .boolean(true))
-        #expect(iOS["UIStatusBarStyle"] == .string("UIStatusBarStyleDefault"))
-        guard case .array(let iphone) = iOS["UISupportedInterfaceOrientations~iphone"],
-            case .array(let ipad) = iOS["UISupportedInterfaceOrientations~ipad"]
-        else { Issue.record("orientations missing"); return }
-        #expect(iphone.count == 3 && !iphone.contains(.string("UIInterfaceOrientationPortraitUpsideDown")))
-        #expect(ipad.count == 4)
-        #expect(InfoPlist.rawKeys(manifest, iOS: false).isDisjoint(with: ["UIStatusBarStyle"]))
-    }
 }

@@ -543,6 +543,33 @@ private let sconeosModules = [
         #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
     }
 
+    /// An editor or git's autocrlf only changes the formatting, which the check ignores and sync still rewrites.
+    @Test func sharedFilesDriftIgnoresLineEndings() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let check = workspace.url(".github/workflows/pr-check.yml")
+        let crlf = SharedFiles.prCheck.contents.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n"
+        try Data(crlf.utf8).write(to: check)
+        let template = workspace.url(".github/pull_request_template.md")
+        try Data(SharedFiles.prTemplate.contents.dropLast().utf8).write(to: template)
+
+        #expect(SharedFiles.drift(root: workspace.root).isEmpty)
+        #expect(
+            try SharedFiles.sync(root: workspace.root)
+                == [".github/workflows/pr-check.yml", ".github/pull_request_template.md"])
+        #expect(try Data(contentsOf: check) == Data(SharedFiles.prCheck.contents.utf8))
+    }
+
+    /// Sync never touches `scripts/run`, so an app keeps its own modes behind DylKit's `./run`.
+    @Test func runHandsOtherModesToTheAppsScript() throws {
+        let workspace = try scratchWorkspace(["scripts/run": "#!/bin/sh\necho \"app: $*\"\n"])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: workspace.url("scripts/run").path)
+        #expect(try Shell.capture([workspace.url("run").path, "format", "--check"]) == "app: format --check")
+        #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
+    }
+
     /// DylKit's own release reads the same Release info box, so its PRs start from the apps' template and run their
     /// check.
     @Test func dylKitChecksItsOwnReleaseInfo() throws {
@@ -601,11 +628,7 @@ private let sconeosModules = [
     @Test func releaseKitNeverTalksToTheForge() throws {
         let sources = packageRoot.appending(path: "Sources")
         let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
-        let allowed = [
-            "ReleaseKit/GitHub.swift",
-            // pr-check.yml's text, which isn't a release workflow.
-            "ReleaseKit/SharedFiles.swift",
-        ]
+        let allowed = ["ReleaseKit/GitHub.swift"]
         var scanned = 0
         while let relative = enumerator.nextObject() as? String {
             guard relative.hasSuffix(".swift"), !allowed.contains(relative) else { continue }
@@ -629,6 +652,25 @@ private let sconeosModules = [
         let messages = errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] ?? []
         #expect(messages.count == 1)
         #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
+    }
+
+    /// The fixture's site depends on DylKit 0.2.0's tarball.
+    @Test func webPackageMatchesTheResolvedDylKit() throws {
+        func resolved(_ state: String) -> [String: String] {
+            ["Package.resolved": #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#]
+        }
+        func messages(_ state: String) throws -> [String]? {
+            let workspace = try scratchWorkspace(resolved(state))
+            defer { try? FileManager.default.removeItem(at: workspace.root) }
+            return errors(ReleaseChecks(workspace: workspace).run())["dylkit_web_version"]
+        }
+        #expect(try messages(#"{ "version": "0.2.0" }"#) == nil)
+        #expect(try messages(#"{ "branch": "main" }"#) == nil)
+        #expect(
+            try messages(#"{ "version": "0.3.1" }"#) == [
+                "@dylkit/web is 0.2.0 but Package.resolved pins DylKit 0.3.1; depend on "
+                    + "\"https://dylkit.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
+            ])
     }
 
     /// Saga: SwiftPM copies an un-excluded `.xcdatamodeld` raw into the resource bundle.

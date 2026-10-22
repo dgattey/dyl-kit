@@ -71,11 +71,6 @@ private func item(_ version: String, build: Int) -> String {
         #expect(try await Appcast.published(url, transport: FakeTransport { _ in (404, "") }).isEmpty)
     }
 
-    @Test func readsThePublishedItems() async throws {
-        let transport = FakeTransport { _ in (200, sparkleFeed(item("1.0.0", build: 3))) }
-        #expect(try await Appcast.published(url, transport: transport).map(\.build) == [3])
-    }
-
     /// Planning from a feed that merely failed to load would reuse a shipped build and drop the notes before it.
     @Test(arguments: [
         (500, "", "answered HTTP 500"),

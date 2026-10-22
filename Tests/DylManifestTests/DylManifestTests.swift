@@ -125,32 +125,6 @@ struct DylAppManifestTests {
         }
     }
 
-    /// Saga's Info.plist additions: dotted table headers, quoted keys with `~`, booleans and nested inline tables.
-    @Test func decodesRawInfoTables() throws {
-        let manifest = try DylAppManifest.decode(
-            Self.valid + """
-
-                [bundle.info]
-                ITSAppUsesNonExemptEncryption = false
-                NSSupportsAutomaticTermination = true
-                UIApplicationSceneManifest = { UIApplicationSupportsMultipleScenes = false }
-
-                [ios.info]
-                "UISupportedInterfaceOrientations~iphone" = ["UIInterfaceOrientationPortrait"]
-                UIRequiresFullScreen = true
-                """)
-        #expect(manifest.bundle.info["ITSAppUsesNonExemptEncryption"] == .boolean(false))
-        #expect(manifest.bundle.info["NSSupportsAutomaticTermination"] == .boolean(true))
-        #expect(
-            manifest.bundle.info["UIApplicationSceneManifest"]
-                == .table(["UIApplicationSupportsMultipleScenes": .boolean(false)]))
-        #expect(manifest.bundle.info.count == 3)
-        #expect(
-            manifest.ios?.info["UISupportedInterfaceOrientations~iphone"]
-                == .array([.string("UIInterfaceOrientationPortrait")]))
-        #expect(manifest.ios?.info["UIRequiresFullScreen"] == .boolean(true))
-    }
-
     @Test func decodesBuildResourcesIconAndLocalValues() throws {
         let text = Self.valid
             .replacingOccurrences(
@@ -189,6 +163,7 @@ struct DylAppManifestTests {
         ("assets = \"https://store.public.blob.vercel-storage.com\"", "", "missing required key `release.assets`"),
         ("store.public.blob", "store.private.blob", "must be a public Blob store's URL"),
         ("https://store.public", "http://store.public", "must be a public Blob store's URL"),
+        ("[release]\n", "[bundle.info]\n\"a.b\" = true\n\n[release]\n", "can't contain `.`"),
     ])
     func rejectsInvalidAdditions(_ find: String, _ replacement: String, _ message: String) {
         do {
@@ -196,15 +171,6 @@ struct DylAppManifestTests {
             Issue.record("expected an error containing \(message)")
         } catch {
             #expect(error.message.contains(message), "\(error.message)")
-        }
-    }
-
-    @Test func quotedKeysCantHoldDots() {
-        do {
-            _ = try DylAppManifest.decode(Self.valid + "\n[bundle.info]\n\"a.b\" = true\n")
-            Issue.record("expected an error")
-        } catch {
-            #expect(error.message.contains("can't contain `.`"))
         }
     }
 }

@@ -235,23 +235,12 @@ private let sconeosModules = [
     }
 
     @Test func stampsSectionsWithBuildsAndReadsThemBack() throws {
-        func feed(_ version: String, build: String, description: String) throws -> [AppcastItem] {
-            let xml = sparkleFeed(
-                """
-                <item>
-                <title>\(version)</title><sparkle:version>\(build)</sparkle:version>
-                <sparkle:shortVersionString>\(version)</sparkle:shortVersionString>
-                <description><![CDATA[\(description)]]></description>
-                </item>
-                """)
-            return try Appcast.items(in: Data(xml.utf8), source: "feed")
-        }
         let li = #"<li style="\#(NotesFormatter.bulletStyle)">"#
         let legacy = "<h3>1.0.9</h3><ul><li>Nine</li></ul><h3>1.0.8</h3><ul><li>Eight</li></ul>"
             + "<h3>1.0.7</h3><p>Release v1.0.7</p><h3>1.0.6</h3><ul><li>Six</li></ul>"
         let first = CumulativeNotes.html(
             version: "1.0.10", build: "27", newNotes: "<ul><li>Ten</li></ul>",
-            history: [try feed("1.0.9", build: "24", description: legacy)], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
+            history: [try feed([("1.0.9", 24, legacy)])], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
         let top = CumulativeNotes.topHeadingStyle
         let previous = CumulativeNotes.previousHeadingStyle
         #expect(
@@ -278,7 +267,7 @@ private let sconeosModules = [
 
         let second = CumulativeNotes.html(
             version: "1.0.11", build: "30", newNotes: "<ul><li>Eleven</li></ul>",
-            history: [try feed("1.0.10", build: "27", description: first)], maxVersions: 5)
+            history: [try feed([("1.0.10", 27, first)])], maxVersions: 5)
         #expect(second.components(separatedBy: "<style>").count == 2)
         let stamps = second.matches(of: /<section( data-sparkle-version="(\d+)")?/).map { $0.2.map(String.init) ?? "-" }
         #expect(stamps == ["30", "27", "24", "22", "20"])
@@ -757,22 +746,9 @@ private let sconeosModules = [
         try git(["remote", "add", "origin", origin.path], in: library)
         try git(["push", "--quiet", "--tags", "origin", "main"], in: library)
 
-        func version() throws -> String {
-            let process = Process()
-            process.executableURL = releaseKit
-            process.arguments = ["library", "version", "--root", library.path]
-            let stdout = Pipe()
-            process.standardOutput = stdout
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            let output = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            process.waitUntilExit()
-            #expect(process.terminationStatus == 0)
-            return output
-        }
-
-        #expect(try version() == "version=0.2.0\n")
+        let version = [releaseKit.path, "library", "version", "--root", library.path]
+        #expect(try Shell.capture(version) == "version=0.2.0")
         try git(["tag", "v0.2.0"], in: library)
-        #expect(try version() == "version=0.2.0\n")
+        #expect(try Shell.capture(version) == "version=0.2.0")
     }
 }

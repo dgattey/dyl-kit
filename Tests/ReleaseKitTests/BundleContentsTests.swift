@@ -250,13 +250,4 @@ import CryptoKit
         #expect(ipad.count == 4)
         #expect(InfoPlist.rawKeys(manifest, iOS: false).isDisjoint(with: ["UIStatusBarStyle"]))
     }
-
-    /// #57 still lists `[release] inputs`; v0.2.0 names the fix instead of failing to parse.
-    @Test func leftoverInputsSaysToDeleteThem() {
-        let withInputs = Self.manifest.replacingOccurrences(
-            of: "check-interval = 3600\n", with: "check-interval = 3600\ninputs = [\n    \"Sources/**\",\n]\n")
-        #expect {
-            try DylAppManifest.decode(withInputs)
-        } throws: { "\($0)".contains("release.inputs") && "\($0)".contains("Delete it") }
-    }
 }

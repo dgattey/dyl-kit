@@ -25,7 +25,8 @@ struct SamplePalette: ThemePalette {
 
 private let showsWashKey = "showsWash"
 
-/// `--initial-view settings` opens Settings, so captures cover DylUI's Settings without a click.
+/// `--initial-view settings` opens Settings, and `settings/credits` opens it on Credits, so captures cover DylUI's
+/// Settings without a click.
 struct HomeView: View {
     @Palette private var palette: SamplePalette
     @AppStorage(showsWashKey) private var showsWash = true
@@ -49,7 +50,7 @@ struct HomeView: View {
         #endif
     }
 
-    private var opensSettings: Bool { LaunchOverrides.current.initialView == "settings" }
+    private var opensSettings: Bool { LaunchOverrides.current.initialView?.split(separator: "/").first == "settings" }
 
     private var home: some View {
         Text("Sample")

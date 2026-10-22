@@ -48,9 +48,15 @@ public struct SettingsView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     #endif
 
+    /// Opens on the first page, or with `--initial-view settings/<page>` on that page: its title lowercased with
+    /// dashes for spaces, such as `settings/software-updates`.
     public init(sections: [SettingsSection]) {
         self.sections = sections
-        _selection = State(initialValue: sections.first?.pages.first?.id)
+        let pages = sections.flatMap(\.pages)
+        let launchPage = pages.first {
+            LaunchOverrides.current.initialView == "settings/\($0.title.lowercased().replacing(" ", with: "-"))"
+        }
+        _selection = State(initialValue: (launchPage ?? pages.first)?.id)
     }
 
     private var pages: [SettingsPage] { sections.flatMap(\.pages) }

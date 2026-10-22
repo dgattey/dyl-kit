@@ -19,7 +19,7 @@ public struct WindowCapture: Sendable {
         let stamp = Date().formatted(
             Date.ISO8601FormatStyle(dateSeparator: .omitted, timeSeparator: .omitted, timeZone: .current)
                 .year().month().day().time(includingFractionalSeconds: false))
-        let name = [workspace.manifest.app.name.lowercased(), label, stamp]
+        let name = [workspace.manifest.app.name.lowercased(), label?.replacing("/", with: "-"), stamp]
             .compactMap { $0 }.joined(separator: "-")
         return capturesDir.appending(path: "\(name).png")
     }

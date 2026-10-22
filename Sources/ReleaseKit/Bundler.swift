@@ -23,8 +23,13 @@ public struct Bundler: Sendable {
         let product = manifest.build.product
         let fileManager = FileManager.default
 
-        Log.step("swift build -c \(configuration.rawValue) --product \(product)")
-        try Shell.run(["swift", "build", "-c", configuration.rawValue, "--product", product], cwd: workspace.root)
+        let platform = ResourceCompiler.Platform.macOS
+        let sdkVersion = try platform.sdkVersion()
+        Log.step("swift build -c \(configuration.rawValue) --product \(product) (SDK \(sdkVersion))")
+        try Shell.run(
+            ["swift", "build", "-c", configuration.rawValue, "--product", product]
+                + platform.platformVersionFlags(minimumOS: manifest.app.platforms.macos, sdkVersion: sdkVersion),
+            cwd: workspace.root)
         let binDir = URL(
             fileURLWithPath: try Shell.capture(
                 ["swift", "build", "-c", configuration.rawValue, "--product", product, "--show-bin-path"],
@@ -33,6 +38,7 @@ public struct Bundler: Sendable {
         )
         let binary = binDir.appending(path: product)
         guard fileManager.fileExists(atPath: binary.path) else { throw ToolError("\(binary.path) wasn't built") }
+        try ResourceCompiler.Platform.verifySDK(of: binary, sdkVersion: sdkVersion)
 
         let app = directory.appending(path: "\(identity.name(manifest)).app")
         let contents = app.appending(path: "Contents")

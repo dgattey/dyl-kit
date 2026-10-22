@@ -28,15 +28,20 @@ public struct IOSBuild: Sendable {
         }
         let product = manifest.build.product
         let scheme = try Self.scheme(for: product, in: try schemes())
-        Log.step("xcodebuild \(scheme) for the iOS Simulator")
+        let platform = ResourceCompiler.Platform.iOSSimulator
+        let sdkVersion = try platform.sdkVersion()
+        let linkerFlags = platform.platformVersionFlags(minimumOS: minimumOS, sdkVersion: sdkVersion)
+        Log.step("xcodebuild \(scheme) for the iOS Simulator (SDK \(sdkVersion))")
         try Shell.run(
             [
                 "xcodebuild", "build", "-quiet", "-scheme", scheme, "-destination", "generic/platform=iOS Simulator",
                 "-derivedDataPath", derivedData.path, "-skipPackagePluginValidation", "-skipMacroValidation",
+                "OTHER_LDFLAGS=$(inherited) \(linkerFlags.joined(separator: " "))",
             ],
             cwd: workspace.root
         )
         let products = derivedData.appending(path: "Build/Products/Debug-iphonesimulator")
+        try ResourceCompiler.Platform.verifySDK(of: products.appending(path: product), sdkVersion: sdkVersion)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: appURL)
         try fileManager.createDirectory(at: appURL, withIntermediateDirectories: true)

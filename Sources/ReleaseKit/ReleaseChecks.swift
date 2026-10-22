@@ -388,7 +388,7 @@ public struct ReleaseChecks: Sendable {
 
     /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
     static let webTarballURL =
-        "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
+        "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
 
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {

@@ -138,7 +138,7 @@ extension ReleaseKitCommand {
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
-            print(try pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
+            print(pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
         }
     }
 

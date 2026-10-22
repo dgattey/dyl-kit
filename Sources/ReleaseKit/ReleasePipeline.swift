@@ -3,7 +3,8 @@ import Foundation
 
 /// The release as separate steps, so a CI wrapper can run them one at a time: `version`, `bundle`, `sign`,
 /// `appcast`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` pushes the
-/// tag with plain git and uploads the zip, appcast and `release.json` to the app's Blob store; nothing is committed.
+/// tag with plain git and uploads the zip, the site's icons, the appcast and `release.json` to the app's Blob store;
+/// nothing is committed.
 public struct ReleasePipeline: Sendable {
     public let workspace: Workspace
     let repo: ReleaseRepo
@@ -23,6 +24,7 @@ public struct ReleasePipeline: Sendable {
     public var stagingDir: URL { repo.stagingDir }
     var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
     var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
+    var stagedIcons: URL { stagingDir.appending(path: "icons") }
     private var stageDir: URL { stagingDir.appending(path: "stage") }
 
     /// What `version` decided, shared with every later step.
@@ -122,10 +124,12 @@ public struct ReleasePipeline: Sendable {
         let state = try state()
         try? FileManager.default.removeItem(at: stageDir)
         try FileManager.default.createDirectory(at: stageDir, withIntermediateDirectories: true)
-        return try Bundler(workspace: workspace)
+        let app = try Bundler(workspace: workspace)
             .bundle(
                 configuration: .release, identity: .release, shortVersion: state.version, build: String(state.build),
                 into: stageDir)
+        _ = try SiteIcons(workspace: workspace).write(into: stagedIcons)
+        return app
     }
 
     /// Signs the staged app inside-out, verifies it, and zips it for Sparkle.
@@ -184,18 +188,22 @@ public struct ReleasePipeline: Sendable {
             published: published)
     }
 
-    /// Publishes the staged zip, then the appcast and `release.json` as the latest (see `ReleaseRepo.publish`), unless
-    /// that would offer an older build than the published feeds.
+    /// Publishes the staged zip, the site icons, then the appcast and `release.json` as the latest (see
+    /// `ReleaseRepo.publish`), unless that would offer an older build than the published feeds.
     ///
     /// - Blocking: runs git.
     public func publish() async throws {
         let state = try state()
         let latest = [stagedAppcast, stagedReleaseJSON]
+        let icons = SiteIcons.all.map { stagedIcons.appending(path: $0.name) }
         for file in [archiveURL(state)] + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path); run `release-kit appcast` first")
         }
+        for file in icons where !FileManager.default.fileExists(atPath: file.path) {
+            throw ToolError("no \(file.path); run `release-kit bundle` first")
+        }
         try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
-        try await repo.publish([archiveURL(state)], latest: latest, assets: assets)
+        try await repo.publish([archiveURL(state)], icons: icons, latest: latest, assets: assets)
     }
 
     // MARK: Helpers

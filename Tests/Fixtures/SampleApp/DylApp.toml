@@ -9,6 +9,7 @@ category = "public.app-category.utilities"
 [build]
 product = "Sample"
 entitlements = "Sample.entitlements"
+icon = "AppIcon.icon"
 
 [bundle]
 url-schemes = ["sample"]

@@ -167,15 +167,22 @@ private func item(_ version: String, build: Int) -> String {
         defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
         let transport = blob(store)
 
+        let icon = files[0].deletingLastPathComponent().appending(path: "icon.png")
+        try Data("contents of icon.png".utf8).write(to: icon)
         let urls = try await BlobStore(environment: ["BLOB_READ_WRITE_TOKEN": "t0ken"], transport: transport)
-            .publish(tag: "v1.2.0", files: [files[0]], latest: Array(files[1...]), assets: store)
+            .publish(tag: "v1.2.0", files: [files[0]], icons: [icon], latest: Array(files[1...]), assets: store)
 
         let api = "https://vercel.com/api/blob/?pathname="
         #expect(
             await transport.calls == [
-                "PUT \(api)releases/v1.2.0/App-1.2.0.zip", "PUT \(api)appcast.xml", "PUT \(api)release.json",
+                "PUT \(api)releases/v1.2.0/App-1.2.0.zip", "PUT \(api)icons/icon.png", "PUT \(api)appcast.xml",
+                "PUT \(api)release.json",
             ])
-        #expect(urls == ["\(store)/releases/v1.2.0/App-1.2.0.zip", "\(store)/appcast.xml", "\(store)/release.json"])
+        #expect(
+            urls == [
+                "\(store)/releases/v1.2.0/App-1.2.0.zip", "\(store)/icons/icon.png", "\(store)/appcast.xml",
+                "\(store)/release.json",
+            ])
         let zip = try #require(await transport.requests.first)
         #expect(zip.httpBody == (try Data(contentsOf: files[0])))
         #expect(zip.value(forHTTPHeaderField: "Authorization") == "Bearer t0ken")
@@ -183,6 +190,8 @@ private func item(_ version: String, build: Int) -> String {
         #expect(zip.value(forHTTPHeaderField: "x-content-type") == "application/zip")
         #expect(zip.value(forHTTPHeaderField: "x-allow-overwrite") == "1")
         #expect(zip.value(forHTTPHeaderField: "x-add-random-suffix") == "0")
+        let iconRequest = try #require(await transport.requests.dropFirst().first)
+        #expect(iconRequest.value(forHTTPHeaderField: "x-content-type") == "image/png")
     }
 
     /// Saga's token in Photos' release would otherwise replace Saga's latest feed with Photos'.

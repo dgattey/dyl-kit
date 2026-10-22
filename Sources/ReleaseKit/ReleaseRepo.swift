@@ -72,14 +72,16 @@ public struct ReleaseRepo: Sendable {
     }
 
     /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and uploads the
-    /// release's `files` and the store root's `latest` to the Blob store at `assets` (see `BlobStore.publish`),
-    /// returning their URLs. Re-running after a partial publish finishes it.
+    /// release's `files`, the site's `icons` and the store root's `latest` to the Blob store at `assets` (see
+    /// `BlobStore.publish`), returning their URLs. Re-running after a partial publish finishes it.
     ///
     /// - Blocking: runs git.
     @discardableResult
-    public func publish(_ files: [URL], latest: [URL] = [], assets: String? = nil) async throws -> [String] {
+    public func publish(
+        _ files: [URL], icons: [URL] = [], latest: [URL] = [], assets: String? = nil
+    ) async throws -> [String] {
         let state = try state()
-        for file in files + latest where !FileManager.default.fileExists(atPath: file.path) {
+        for file in files + icons + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path) to publish")
         }
         let store = try BlobStore(environment: environment, transport: transport)
@@ -93,7 +95,7 @@ public struct ReleaseRepo: Sendable {
             throw ToolError("\(state.tag) already tags \(tagged), not HEAD (\(head))")
         }
         try Shell.run(["git", "push", "origin", "refs/tags/\(state.tag)"], cwd: root)
-        return try await store.publish(tag: state.tag, files: files, latest: latest, assets: assets)
+        return try await store.publish(tag: state.tag, files: files, icons: icons, latest: latest, assets: assets)
     }
 
     /// - Blocking: runs git.

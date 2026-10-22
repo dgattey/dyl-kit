@@ -134,7 +134,6 @@ struct DylAppManifestTests {
                     icon = "Resources/AppIcon.icon"
                     accent-color = "AccentColor"
                     resources = ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"]
-                    site-icons = "server/app"
 
                     """)
             + """
@@ -148,7 +147,6 @@ struct DylAppManifestTests {
         #expect(manifest.build.icon == "Resources/AppIcon.icon")
         #expect(manifest.build.accentColor == "AccentColor")
         #expect(manifest.build.resources == ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"])
-        #expect(manifest.build.siteIcons == "server/app")
         #expect(manifest.localValues?.file == "Config.xcconfig")
         #expect(manifest.localValues?.keys["ContentfulToken"] == "CONTENTFUL_TOKEN")
         #expect(manifest.localValues?.defaults == ["ContentfulSpaceID": "placeholder"])

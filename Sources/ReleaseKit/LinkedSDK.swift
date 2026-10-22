@@ -8,7 +8,6 @@ extension ResourceCompiler.Platform {
         switch self {
         case .macOS: "macos"
         case .iOSSimulator: "ios-simulator"
-        case .iOS: "ios"
         }
     }
 

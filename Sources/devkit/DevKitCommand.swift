@@ -10,7 +10,7 @@ struct DevKitCommand: AsyncParsableCommand {
         commandName: "devkit",
         abstract: "Build, relaunch and capture the app in build/, and run every check a PR needs.",
         discussion: "Nothing here touches /Applications, steals focus or changes the system appearance.",
-        subcommands: [Build.self, Relaunch.self, Capture.self, IOS.self, Icons.self, Sync.self, Checks.self, Verify.self]
+        subcommands: [Build.self, Relaunch.self, Capture.self, IOS.self, Sync.self, Checks.self, Verify.self]
     )
 }
 
@@ -106,15 +106,6 @@ extension DevKitCommand {
             let output = WindowCapture(workspace: workspace).defaultOutput(label: label)
             try await ios.screenshot(udid: udid, to: output, settle: settle.wait)
             print(output.path)
-        }
-    }
-
-    struct Icons: ParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "Write the site's favicon.ico, icon.png and apple-icon.png from the app icon into [build] site-icons.")
-
-        func run() throws {
-            print(try SiteIcons(workspace: try Workspace.locate()).write().path)
         }
     }
 

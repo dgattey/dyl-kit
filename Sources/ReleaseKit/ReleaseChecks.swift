@@ -66,7 +66,6 @@ public struct ReleaseChecks: Sendable {
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
         check("dylkit_web_version", checkWebMatchesPin)
-        check("site_icons", checkSiteIcons)
         check("resource_not_excluded", checkResourcesExcluded)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("shared_files", checkSharedFiles)
@@ -400,20 +399,9 @@ public struct ReleaseChecks: Sendable {
                 "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
 
-    /// What `devkit icons` writes into `[build] site-icons`.
-    public static let siteIconNames = ["favicon.ico", "icon.png", "apple-icon.png"]
-
     /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
     static let webTarballURL =
         "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
-
-    private func checkSiteIcons(_ findings: inout [CheckFinding]) {
-        guard let directory = manifest.build.siteIcons else { return }
-        for name in Self.siteIconNames
-        where !FileManager.default.fileExists(atPath: workspace.url("\(directory)/\(name)").path) {
-            findings.append(error("site_icons", "\(directory)/\(name)", "missing; run `./run dev icons`"))
-        }
-    }
 
     /// SwiftPM copies a listed resource verbatim into a resource bundle unless the target excludes it, so the app
     /// would ship it twice, once uncompiled. Resources outside every target's directory are invisible to SwiftPM.

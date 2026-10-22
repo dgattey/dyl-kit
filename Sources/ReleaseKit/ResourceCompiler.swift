@@ -6,13 +6,12 @@ import Foundation
 /// never ships silently.
 public struct ResourceCompiler: Sendable {
     public enum Platform: Sendable {
-        case macOS, iOSSimulator, iOS
+        case macOS, iOSSimulator
 
         var actoolArguments: [String] {
             switch self {
             case .macOS: ["--platform", "macosx"]
             case .iOSSimulator: ["--platform", "iphonesimulator", "--target-device", "iphone", "--target-device", "ipad"]
-            case .iOS: ["--platform", "iphoneos", "--target-device", "iphone", "--target-device", "ipad"]
             }
         }
 
@@ -20,7 +19,6 @@ public struct ResourceCompiler: Sendable {
             switch self {
             case .macOS: "macosx"
             case .iOSSimulator: "iphonesimulator"
-            case .iOS: "iphoneos"
             }
         }
 
@@ -28,7 +26,7 @@ public struct ResourceCompiler: Sendable {
         var momcTarget: String {
             switch self {
             case .macOS: "--macosx-deployment-target"
-            case .iOSSimulator, .iOS: "--iphoneos-deployment-target"
+            case .iOSSimulator: "--iphoneos-deployment-target"
             }
         }
     }
@@ -40,7 +38,7 @@ public struct ResourceCompiler: Sendable {
     /// The icon `actool` compiles: the committed `[build] icon`, else what the icon generator wrote to `build/`.
     ///
     /// - Blocking: may run the icon generator.
-    public func iconSource() throws -> URL? {
+    func iconSource() throws -> URL? {
         if let icon = workspace.manifest.build.icon {
             let url = workspace.url(icon)
             guard FileManager.default.fileExists(atPath: url.path) else {
@@ -95,7 +93,7 @@ public struct ResourceCompiler: Sendable {
     /// partial Info.plist it wrote.
     ///
     /// - Blocking: runs `actool`.
-    public static func runActool(_ arguments: [String], partialPlist: URL) throws -> Plist {
+    static func runActool(_ arguments: [String], partialPlist: URL) throws -> Plist {
         let report = try Shell.capture(arguments, includeStderr: true, allowFailure: true)
         let notices = report.split(separator: "\n").filter { $0.contains("error:") || $0.contains("warning:") }
         for notice in notices { Log.step(String(notice)) }
@@ -105,7 +103,7 @@ public struct ResourceCompiler: Sendable {
         return plist
     }
 
-    public static func actoolArguments(
+    static func actoolArguments(
         catalogs: [String], hasIcon: Bool, accentColor: String?, platform: Platform, minimumOS: String,
         output: String, partialPlist: String
     ) -> [String] {

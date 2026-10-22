@@ -34,9 +34,6 @@ public struct DylAppManifest: Equatable, Sendable {
         /// Committed `.xcdatamodeld`, `.xcmappingmodel` and `.xcassets` the bundler compiles into the main bundle.
         /// SwiftPM's command-line build copies them verbatim, so the app's target must `exclude:` them.
         public var resources: [String]
-        /// The site's Next.js `app/` directory, where `devkit icons` writes `favicon.ico`, `icon.png` and
-        /// `apple-icon.png`.
-        public var siteIcons: String?
 
         fileprivate static let resourceExtensions: Set<String> = ["xcdatamodeld", "xcdatamodel", "xcmappingmodel", "xcassets"]
     }
@@ -137,8 +134,7 @@ extension DylAppManifest {
                 iconGenerator: try toml.string("build.icon-generator"),
                 icon: try toml.string("build.icon"),
                 accentColor: try toml.string("build.accent-color"),
-                resources: try toml.strings("build.resources") ?? [],
-                siteIcons: try toml.string("build.site-icons")
+                resources: try toml.strings("build.resources") ?? []
             ),
             bundle: Bundle(
                 urlSchemes: try toml.strings("bundle.url-schemes"),

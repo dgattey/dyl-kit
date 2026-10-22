@@ -65,6 +65,7 @@ public struct ReleaseChecks: Sendable {
         check("forge_neutral", checkForgeNeutral)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
+        check("dylkit_web_version", checkWebMatchesPin)
         check("site_icons", checkSiteIcons)
         check("resource_not_excluded", checkResourcesExcluded)
         check("local_values_ignored", checkLocalValuesIgnored)
@@ -329,12 +330,18 @@ public struct ReleaseChecks: Sendable {
         var ignoreCommand: String?
     }
 
-    private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
-        var siteRoot = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
-        while !siteRoot.isEmpty, read("\(siteRoot)/package.json") == nil {
-            siteRoot = (siteRoot as NSString).deletingLastPathComponent
+    /// The site's root, the nearest folder above the artifacts dir with a `package.json`, and that file's text.
+    private var site: (root: String, package: String)? {
+        var root = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
+        while !root.isEmpty {
+            if let package = read("\(root)/package.json") { return (root, package) }
+            root = (root as NSString).deletingLastPathComponent
         }
-        guard !siteRoot.isEmpty, let package = read("\(siteRoot)/package.json") else { return }
+        return nil
+    }
+
+    private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site else { return }
         if let path = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"file:([^"]+)"/)?.1 {
             findings.append(
                 error(
@@ -365,6 +372,32 @@ public struct ReleaseChecks: Sendable {
             let relative = absolute.replacingOccurrences(of: workspace.root.standardized.path + "/", with: "")
             findings.append(error("site_deploy", file, "ignoreCommand skips commits that only change \(relative)"))
         }
+    }
+
+    private struct PackageResolved: Decodable {
+        struct Pin: Decodable {
+            struct State: Decodable { var version: String? }
+            var identity: String
+            var state: State
+        }
+        var pins: [Pin]
+    }
+
+    /// SwiftPM and npm pin DylKit separately, so the app and its site can drift onto different releases. A DylKit
+    /// pinned to a branch or revision has no version to compare.
+    private func checkWebMatchesPin(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site,
+            let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
+            let resolved = read("Package.resolved")
+                .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) }),
+            let pinned = resolved.pins.first(where: { $0.identity == "dyl-kit" })?.state.version,
+            match.2 != pinned
+        else { return }
+        let url = match.1.replacingOccurrences(of: match.2, with: pinned)
+        findings.append(
+            error(
+                "dylkit_web_version", "\(siteRoot)/package.json",
+                "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
 
     /// What `devkit icons` writes into `[build] site-icons`.

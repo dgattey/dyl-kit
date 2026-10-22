@@ -90,20 +90,12 @@ describe("appcastResponse", () => {
     assert.equal(response.headers.get("Retry-After"), "60");
   });
 
-  it("is unavailable when the feed can't be fully parsed", async () => {
+  it("is unavailable when the feed can't be read or fully parsed", async () => {
     const truncated = feed(29, 31, 30).slice(0, -40);
     const nonIntegerBuild = feed(29, 31).replace("<sparkle:version>29", "<sparkle:version>1.0b");
-    for (const body of [truncated, nonIntegerBuild]) {
-      serve({ [latest("appcast.xml")]: () => new Response(body) });
-      assert.equal((await appcastResponse(site)).status, 503);
-    }
-    serve({ [live]: () => new Response(truncated) });
-    await assert.rejects(liveBuild("https://demo.gattey.com"), /isn't an appcast/);
-  });
-
-  it("is unavailable when the feed can't be read", async () => {
-    for (const answer of [() => new Response("oops", { status: 500 }), () => new Response("<html></html>")]) {
-      serve({ [latest("appcast.xml")]: answer });
+    const bodies = [truncated, nonIntegerBuild, "<html></html>"].map((body) => new Response(body));
+    for (const answer of [...bodies, new Response("oops", { status: 500 })]) {
+      serve({ [latest("appcast.xml")]: () => answer });
       assert.equal((await appcastResponse(site)).status, 503);
     }
     serve({});

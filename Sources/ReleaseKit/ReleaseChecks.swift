@@ -63,8 +63,6 @@ public struct ReleaseChecks: Sendable {
         check("appcast_signature", checkStagedAppcast)
         check("unused_ci_secret", checkSecrets)
         check("forge_neutral", checkForgeNeutral)
-        check("workflow_hygiene", checkWorkflowHygiene)
-        check("pr_template_contract", checkPRTemplate)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
         check("site_icons", checkSiteIcons)
@@ -90,16 +88,8 @@ public struct ReleaseChecks: Sendable {
     private func checkSharedFiles(_ findings: inout [CheckFinding]) {
         // Without `./run` there's no `./run dev`; SwiftPM runs a dependency's executables directly.
         let fix = read("run") == nil ? "`swift run devkit sync`" : "`./run dev sync`"
-        for file in SharedFiles.all {
-            guard let text = read(file.path) else {
-                findings.append(error("shared_files", file.path, "missing; run \(fix)"))
-                continue
-            }
-            if text != file.contents {
-                findings.append(error("shared_files", file.path, "differs from DylKit's copy; run \(fix)"))
-            } else if file.executable, !FileManager.default.isExecutableFile(atPath: workspace.url(file.path).path) {
-                findings.append(error("shared_files", file.path, "isn't executable; run \(fix)"))
-            }
+        for (file, drift) in SharedFiles.drift(root: workspace.root) {
+            findings.append(error("shared_files", file.path, "\(drift.rawValue); run \(fix)"))
         }
     }
 
@@ -243,11 +233,6 @@ public struct ReleaseChecks: Sendable {
                     #"(?:release-kit|run release) (?:release|version|appcast|publish)\b|generate_appcast|SPARKLE_ED_PRIVATE_KEY"#
             )
         }
-
-        /// A workflow that ships what it built. A PR dry run that stops before publishing isn't one.
-        var publishes: Bool {
-            text.matches(pattern: #"(?:release-kit|run release) publish\b|\bgh\s+release\s+create|generate_appcast"#)
-        }
     }
 
     private var workflows: [Workflow] {
@@ -331,38 +316,6 @@ public struct ReleaseChecks: Sendable {
                         "forge_neutral", source.path,
                         "\(problem); only release-kit's forge adapters talk to the forge ([release.forge])"))
             }
-        }
-    }
-
-    private func checkWorkflowHygiene(_ findings: inout [CheckFinding]) {
-        for workflow in workflows where workflow.publishes {
-            if !workflow.text.contains("concurrency:") || !workflow.text.contains("cancel-in-progress: false") {
-                findings.append(
-                    error(
-                        "workflow_hygiene", workflow.path,
-                        "releases must run one at a time without cancelling (`concurrency` + `cancel-in-progress: false`)"
-                    ))
-            }
-        }
-    }
-
-    private func checkPRTemplate(_ findings: inout [CheckFinding]) {
-        let path = ".github/pull_request_template.md"
-        guard let text = read(path) else {
-            findings.append(
-                error("pr_template_contract", nil, "no PR template; release-kit reads its Release info checkboxes"))
-            return
-        }
-        if !text.matches(pattern: #"(?im)^#+\s*Release info\s*$"#) {
-            findings.append(error("pr_template_contract", path, "has no `# Release info` section"))
-        }
-        for name in ["Major", "Minor", "Patch"] where !text.matches(pattern: "(?m)^\\s*-\\s*\\[[ xX]\\]\\s*\(name)\\b")
-        {
-            findings.append(error("pr_template_contract", path, "has no `- [ ] \(name)` checkbox"))
-        }
-        if !ReleaseInfo.notesHeadings.contains(where: { text.matches(pattern: "(?im)^#+\\s*\(regexEscaped($0))\\s*$") })
-        {
-            findings.append(error("pr_template_contract", path, "has no `# Release notes` section"))
         }
     }
 

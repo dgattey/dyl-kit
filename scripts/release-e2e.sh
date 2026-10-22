@@ -11,12 +11,14 @@ work="${1:-$(mktemp -d)}"
 fail() { echo "::error::$*" >&2; exit 1; }
 
 swift build --package-path "$kit" --product release-kit -q
+swift build --package-path "$kit" --product devkit -q
 release_kit="$kit/.build/debug/release-kit"
 
 rm -rf "$work"
 cp -R "$kit/Tests/Fixtures/SampleApp" "$work"
 cd "$work"
 sed -i '' "s|.package(path: \"../../..\")|.package(path: \"$kit\")|" Package.swift
+"$kit/.build/debug/devkit" sync
 
 # Sparkle's private key file is the base64 Ed25519 seed; SUPublicEDKey is the base64 public key.
 openssl genpkey -algorithm ed25519 -out key.pem

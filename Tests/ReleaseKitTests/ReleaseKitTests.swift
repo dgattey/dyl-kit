@@ -417,35 +417,28 @@ private let sconeosModules = [
     }
 }
 
-/// Runs the tier 3 checks over a scratch copy of the SampleApp with a chosen set of workflows.
+/// Runs the tier 3 checks over a scratch copy of the SampleApp, synced as `devkit sync` leaves it, plus `extra` files.
 @Suite struct ReleaseChecksTests {
-    private static let committedWorkflows = ["release", "verify", "pr-check"].map { ".github/workflows/\($0).yml" }
-
-    private func scratchWorkspace(workflows: [String: String]) throws -> Workspace {
+    private func scratchWorkspace(_ extra: [String: String] = [:]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
-            "DylApp.toml", "Package.swift", "sparkle-public-key.txt", ".github/pull_request_template.md",
-            "Sample.entitlements", "server/package.json", "server/vercel.json", "run",
-        ].map { ($0, appRoot.appending(path: $0)) }
-        for (path, source) in appFiles {
+            "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
+            "server/vercel.json", ".github/workflows/verify.yml",
+        ]
+        for path in appFiles {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: source, to: destination)
+            try FileManager.default.copyItem(at: appRoot.appending(path: path), to: destination)
         }
-        for (path, text) in workflows {
+        _ = try SharedFiles.sync(root: root)
+        for (path, text) in extra {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(text.utf8).write(to: destination)
         }
         return try Workspace.locate(root.path)
-    }
-
-    private func committed() throws -> [String: String] {
-        try Dictionary(uniqueKeysWithValues: Self.committedWorkflows.map {
-            ($0, try String(contentsOf: appRoot.appending(path: $0), encoding: .utf8))
-        })
     }
 
     private func errors(_ report: CheckReport) -> [String: [String]] {
@@ -459,7 +452,7 @@ private let sconeosModules = [
     }
 
     @Test func committedWorkflowsPass() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
     }
@@ -468,7 +461,7 @@ private let sconeosModules = [
 
     /// Stages `item` as the appcast `appcast` writes, and checks it against `published`.
     private func checkStaged(_ item: String, published: [AppcastItem]) throws -> [String: [String]] {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let pipeline = ReleasePipeline(workspace: workspace)
         try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
@@ -507,7 +500,7 @@ private let sconeosModules = [
 
     /// Photos #9: library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
     @Test func libraryValidationOffAndNoXcodeProject() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let entitlements = workspace.url("Sample.entitlements")
         let text = try String(contentsOf: entitlements, encoding: .utf8)
@@ -526,9 +519,9 @@ private let sconeosModules = [
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
-    /// A fix to `./run`, the PR check or the release workflow reaches every app only if none keeps its own copy.
+    /// A fix to a shared file reaches every app only if none keeps its own copy.
     @Test func sharedFilesMatchDylKit() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let check = workspace.url(".github/workflows/pr-check.yml")
         let stale = try String(contentsOf: check, encoding: .utf8).replacing(", synchronize]", with: "]")
@@ -550,15 +543,18 @@ private let sconeosModules = [
         #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
     }
 
-    /// DylKit's own release reads the same Release info box, so its PRs run the apps' check.
+    /// DylKit's own release reads the same Release info box, so its PRs start from the apps' template and run their
+    /// check.
     @Test func dylKitChecksItsOwnReleaseInfo() throws {
-        let own = packageRoot.appending(path: SharedFiles.prCheck.path)
-        #expect(try String(contentsOf: own, encoding: .utf8) == SharedFiles.prCheck.contents)
+        for file in [SharedFiles.prCheck, SharedFiles.prTemplate] {
+            let own = packageRoot.appending(path: file.path)
+            #expect(try String(contentsOf: own, encoding: .utf8) == file.contents, "\(file.path)")
+        }
     }
 
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let config = #"{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- app" }"#
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
@@ -584,7 +580,7 @@ private let sconeosModules = [
                       GH_TOKEN: ${{ secrets.GH_TOKEN }}
                       SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
             """
-        let workspace = try scratchWorkspace(workflows: [".github/workflows/release-macos.yml": legacy])
+        let workspace = try scratchWorkspace([".github/workflows/release-macos.yml": legacy])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let workflow = ".github/workflows/release-macos.yml"
         let files = errorFiles(ReleaseChecks(workspace: workspace).run())
@@ -594,10 +590,7 @@ private let sconeosModules = [
 
     @Test func appScriptsNeverTalkToTheForge() throws {
         let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
-        var workflows = try committed()
-        workflows["ci/github/lookup.sh"] = lookup
-        workflows["scripts/lookup.sh"] = lookup
-        let workspace = try scratchWorkspace(workflows: workflows)
+        let workspace = try scratchWorkspace(["ci/github/lookup.sh": lookup, "scripts/lookup.sh": lookup])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         #expect(
             errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]
@@ -626,7 +619,7 @@ private let sconeosModules = [
 
     /// Photos: a `file:` @dylkit/web points into `.build/checkouts`, which Vercel never has.
     @Test func fileDependencyOnTheWebPackageSaysToUseTheTarball() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let package = workspace.url("server/package.json")
         let text = try String(contentsOf: package, encoding: .utf8)
@@ -640,7 +633,7 @@ private let sconeosModules = [
 
     /// Saga: SwiftPM copies an un-excluded `.xcdatamodeld` raw into the resource bundle.
     @Test func bundledResourcesMustBeExcludedFromTheTarget() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let manifest = workspace.url("DylApp.toml")
         let text = try String(contentsOf: manifest, encoding: .utf8).replacingOccurrences(
@@ -657,7 +650,7 @@ private let sconeosModules = [
     }
 
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {
-        let workspace = try scratchWorkspace(workflows: try committed())
+        let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let manifest = workspace.url("DylApp.toml")
         let text = try String(contentsOf: manifest, encoding: .utf8)

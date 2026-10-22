@@ -11,7 +11,7 @@ public enum SharedFiles {
 
     static let header = "Written by `devkit sync` from DylKit. Change DylKit's copy, not this one."
 
-    public static let all: [File] = [run, prCheck, release]
+    public static let all: [File] = [run, prCheck, release, prTemplate]
 
     static let run = File(
         path: "run", contents: #"""
@@ -189,24 +189,59 @@ public enum SharedFiles {
 
             """#, executable: false)
 
-    /// Writes every shared file under `root`, and returns the paths it changed.
+    /// `ReleaseInfo` reads the notes and the one checked Release info box from the body this template starts.
+    static let prTemplate = File(
+        path: ".github/pull_request_template.md", contents: """
+            <!-- \(header) -->
+            Closes
+
+            <!-- User-facing bullets for Sparkle's update dialog and the release. No file paths or symbol names. -->
+            # Release notes
+
+            -
+
+            # What changed?
+
+            -
+
+            # Release info
+
+            - [ ] Major
+            - [ ] Minor
+            - [x] Patch
+
+            """, executable: false)
+
+    public enum Drift: String, Sendable {
+        case missing
+        case differs = "differs from DylKit's copy"
+        case notExecutable = "isn't executable"
+    }
+
+    /// Every shared file under `root` that isn't as DylKit ships it.
+    ///
+    /// - Blocking: reads files.
+    public static func drift(root: URL) -> [(file: File, drift: Drift)] {
+        all.compactMap { file in
+            let url = root.appending(path: file.path)
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return (file, .missing) }
+            if text != file.contents { return (file, .differs) }
+            if file.executable, !FileManager.default.isExecutableFile(atPath: url.path) { return (file, .notExecutable) }
+            return nil
+        }
+    }
+
+    /// Rewrites every drifted shared file under `root`, and returns their paths.
     ///
     /// - Blocking: reads and writes files.
     public static func sync(root: URL) throws -> [String] {
-        var changed: [String] = []
-        for file in all {
+        let drifted = drift(root: root).map(\.file)
+        for file in drifted {
             let url = root.appending(path: file.path)
-            if (try? String(contentsOf: url, encoding: .utf8)) != file.contents {
-                try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try file.contents.write(to: url, atomically: true, encoding: .utf8)
-                changed.append(file.path)
-            }
-            if file.executable, !FileManager.default.isExecutableFile(atPath: url.path) {
-                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-                if !changed.contains(file.path) { changed.append(file.path) }
-            }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try file.contents.write(to: url, atomically: true, encoding: .utf8)
+            if file.executable { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
         }
-        return changed
+        return drifted.map(\.path)
     }
 }

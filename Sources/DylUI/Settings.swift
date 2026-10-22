@@ -43,20 +43,26 @@ public struct SettingsSection: Identifiable {
 /// pushed list.
 public struct SettingsView: View {
     private let sections: [SettingsSection]
-    @State private var selection: SettingsPage.ID?
     #if os(macOS)
+    @State private var selection: SettingsPage.ID?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #else
+    @State private var path: [SettingsPage.ID]
     #endif
 
-    /// Opens on the first page, or with `--initial-view settings/<page>` on that page: its title lowercased with
-    /// dashes for spaces, such as `settings/software-updates`.
+    /// Opens on the first page (the list on iOS), or with `--initial-view settings/<page>` on that page: its title
+    /// lowercased with dashes for spaces, such as `settings/software-updates`.
     public init(sections: [SettingsSection]) {
         self.sections = sections
         let pages = sections.flatMap(\.pages)
         let launchPage = pages.first {
             LaunchOverrides.current.initialView == "settings/\($0.title.lowercased().replacing(" ", with: "-"))"
         }
+        #if os(macOS)
         _selection = State(initialValue: (launchPage ?? pages.first)?.id)
+        #else
+        _path = State(initialValue: launchPage.map { [$0.id] } ?? [])
+        #endif
     }
 
     private var pages: [SettingsPage] { sections.flatMap(\.pages) }
@@ -76,14 +82,12 @@ public struct SettingsView: View {
         .liquidGlassToolbar()
         .frame(width: 700, height: 540)
         #else
-        NavigationStack {
+        NavigationStack(path: $path) {
             Form {
                 ForEach(sections) { section in
                     Section {
                         ForEach(section.pages) { page in
-                            NavigationLink {
-                                SettingsForm(page: page)
-                            } label: {
+                            NavigationLink(value: page.id) {
                                 Label { Text(page.title) } icon: { SettingsBadge(page: page, size: 20) }
                             }
                         }
@@ -96,6 +100,11 @@ public struct SettingsView: View {
             .textCase(nil)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SettingsPage.ID.self) { id in
+                if let page = pages.first(where: { $0.id == id }) {
+                    SettingsForm(page: page)
+                }
+            }
         }
         #endif
     }

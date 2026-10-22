@@ -186,10 +186,6 @@ extension DylAppManifest {
                 "release.assets",
                 "`release.assets` must be a public Blob store's URL, https://<store>.public.blob.vercel-storage.com")
         }
-        if toml.document["release.inputs"] != nil {
-            throw toml.fail(
-                "release.inputs", "`release.inputs` is gone: the shared release workflow decides what releases. Delete it")
-        }
         if build.icon != nil, build.iconGenerator != nil {
             throw toml.fail("build.icon", "set `build.icon` or `build.icon-generator`, not both")
         }

@@ -155,7 +155,6 @@ struct DylAppManifestTests {
     }
 
     @Test(arguments: [
-        ("[release]\n", "[release]\ninputs = [\"Sources/**\"]\n", "`release.inputs` is gone"),
         ("product = \"Demo\"\n", "product = \"Demo\"\nicon = \"A.icon\"\nicon-generator = \"g.swift\"\n", "not both"),
         ("product = \"Demo\"\n", "product = \"Demo\"\nresources = [\"Sources/Demo/Model.momd\"]\n", "isn't a"),
         ("[release]\n", "[bundle.info]\nCFBundleVersion = \"9\"\n\n[release]\n", "can't set CFBundleVersion"),

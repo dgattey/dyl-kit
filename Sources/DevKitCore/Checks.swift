@@ -68,15 +68,12 @@ public struct Checks: Sendable {
 
     /// DylKit's shared config, then the app's `.swiftlint.yml` if it has one; SwiftLint reads repeated `--config`s
     /// as parent and child. DylKit is found through SwiftPM, so a `.package(path:)` checkout works as well as a URL
-    /// one, which a `parent_config` path into `.build/checkouts` can't do.
+    /// one.
     ///
     /// - Blocking: runs `swift package show-dependencies`.
     func lintConfigs() -> Result<[String], ToolError> {
         let local = workspace.url(".swiftlint.yml")
-        let localText = try? String(contentsOf: local, encoding: .utf8)
-        if let localText, localText.contains("parent_config:") {
-            return .failure(ToolError(".swiftlint.yml: remove `parent_config`; devkit passes DylKit's shared config itself"))
-        }
+        let hasLocal = FileManager.default.fileExists(atPath: local.path)
         guard
             let json = try? Shell.capture(
                 ["swift", "package", "show-dependencies", "--format", "json"], cwd: workspace.root),
@@ -86,7 +83,7 @@ public struct Checks: Sendable {
         guard let excluded = try? Self.excludeBuildFolders(root: workspace.root) else {
             return .failure(ToolError("can't write build/\(Self.excludedConfigName)"))
         }
-        return .success([shared] + (localText == nil ? [] : [local.path]) + [excluded])
+        return .success([shared] + (hasLocal ? [local.path] : []) + [excluded])
     }
 
     static let excludedConfigName = "swiftlint-excluded.yml"

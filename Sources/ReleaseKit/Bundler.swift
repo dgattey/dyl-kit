@@ -75,7 +75,9 @@ public struct Bundler: Sendable {
 
         if let plugin = manifest.build.dockTilePlugin {
             let library = binDir.appending(path: "lib\(plugin.product).dylib")
-            guard fileManager.fileExists(atPath: library.path) else { throw ToolError("\(library.path) wasn't built") }
+            guard fileManager.fileExists(atPath: library.path) else {
+                throw ToolError("`\(plugin.product)` built no \(library.lastPathComponent); make it a `.dynamic` library product")
+            }
             try ResourceCompiler.Platform.verifySDK(of: library, sdkVersion: sdkVersion)
             let pluginContents = contents.appending(path: "PlugIns/\(plugin.bundleName)/Contents")
             try fileManager.createDirectory(

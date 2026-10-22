@@ -3,23 +3,23 @@ import Foundation
 
 /// `release.json`, published beside each release's `appcast.xml` so `@dylkit/web` shows the release without parsing
 /// the feed's HTML.
-public struct PublishedRelease: Encodable, Equatable, Sendable {
-    public struct Notes: Encodable, Equatable, Sendable {
-        public var version: String
-        public var html: String
+struct PublishedRelease: Encodable, Equatable, Sendable {
+    struct Notes: Encodable, Equatable, Sendable {
+        var version: String
+        var html: String
     }
 
-    public var version: String
-    public var build: Int
-    public var minimumSystemVersion: String
-    public var appleSiliconOnly: Bool
-    public var publishedAt: Date?
-    public var download: String
-    public var sizeBytes: Int
+    var version: String
+    var build: Int
+    var minimumSystemVersion: String
+    var appleSiliconOnly: Bool
+    var publishedAt: Date?
+    var download: String
+    var sizeBytes: Int
     /// Newest first, versions without notes left out, styles stripped for the site's own CSS.
-    public var notes: [Notes]
+    var notes: [Notes]
 
-    public init(_ item: AppcastItem) throws {
+    init(_ item: AppcastItem) throws {
         guard let minimumSystemVersion = item.minimumSystemVersion, let download = item.enclosureURL,
             let sizeBytes = item.enclosureLength
         else {
@@ -44,7 +44,7 @@ public struct PublishedRelease: Encodable, Equatable, Sendable {
     }
 
     /// - Blocking: writes the file.
-    public func write(to url: URL) throws {
+    func write(to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601

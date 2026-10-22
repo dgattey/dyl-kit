@@ -2,26 +2,14 @@ import DylToolSupport
 import Foundation
 
 /// One side of `check --live`: an app, its feed's newest item and the archive that item names.
-public struct ReleaseSnapshot: Sendable {
-    public var info: Plist
-    public var designatedRequirement: String?
-    public var entitlements: Plist?
+struct ReleaseSnapshot {
+    var info: Plist
+    var designatedRequirement: String?
+    var entitlements: Plist?
     /// `Signature=` from `codesign -dvv`: `adhoc`, or the signing authority's kind.
-    public var signature: String?
-    public var feed: [AppcastItem]
-    public var archive: Data
-
-    public init(
-        info: Plist, designatedRequirement: String?, entitlements: Plist?, signature: String?, feed: [AppcastItem],
-        archive: Data
-    ) {
-        self.info = info
-        self.designatedRequirement = designatedRequirement
-        self.entitlements = entitlements
-        self.signature = signature
-        self.feed = feed
-        self.archive = archive
-    }
+    var signature: String?
+    var feed: [AppcastItem]
+    var archive: Data
 
     var newest: AppcastItem? { feed.newest }
 
@@ -29,33 +17,22 @@ public struct ReleaseSnapshot: Sendable {
 }
 
 /// Compares the staged release with the one installs run now, so a PR proves it ships a valid Sparkle update.
-public struct LiveComparison: Sendable {
-    public var live: ReleaseSnapshot
-    public var staged: ReleaseSnapshot
-    public var manifestFeedURL: String
+struct LiveComparison {
+    var live: ReleaseSnapshot
+    var staged: ReleaseSnapshot
+    var manifestFeedURL: String
     /// `codesign --verify --deep --strict` on the staged app, nil when it passed.
-    public var stagedCodesignFailure: String?
+    var stagedCodesignFailure: String?
     /// Info.plist keys from `[local-values]`, printed only as their length.
-    public var redactedKeys: Set<String>
+    var redactedKeys: Set<String>
 
-    public init(
-        live: ReleaseSnapshot, staged: ReleaseSnapshot, manifestFeedURL: String, stagedCodesignFailure: String?,
-        redactedKeys: Set<String>
-    ) {
-        self.live = live
-        self.staged = staged
-        self.manifestFeedURL = manifestFeedURL
-        self.stagedCodesignFailure = stagedCodesignFailure
-        self.redactedKeys = redactedKeys
-    }
-
-    public static let rules = [
+    static let rules = [
         "live_bundle_id", "live_executable", "live_public_key", "live_feed_url", "live_min_os", "live_build_increases",
         "staged_appcast_matches_app", "live_codesign", "live_designated_requirement", "live_entitlements",
         "live_signing_scheme", "live_ed_signature", "live_feed_valid",
     ]
 
-    public func findings() -> [CheckFinding] {
+    func findings() -> [CheckFinding] {
         var findings: [CheckFinding] = []
         func fail(_ rule: String, _ message: String, severity: CheckFinding.Severity = .error) {
             findings.append(CheckFinding(rule: rule, severity: severity, file: nil, message: message))
@@ -138,7 +115,7 @@ public struct LiveComparison: Sendable {
     }
 
     /// Live → staged Info.plist changes, without build-machine keys, and local values as their length only.
-    public func infoDiff() -> [String] {
+    func infoDiff() -> [String] {
         func render(_ key: String, _ value: PlistValue?) -> String {
             guard let value else { return "(none)" }
             if redactedKeys.contains(key) { return "<\(value.string?.count ?? 0) chars>" }

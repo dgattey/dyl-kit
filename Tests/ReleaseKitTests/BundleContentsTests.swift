@@ -165,6 +165,8 @@ import CryptoKit
             staged.feed[0] = try item("1.1.0", build: 11, archive: staged.archive, signedBy: other)
         }
         #expect(rules(rotated) == ["live_ed_signature"])
+        let resized = try comparison { _, staged in staged.feed[0].enclosureLength = staged.archive.count + 1 }
+        #expect(rules(resized) == ["live_ed_signature"])
         let stale = try comparison { _, staged in staged.info["CFBundleVersion"] = .string("10") }
         #expect(Set(rules(stale)) == ["live_build_increases", "staged_appcast_matches_app"])
     }

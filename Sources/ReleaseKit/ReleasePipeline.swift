@@ -270,14 +270,12 @@ public struct ReleasePipeline: Sendable {
     }
 
     private func verifySignature(appcast: URL, archive: URL, app: URL) throws {
-        guard let item = try Appcast.items(at: appcast).first, let signature = item.edSignature, !signature.isEmpty else {
-            throw ToolError("generate_appcast wrote no sparkle:edSignature to \(appcast.path)")
-        }
         guard let publicKey = InfoPlist.read(app.appending(path: "Contents/Info.plist"))?["SUPublicEDKey"]?.string
         else { throw ToolError("SUPublicEDKey is missing from the built Info.plist") }
-        switch EdSignature.verify(archive: try Data(contentsOf: archive), signature: signature, publicKey: publicKey) {
+        let item = try Appcast.items(at: appcast).newest
+        switch EdSignature.check(item, archive: try Data(contentsOf: archive), publicKey: publicKey) {
         case .valid: Log.step("edSignature verifies against SUPublicEDKey")
-        case .invalid(let reason): throw ToolError("edSignature check failed: \(reason) (private/public key mismatch?)")
+        case .invalid(let reason): throw ToolError("\(appcast.path): \(reason)")
         case .unverifiable: throw ToolError("can't verify edSignature on this platform; release from macOS")
         }
     }

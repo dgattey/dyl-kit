@@ -52,7 +52,7 @@ public struct LiveComparison: Sendable {
     public static let rules = [
         "live_bundle_id", "live_executable", "live_public_key", "live_feed_url", "live_min_os", "live_build_increases",
         "staged_appcast_matches_app", "live_codesign", "live_designated_requirement", "live_entitlements",
-        "live_signing_scheme", "live_ed_signature", "live_enclosure_length", "live_feed_valid",
+        "live_signing_scheme", "live_ed_signature", "live_feed_valid",
     ]
 
     public func findings() -> [CheckFinding] {
@@ -118,20 +118,21 @@ public struct LiveComparison: Sendable {
             fail("live_signing_scheme", "live Signature=\(show(live.signature)), staged \(show(staged.signature))")
         }
         if let key = live.string("SUPublicEDKey") {
-            if let problem = Self.signatureProblem(stagedItem, archive: staged.archive, publicKey: key) {
+            func problem(_ item: AppcastItem?, _ archive: Data) -> String? {
+                switch EdSignature.check(item, archive: archive, publicKey: key) {
+                case .valid: nil
+                case .invalid(let reason): reason
+                case .unverifiable: "can't verify Ed25519 on this platform; run on macOS"
+                }
+            }
+            if let problem = problem(stagedItem, staged.archive) {
                 fail("live_ed_signature", "staged archive against the live app's SUPublicEDKey: \(problem)")
             }
-            if let problem = Self.signatureProblem(liveNewest, archive: live.archive, publicKey: key) {
+            if let problem = problem(liveNewest, live.archive) {
                 fail("live_feed_valid", "the live feed's newest item: \(problem)")
             }
         } else {
             fail("live_ed_signature", "the live app has no SUPublicEDKey")
-        }
-        if stagedItem?.enclosureLength != staged.archive.count {
-            fail(
-                "live_enclosure_length",
-                "staged enclosure length \(stagedItem?.enclosureLength.map(String.init) ?? "missing") != archive size "
-                    + "\(staged.archive.count)")
         }
         return findings
     }
@@ -160,18 +161,6 @@ public struct LiveComparison: Sendable {
         case .array(let items): "[" + items.map(render).joined(separator: ", ") + "]"
         case .dictionary(let entries):
             "{" + entries.keys.sorted().map { "\($0): \(render(entries[$0]!))" }.joined(separator: ", ") + "}"
-        }
-    }
-
-    static func signatureProblem(_ item: AppcastItem?, archive: Data, publicKey: String) -> String? {
-        guard let item, let signature = item.edSignature, !signature.isEmpty else { return "no sparkle:edSignature" }
-        if let length = item.enclosureLength, length != archive.count {
-            return "enclosure length \(length) != archive size \(archive.count)"
-        }
-        switch EdSignature.verify(archive: archive, signature: signature, publicKey: publicKey) {
-        case .valid: return nil
-        case .invalid(let reason): return reason
-        case .unverifiable: return "can't verify Ed25519 on this platform; run on macOS"
         }
     }
 

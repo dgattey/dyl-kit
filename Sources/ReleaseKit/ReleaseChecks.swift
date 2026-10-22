@@ -161,7 +161,7 @@ public struct ReleaseChecks: Sendable {
                     error("min_os_consistency", "Package.swift", ".iOS(.v\(declared.1)) but DylApp.toml says \(iOS)"))
             }
         }
-        if let item = items(at: stagedAppcast, "min_os_consistency", &findings)?.first,
+        if let item = items(at: stagedAppcast, "min_os_consistency", &findings)?.newest,
             let staged = item.minimumSystemVersion, staged != macOS
         {
             findings.append(
@@ -190,26 +190,17 @@ public struct ReleaseChecks: Sendable {
 
     private func checkStagedAppcast(_ findings: inout [CheckFinding]) {
         let appcastPath = relative(stagedAppcast)
-        guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.first else { return }
-        guard let signature = item.edSignature, !signature.isEmpty else {
-            findings.append(error("appcast_signature", appcastPath, "newest item has no sparkle:edSignature"))
-            return
-        }
-        guard let enclosure = item.enclosureURL, let name = enclosure.split(separator: "/").last.map(String.init) else {
+        guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.newest else { return }
+        guard let name = item.enclosureURL?.split(separator: "/").last.map(String.init) else {
             findings.append(error("appcast_signature", appcastPath, "newest item has no enclosure URL"))
             return
         }
-        let archive = stagedAppcast.deletingLastPathComponent().appending(path: name)
-        guard let data = try? Data(contentsOf: archive) else {
+        guard let data = try? Data(contentsOf: stagedAppcast.deletingLastPathComponent().appending(path: name)) else {
             findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't staged next to it"))
             return
         }
-        if let length = item.enclosureLength, length != data.count {
-            findings.append(
-                error("appcast_signature", appcastPath, "enclosure length \(length) != \(name) size \(data.count)"))
-        }
         guard let publicKey else { return }
-        switch EdSignature.verify(archive: data, signature: signature, publicKey: publicKey) {
+        switch EdSignature.check(item, archive: data, publicKey: publicKey) {
         case .valid: break
         case .invalid(let reason): findings.append(error("appcast_signature", appcastPath, "\(name): \(reason)"))
         case .unverifiable:
@@ -435,7 +426,7 @@ public struct ReleaseChecks: Sendable {
     /// same build and version is a re-run of the release that published them.
     private func checkStaged(_ staged: StagedRelease, into findings: inout [CheckFinding]) {
         let file = relative(staged.appcast)
-        guard let item = items(at: staged.appcast, "staged_release", &findings)?.first else {
+        guard let item = items(at: staged.appcast, "staged_release", &findings)?.newest else {
             if findings.isEmpty { findings.append(error("staged_release", file, "has no items")) }
             return
         }

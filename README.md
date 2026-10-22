@@ -4,7 +4,7 @@ The shared framework for Dylan's Mac and iOS apps (Sconeos, Saga, Gattey Photos)
 
 | Piece | What it is |
 |---|---|
-| `DylCore`, `DylUI`, `DylUpdates` | Runtime libraries: launch overrides, networking helpers, the palette and window/Settings shell, and Sparkle updates (inert on iOS and in dev builds). |
+| `DylCore`, `DylUI`, `DylUpdates` | Runtime libraries: launch overrides, networking helpers, the palette shape each app fills in, the main window and the Settings window, and Sparkle updates (inert on iOS and in dev builds). |
 | `DylTestSupport` | For apps' test targets: re-exports ViewInspector, and points `AppDirectories.support` at a scratch folder with `AppDirectories.withTemporarySupportFolder`. |
 | `devkit` | Build, relaunch and screenshot the app in the background, the iOS Simulator loop, and every check a PR needs. |
 | `release-kit` | Version, bundle, sign, appcast and publish a Sparkle release to the app's Vercel Blob store, plus the release invariant checks. |

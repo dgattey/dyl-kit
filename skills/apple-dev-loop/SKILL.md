@@ -56,4 +56,4 @@ After `./run release bundle`, `sign` and `appcast`, run `./run release check --l
 - A blank or black PNG means Screen Recording isn't granted to the process running `devkit`. Say so instead of retrying.
 - "No window" means the app hasn't shown its window within 15 seconds; check that it launched at all.
 - "Still changing" means something animates forever, such as a looping spinner or a blinking caret. The capture is the last frame; look at it, and stop the animation under `--initial-view` if it hides what you're checking.
-- The iOS build takes its bundle ID and default simulator from the `[ios]` table of `DylApp.toml`.
+- The iOS build takes its bundle ID, plus `.dev`, and default simulator from the `[ios]` table of `DylApp.toml`.

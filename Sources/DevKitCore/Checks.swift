@@ -83,7 +83,24 @@ public struct Checks: Sendable {
             let kit = Self.dylKitPath(dependenciesJSON: json)
         else { return .failure(ToolError("can't find the dyl-kit package; run `swift package resolve`")) }
         let shared = URL(fileURLWithPath: kit).appending(path: "lint/swiftlint.yml").path
-        return .success([shared] + (localText == nil ? [] : [local.path]))
+        guard let excluded = try? Self.excludeBuildFolders(root: workspace.root) else {
+            return .failure(ToolError("can't write build/\(Self.excludedConfigName)"))
+        }
+        return .success([shared] + (localText == nil ? [] : [local.path]) + [excluded])
+    }
+
+    static let excludedConfigName = "swiftlint-excluded.yml"
+
+    /// SwiftLint resolves a config's `excluded` paths against that config's own folder, so the shared config, inside
+    /// DylKit's checkout, can't name the app's `.build` or `build/`. This last layer lives in `build/` and names both
+    /// relative to it, so they stay out whatever the app's `.swiftlint.yml` says.
+    ///
+    /// - Blocking: writes `build/swiftlint-excluded.yml`.
+    static func excludeBuildFolders(root: URL) throws -> String {
+        let file = root.appending(path: "build/\(excludedConfigName)")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "excluded:\n  - '.'\n  - '../.build'\n".write(to: file, atomically: true, encoding: .utf8)
+        return file.path
     }
 
     private struct Dependency: Decodable {

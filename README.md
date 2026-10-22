@@ -15,6 +15,8 @@ The shared framework for Dylan's Mac and iOS apps (Sconeos, Saga, Gattey Photos)
 
 ## Using it in an app
 
+To adopt DylKit or upgrade an app to 0.2, follow the `adopt-dylkit` skill (`skills/adopt-dylkit/SKILL.md`): the Blob store and secrets, the pins, sync, the first release and the site switch, in order. The rest of this section is reference.
+
 Add the package and depend on the runtime products:
 
 ```swift
@@ -62,7 +64,7 @@ Every release's files go to a public Vercel Blob store, the same way whatever fo
 
 1. In Vercel, create a Blob store for the app with public access (Storage → Create → Blob). Its URL is `https://<store>.public.blob.vercel-storage.com`.
 2. Set that URL as `assets` under `[release]` in `DylApp.toml`. release-kit uploads there and the site reads from there.
-3. Add the store's read-write token to the repo's Actions secrets as `BLOB_READ_WRITE_TOKEN`. The shared `release` workflow passes it to `./run release publish`, which refuses a token for any other store before it touches that store's latest release.
+3. Add the store's read-write token to the repo's Actions secrets as `BLOB_READ_WRITE_TOKEN`. The shared `release` workflow passes it to `./run release publish`, which refuses a token for any other store before it touches that store's latest release. The site reads the store's public URLs, so its Vercel project needs no token.
 
 The store holds each release's zip under `releases/v<version>/`, and the newest release's `appcast.xml` and `release.json` at its root. The forge only gets the pushed tag, and the merged PR's body that `version` reads with the workflow's `GITHUB_TOKEN`. There's no GitHub release.
 

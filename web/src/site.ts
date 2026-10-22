@@ -17,8 +17,8 @@ export type Site = {
   tagline: string;
   siteUrl: string;
   accent: { light: string; dark: string } | null;
-  /** The home-screen icon: the artifacts dir's full-bleed `apple-icon.png`, else the rounded `app-icon.png`. */
-  appleIcon: string;
+  /** `site.favicon`: which appearance the browser tab shows, for an icon whose light variant vanishes on a light tab. */
+  favicon: "light" | "dark";
   screenshots: Screenshot[];
   /** `release.assets`: the public Blob store release-kit uploads each release to, without a trailing slash. */
   assets: string;
@@ -38,10 +38,15 @@ export function loadSite(root: string = findRoot(process.cwd())): Site {
     tagline: requireString(manifest, "site.tagline"),
     siteUrl: requireString(manifest, "release.site-url"),
     accent: isRecord(accent) ? { light: requireString(manifest, "site.accent.light"), dark: requireString(manifest, "site.accent.dark") } : null,
-    appleIcon: fs.existsSync(path.join(artifactsDir, "apple-icon.png")) ? "/apple-icon.png" : "/app-icon.png",
+    favicon: faviconFrom(lookup(manifest, "site.favicon")),
     screenshots: screenshotsFrom(lookup(manifest, "site.screenshots"), artifactsDir),
     assets: requireString(manifest, "release.assets").replace(/\/$/, ""),
   };
+}
+
+function faviconFrom(value: unknown): Site["favicon"] {
+  if (value === undefined || value === "light" || value === "dark") return value ?? "light";
+  throw new Error('DylApp.toml: `site.favicon` must be "light" or "dark"');
 }
 
 function screenshotsFrom(value: unknown, artifactsDir: string): Screenshot[] {

@@ -15,8 +15,11 @@ export function DownloadPage({ site, release }: { site: Site; release: Release |
         {hero ? <ScreenshotImage shot={hero} className={styles.heroShot} priority /> : null}
         <div className={styles.intro}>
           <div className={styles.brand}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/app-icon.png" alt="" width={64} height={64} className={styles.icon} />
+            <picture>
+              <source srcSet="/icons/icon-256-dark.png" media="(prefers-color-scheme: dark)" />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/icons/icon-256.png" alt="" width={64} height={64} className={styles.icon} />
+            </picture>
             {release ? <span className={styles.badge}>{requirements(release)}</span> : null}
           </div>
           <h1 className={styles.title}>{site.name}</h1>

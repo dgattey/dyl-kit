@@ -644,7 +644,7 @@ private let sconeosModules = [
         #expect(
             try messages(#"{ "version": "0.3.1" }"#) == [
                 "@dylkit/web is 0.2.0 but Package.resolved pins DylKit 0.3.1; depend on "
-                    + "\"https://dylkit.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
             ])
     }
 
@@ -710,7 +710,10 @@ private let sconeosModules = [
         process.waitUntilExit()
 
         #expect(process.terminationStatus == 0)
-        #expect(output == "version=1.1.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n")
+        #expect(
+            output
+                == "version=1.1.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n"
+                + "assets=https://dylkitsample.public.blob.vercel-storage.com\n")
     }
 
     /// DylKit has no app or feed: the latest tag and the merged PR's box plan its version, and a rerun resumes it.

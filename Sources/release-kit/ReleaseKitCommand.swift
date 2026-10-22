@@ -47,6 +47,7 @@ extension ReleaseKitCommand {
             print("version=\(state.version)")
             print("build=\(state.build)")
             print("site=\(workspace.manifest.release.siteUrl)")
+            print("assets=\(workspace.manifest.release.assets)")
         }
     }
 
@@ -137,7 +138,7 @@ extension ReleaseKitCommand {
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
-            print(try pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
+            print(pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
         }
     }
 

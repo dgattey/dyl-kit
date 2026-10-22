@@ -30,7 +30,7 @@ Then, in the app repo:
 - `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches. `./run format` runs `scripts/run format`.
 - `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
 - `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
-- The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store:
+- The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store:
 
 ```ts
 // next.config.ts
@@ -43,6 +43,13 @@ export function GET() {
   return appcastResponse(site);
 }
 
+// app/icons/[name]/route.ts, and the same in app/icon.png/, app/apple-touch-icon.png/ and app/favicon.ico/
+import { iconResponse, loadSite } from "@dylkit/web";
+const site = loadSite();
+export function GET(request: Request) {
+  return iconResponse(site, request);
+}
+
 // app/page.tsx
 import { DownloadPage, latestRelease, loadSite } from "@dylkit/web";
 const site = loadSite();
@@ -50,6 +57,8 @@ export default async function Home() {
   return <DownloadPage site={site} release={await latestRelease(site)} />;
 }
 ```
+
+Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. dylangattey.com reads `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.
 
 The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skills.
 

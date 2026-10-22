@@ -6,7 +6,8 @@ import FoundationNetworking
 #endif
 
 /// The public Vercel Blob store every release's files go to, whichever forge tags it. A release's files live under
-/// `releases/<tag>/`, and `appcast.xml` and `release.json` at the store root describe the newest release.
+/// `releases/<tag>/`, its site icons under `icons/`, and `appcast.xml` and `release.json` at the store root describe
+/// the newest release.
 struct BlobStore: Sendable {
     static let tokenVariable = "BLOB_READ_WRITE_TOKEN"
 
@@ -21,12 +22,16 @@ struct BlobStore: Sendable {
         self.transport = transport
     }
 
-    /// Uploads `files` under `releases/<tag>/`, then `latest` to the store root, so the root never names a file that
-    /// isn't up yet. Returns each file's public URL, in upload order. With `assets`, the first upload that lands in
-    /// another store stops it before the root, where it would replace another app's latest release.
-    func publish(tag: String, files: [URL], latest: [URL], assets: String?) async throws -> [String] {
+    /// Uploads `files` under `releases/<tag>/`, then `icons` under `icons/`, then `latest` to the store root, so the
+    /// root never names a file that isn't up yet. Returns each file's public URL, in upload order. With `assets`, the
+    /// first upload that lands in another store stops it before the root, where it would replace another app's latest
+    /// release.
+    func publish(
+        tag: String, files: [URL], icons: [URL] = [], latest: [URL], assets: String?
+    ) async throws -> [String] {
         var urls: [String] = []
         let uploads = files.map { ($0, "releases/\(tag)/\($0.lastPathComponent)") }
+            + icons.map { ($0, "icons/\($0.lastPathComponent)") }
             + latest.map { ($0, $0.lastPathComponent) }
         for (file, pathname) in uploads {
             let url = try await put(file, at: pathname)
@@ -84,6 +89,8 @@ struct BlobStore: Sendable {
         case "xml": "application/xml"
         case "json": "application/json"
         case "tgz": "application/gzip"
+        case "png": "image/png"
+        case "ico": "image/x-icon"
         default: "application/octet-stream"
         }
     }

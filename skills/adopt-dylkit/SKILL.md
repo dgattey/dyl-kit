@@ -47,7 +47,8 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
 4. Switch the site to `@dylkit/web`.
    1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved` and run `npm install`. `dylkit_web_version` names the URL.
-   2. Set `transpilePackages: ["@dylkit/web"]` in `next.config.ts`, add `app/appcast.xml/route.ts` and `app/download/macos/route.ts`, and render `DownloadPage` with `latestRelease`. DylKit's README has the code.
+   2. Set `transpilePackages: ["@dylkit/web"]` in `next.config.ts`, add `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes, and render `DownloadPage` with `latestRelease`. DylKit's README has the code.
+   - Delete the committed site icons (`app/icon.png`, `apple-icon.png`, `favicon.ico`, `public/app-icon.png`, `apple-icon.png`) and the icon-generator lines that write them. If the icon's light variant vanishes on a light tab, as Sconeos's does, set `favicon = "dark"` under `[site]`.
    3. In `server/vercel.json`, set `"ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- . ../DylApp.toml"`.
    - Check: `npm run build` in `server/` succeeds.
 5. Verify on the Mac: `./run dev checks` and `./run release check` report 0 errors, and `./run dev capture` shows the app.

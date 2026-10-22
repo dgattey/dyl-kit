@@ -96,11 +96,11 @@ private func item(_ version: String, build: Int) -> String {
         await #expect(throws: ToolError.self) { try await Appcast.published(url, transport: offline) }
     }
 
-    /// Installs are offered the site's feed or the forge's latest, and either can be ahead.
-    @Test func publishedFeedsReadsTheSiteAndTheForgesLatestStrictly() async throws {
+    /// Installs are offered the site's feed or the Blob store's latest, and either can be ahead.
+    @Test func publishedFeedsReadsTheSiteAndTheStoresLatestStrictly() async throws {
         let workspace = try Workspace.locate(appRoot.path)
         let site = "https://dgattey.github.io/dyl-kit-sample/appcast.xml"
-        let latest = "https://github.com/dgattey/dyl-kit-sample/releases/latest/download/appcast.xml"
+        let latest = "https://dylkitsample.public.blob.vercel-storage.com/appcast.xml"
         let both = FakeTransport { request in
             switch request.url?.absoluteString {
             case site: (200, sparkleFeed(item("1.0.0", build: 3)))
@@ -110,36 +110,47 @@ private func item(_ version: String, build: Int) -> String {
         }
         #expect(try await ReleasePipeline(workspace: workspace, transport: both).publishedFeeds().map(\.build) == [3, 5])
 
-        let forgeDown = FakeTransport { request in request.url?.absoluteString == latest ? (502, "") : (404, "") }
+        let storeDown = FakeTransport { request in request.url?.absoluteString == latest ? (502, "") : (404, "") }
         await #expect(throws: ToolError.self) {
-            try await ReleasePipeline(workspace: workspace, transport: forgeDown).publishedFeeds()
+            try await ReleasePipeline(workspace: workspace, transport: storeDown).publishedFeeds()
         }
     }
 }
 
-@Suite struct GitHubAdapterTests {
-    private func github(_ transport: FakeTransport, token: String? = "t0ken") -> GitHubAdapter {
-        GitHubAdapter(
-            repo: "o/app", environment: token.map { ["GITHUB_TOKEN": $0] } ?? [:], transport: transport)
-    }
-
-    @Test func servesEachReleaseFromItsTag() {
-        let forge = github(FakeTransport { _ in (404, "") })
-        #expect(forge.downloadPrefix(tag: "v1.2.0") == "https://github.com/o/app/releases/download/v1.2.0/")
-        #expect(forge.latestAppcastURL == "https://github.com/o/app/releases/latest/download/appcast.xml")
-    }
+@Suite struct GitHubTests {
+    private let actions = ["GITHUB_REPOSITORY": "o/app", "GITHUB_TOKEN": "t0ken"]
 
     @Test func readsThePullRequestBody() async throws {
         let transport = FakeTransport { request in
             request.url?.path == "/repos/o/app/pulls/7" ? (200, #"{"body": "- [x] Minor"}"#) : (200, #"{"body": null}"#)
         }
-        #expect(try await github(transport).pullRequestBody(number: 7) == "- [x] Minor")
-        #expect(try await github(transport).pullRequestBody(number: 8) == "")
+        let github = try GitHub(environment: actions, transport: transport)
+        #expect(try await github.pullRequestBody(number: 7) == "- [x] Minor")
+        #expect(try await github.pullRequestBody(number: 8) == "")
         let request = try #require(await transport.requests.first)
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer t0ken")
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
         #expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
     }
+
+    @Test func failuresNameTheRequest() async throws {
+        let rejecting = FakeTransport { _ in (422, #"{"message": "Validation Failed"}"#) }
+        do {
+            _ = try await GitHub(environment: actions, transport: rejecting).pullRequestBody(number: 7)
+            Issue.record("expected an error")
+        } catch {
+            #expect("\(error)" == "GitHub answered HTTP 422 to GET https://api.github.com/repos/o/app/pulls/7: Validation Failed")
+        }
+        for missing in ["GITHUB_REPOSITORY", "GITHUB_TOKEN"] {
+            #expect(throws: ToolError.self) {
+                try GitHub(environment: actions.filter { $0.key != missing }, transport: rejecting)
+            }
+        }
+    }
+}
+
+@Suite struct BlobStoreTests {
+    private let store = "https://abc123.public.blob.vercel-storage.com"
 
     private func stagedFiles() throws -> [URL] {
         let directory = FileManager.default.temporaryDirectory.appending(path: "dylkit-assets-\(UUID().uuidString)")
@@ -149,106 +160,63 @@ private func item(_ version: String, build: Int) -> String {
         return files
     }
 
-    /// Asset `n` of release `id` has id `id * 100 + n`.
-    private static func release(id: Int, tag: String, assets: [String]) -> String {
-        let names = assets.enumerated().map { #"{"id": \#(id * 100 + $0.offset), "name": "\#($0.element)"}"# }
-            .joined(separator: ", ")
-        return #"""
-            {"id": \#(id), "tag_name": "\#(tag)", "assets": [\#(names)],
-             "upload_url": "https://uploads.github.com/repos/o/app/releases/\#(id)/assets{?name,label}"}
-            """#
-    }
-
-    /// The tag's release, if one exists, and how GitHub answers the rest of a publish.
-    private func forge(existing: [String]) -> FakeTransport {
+    /// Answers each upload the way Vercel Blob does, from the store `url`.
+    private func blob(_ url: String) -> FakeTransport {
         FakeTransport { request in
-            switch (request.httpMethod, request.url?.host) {
-            case ("GET"?, _): (200, "[\(existing.joined(separator: ", "))]")
-            case ("POST"?, "api.github.com"?): (201, Self.release(id: 9, tag: "v1.2.0", assets: []))
-            case ("POST"?, _): (201, "{}")
-            case ("DELETE"?, _): (204, "")
-            default: (200, Self.release(id: 9, tag: "v1.2.0", assets: []))
-            }
+            let pathname = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "pathname" }?.value ?? ""
+            return (200, #"{"url": "\#(url)/\#(pathname)", "pathname": "\#(pathname)"}"#)
         }
     }
 
-    private struct Sent: Decodable, Equatable {
-        var tagName: String?
-        var name: String?
-        var body: String?
-        var draft: Bool?
-        var makeLatest: String?
-    }
-
-    private func sent(_ request: URLRequest) throws -> Sent {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(Sent.self, from: try #require(request.httpBody))
-    }
-
-    @Test func draftsUploadsThenPublishesANewRelease() async throws {
-        let transport = forge(existing: [Self.release(id: 1, tag: "v1.1.0", assets: ["App-1.1.0.zip"])])
+    @Test func uploadsTheReleaseThenTheLatestFiles() async throws {
         let files = try stagedFiles()
         defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
+        let transport = blob(store)
 
-        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", files: files)
+        let urls = try await BlobStore(environment: ["BLOB_READ_WRITE_TOKEN": "t0ken"], transport: transport)
+            .publish(tag: "v1.2.0", files: [files[0]], latest: Array(files[1...]), assets: store)
 
-        let uploads = "https://uploads.github.com/repos/o/app/releases/9/assets"
+        let api = "https://vercel.com/api/blob/?pathname="
         #expect(
             await transport.calls == [
-                "GET https://api.github.com/repos/o/app/releases?per_page=100",
-                "POST https://api.github.com/repos/o/app/releases",
-                "POST \(uploads)?name=App-1.2.0.zip",
-                "POST \(uploads)?name=appcast.xml",
-                "POST \(uploads)?name=release.json",
-                "PATCH https://api.github.com/repos/o/app/releases/9",
+                "PUT \(api)releases/v1.2.0/App-1.2.0.zip", "PUT \(api)appcast.xml", "PUT \(api)release.json",
             ])
-        let requests = await transport.requests
-        #expect(try sent(requests[1]) == Sent(tagName: "v1.2.0", name: "App 1.2.0", body: "- New", draft: true))
-        #expect(requests[2...4].map { $0.value(forHTTPHeaderField: "Content-Type") } == [
-            "application/zip", "application/xml", "application/json",
-        ])
-        #expect(requests[2].httpBody == (try Data(contentsOf: files[0])))
-        #expect(try sent(requests[5]) == Sent(draft: false, makeLatest: "true"))
+        #expect(urls == ["\(store)/releases/v1.2.0/App-1.2.0.zip", "\(store)/appcast.xml", "\(store)/release.json"])
+        let zip = try #require(await transport.requests.first)
+        #expect(zip.httpBody == (try Data(contentsOf: files[0])))
+        #expect(zip.value(forHTTPHeaderField: "Authorization") == "Bearer t0ken")
+        #expect(zip.value(forHTTPHeaderField: "x-vercel-blob-access") == "public")
+        #expect(zip.value(forHTTPHeaderField: "x-content-type") == "application/zip")
+        #expect(zip.value(forHTTPHeaderField: "x-allow-overwrite") == "1")
+        #expect(zip.value(forHTTPHeaderField: "x-add-random-suffix") == "0")
     }
 
-    /// A re-run rebuilds the zip, so it replaces the assets an earlier run uploaded (whole or interrupted) on the same
-    /// release instead of drafting another, and leaves assets it doesn't stage alone.
-    @Test func aRerunReplacesTheStagedAssetsAndKeepsTheRest() async throws {
-        let existing = Self.release(id: 9, tag: "v1.2.0", assets: ["App-1.2.0.zip", "dSYMs.zip", "appcast.xml"])
-        let transport = forge(existing: [existing])
+    /// Saga's token in Photos' release would otherwise replace Saga's latest feed with Photos'.
+    @Test func aTokenForAnotherStoreStopsBeforeTheLatestFiles() async throws {
         let files = try stagedFiles()
         defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
+        let transport = blob("https://other.public.blob.vercel-storage.com")
+        let blobStore = try BlobStore(environment: ["BLOB_READ_WRITE_TOKEN": "t0ken"], transport: transport)
 
-        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", files: files)
-
-        let uploads = "https://uploads.github.com/repos/o/app/releases/9/assets"
-        #expect(
-            await transport.calls == [
-                "GET https://api.github.com/repos/o/app/releases?per_page=100",
-                "DELETE https://api.github.com/repos/o/app/releases/assets/900",
-                "POST \(uploads)?name=App-1.2.0.zip",
-                "DELETE https://api.github.com/repos/o/app/releases/assets/902",
-                "POST \(uploads)?name=appcast.xml",
-                "POST \(uploads)?name=release.json",
-                "PATCH https://api.github.com/repos/o/app/releases/9",
-            ])
-        let requests = await transport.requests
-        #expect(requests[2].httpBody == (try Data(contentsOf: files[0])))
-        #expect(try sent(requests[6]) == Sent(draft: false, makeLatest: "true"))
+        await #expect {
+            try await blobStore.publish(tag: "v1.2.0", files: [files[0]], latest: Array(files[1...]), assets: store)
+        } throws: { "\($0)".contains("belongs to another store") }
+        #expect(await transport.calls.count == 1)
     }
 
-    @Test func failuresNameTheRequest() async throws {
-        let rejecting = FakeTransport { _ in (422, #"{"message": "Validation Failed"}"#) }
+    @Test func failuresNameTheUpload() async throws {
+        let files = try stagedFiles()
+        defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
+        let rejecting = FakeTransport { _ in (404, #"{"error": {"code": "store_not_found", "message": "Store not found"}}"#) }
         do {
-            _ = try await github(rejecting).pullRequestBody(number: 7)
+            _ = try await BlobStore(environment: ["BLOB_READ_WRITE_TOKEN": "t0ken"], transport: rejecting)
+                .publish(tag: "v1.2.0", files: [files[0]], latest: [], assets: nil)
             Issue.record("expected an error")
         } catch {
-            #expect("\(error)" == "GitHub answered HTTP 422 to GET https://api.github.com/repos/o/app/pulls/7: Validation Failed")
+            #expect("\(error)" == "Vercel Blob answered HTTP 404 to PUT releases/v1.2.0/App-1.2.0.zip: Store not found")
         }
-        let untouched = FakeTransport { _ in (200, "{}") }
-        await #expect(throws: ToolError.self) { try await github(untouched, token: nil).pullRequestBody(number: 7) }
-        #expect(await untouched.requests.isEmpty)
+        #expect(throws: ToolError.self) { try BlobStore(environment: [:], transport: rejecting) }
     }
 }
 
@@ -291,12 +259,12 @@ private func item(_ version: String, build: Int) -> String {
                 """
                 <pubDate>Wed, 21 Oct 2026 09:30:00 +0000</pubDate>
                 <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-                <enclosure url="https://github.com/o/app/releases/download/v1.2.0/App-1.2.0.zip" length="2048"/>
+                <enclosure url="https://abc123.public.blob.vercel-storage.com/releases/v1.2.0/App-1.2.0.zip" length="2048"/>
                 """))
         #expect(release.version == "1.2.0")
         #expect(release.build == 12)
         #expect(release.appleSiliconOnly)
-        #expect(release.download == "https://github.com/o/app/releases/download/v1.2.0/App-1.2.0.zip")
+        #expect(release.download == "https://abc123.public.blob.vercel-storage.com/releases/v1.2.0/App-1.2.0.zip")
         #expect(release.sizeBytes == 2048)
         #expect(
             release.notes == [

@@ -3,8 +3,7 @@ import Foundation
 
 /// The release as separate steps, so a CI wrapper can run them one at a time: `version`, `bundle`, `sign`,
 /// `appcast`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` pushes the
-/// tag with plain git and hands the zip, appcast and `release.json` to the manifest's forge adapter; nothing is
-/// committed.
+/// tag with plain git and uploads the zip, appcast and `release.json` to the app's Blob store; nothing is committed.
 public struct ReleasePipeline: Sendable {
     public let workspace: Workspace
     let repo: ReleaseRepo
@@ -13,14 +12,14 @@ public struct ReleasePipeline: Sendable {
     public init(workspace: Workspace, transport: any HTTPTransport = URLSessionTransport()) {
         self.workspace = workspace
         self.transport = transport
-        repo = ReleaseRepo(
-            root: workspace.root,
-            forge: forgeAdapter(
-                for: workspace.manifest.release.forge, environment: ProcessInfo.processInfo.environment,
-                transport: transport))
+        repo = ReleaseRepo(root: workspace.root, transport: transport)
     }
 
-    var forge: any ForgeAdapter { repo.forge }
+    private var assets: String { workspace.manifest.release.assets }
+    /// Where the release `tag`'s zip is served from, ending in `/`.
+    func downloadPrefix(tag: String) -> String { "\(assets)/releases/\(tag)/" }
+    /// The newest published release's feed, which each publish replaces.
+    var latestAppcastURL: String { "\(assets)/appcast.xml" }
     public var stagingDir: URL { repo.stagingDir }
     var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
     var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
@@ -43,11 +42,11 @@ public struct ReleasePipeline: Sendable {
         var tag: String { "v\(version)" }
     }
 
-    /// Every item installs can be offered: the site's feed, which `SUFeedURL` polls, then the forge's latest feed.
+    /// Every item installs can be offered: the site's feed, which `SUFeedURL` polls, then the Blob store's latest feed.
     /// Each is read strictly (see `Appcast.published`).
     public func publishedFeeds() async throws -> [AppcastItem] {
         async let site = Appcast.published(workspace.manifest.release.feedURL, transport: transport)
-        async let latest = Appcast.published(forge.latestAppcastURL, transport: transport)
+        async let latest = Appcast.published(latestAppcastURL, transport: transport)
         return try await site + latest
     }
 
@@ -152,7 +151,7 @@ public struct ReleasePipeline: Sendable {
         return archive
     }
 
-    /// Writes the notes, runs Sparkle's `generate_appcast` with enclosures on the forge, fails closed unless the new
+    /// Writes the notes, runs Sparkle's `generate_appcast` with enclosures on the Blob store, fails closed unless the new
     /// signature verifies against the key baked into the app, runs the release checks against the published feeds,
     /// then writes `release.json` beside the appcast.
     ///
@@ -168,7 +167,7 @@ public struct ReleasePipeline: Sendable {
         let notes = try releaseNotes(state: state, history: published)
         try Data((notes + "\n").utf8).write(
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
-        let appcast = try generateAppcast(edKeyFile: edKeyFile, downloadPrefix: forge.downloadPrefix(tag: state.tag))
+        let appcast = try generateAppcast(edKeyFile: edKeyFile, downloadPrefix: downloadPrefix(tag: state.tag))
         try verifySignature(appcast: appcast, archive: archive, app: stagedApp)
         let report = ReleaseChecks(workspace: workspace).run(staged: stagedRelease(state, published: published))
         report.print()
@@ -181,22 +180,22 @@ public struct ReleasePipeline: Sendable {
 
     func stagedRelease(_ state: State, published: [AppcastItem]) -> ReleaseChecks.StagedRelease {
         ReleaseChecks.StagedRelease(
-            appcast: stagedAppcast, archive: archiveURL(state), downloadPrefix: forge.downloadPrefix(tag: state.tag),
+            appcast: stagedAppcast, archive: archiveURL(state), downloadPrefix: downloadPrefix(tag: state.tag),
             published: published)
     }
 
-    /// Publishes the staged zip, appcast and `release.json` (see `ReleaseRepo.publish`) unless that would offer an older
-    /// build than the published feeds.
+    /// Publishes the staged zip, then the appcast and `release.json` as the latest (see `ReleaseRepo.publish`), unless
+    /// that would offer an older build than the published feeds.
     ///
     /// - Blocking: runs git.
     public func publish() async throws {
         let state = try state()
-        let files = [archiveURL(state), stagedAppcast, stagedReleaseJSON]
-        for file in files where !FileManager.default.fileExists(atPath: file.path) {
+        let latest = [stagedAppcast, stagedReleaseJSON]
+        for file in [archiveURL(state)] + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path); run `release-kit appcast` first")
         }
         try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
-        try await repo.publish(title: "\(workspace.manifest.app.name) \(state.version)", files: files)
+        try await repo.publish([archiveURL(state)], latest: latest, assets: assets)
     }
 
     // MARK: Helpers

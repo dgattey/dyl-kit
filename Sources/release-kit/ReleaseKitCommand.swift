@@ -38,7 +38,7 @@ extension ReleaseKitCommand {
 
         @OptionGroup var options: RootOption
         @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
-        @Option(help: "The merged PR, whose body release-kit reads from the forge. Without it, the merge commit's.")
+        @Option(help: "The merged PR, whose body release-kit reads from GitHub. Without it, the merge commit's.")
         var pr: Int?
 
         func run() async throws {
@@ -111,7 +111,7 @@ extension ReleaseKitCommand {
 
     struct Publish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Tag v<version>, push the tag, and publish the zip, appcast and release.json to the forge.")
+            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.")
 
         @OptionGroup var options: RootOption
 
@@ -149,12 +149,9 @@ extension ReleaseKitCommand {
 }
 
 struct LibraryOptions: ParsableArguments {
-    @Option(help: "The GitHub repo the release publishes to, as owner/name.") var github: String
     @Option(help: "The package's checkout.") var root: String = "."
 
-    func repo() -> ReleaseRepo {
-        ReleaseRepo.github(root: URL(fileURLWithPath: root).standardizedFileURL, repo: github)
-    }
+    func repo() -> ReleaseRepo { ReleaseRepo(root: URL(fileURLWithPath: root).standardizedFileURL) }
 }
 
 extension ReleaseKitCommand {
@@ -175,14 +172,14 @@ extension ReleaseKitCommand {
 
     struct LibraryPublish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "publish", abstract: "Tag v<version>, push the tag, and attach the files to its GitHub release.")
+            commandName: "publish",
+            abstract: "Tag v<version>, push the tag, and upload the files to releases/v<version>/ on Vercel Blob.")
 
         @OptionGroup var options: LibraryOptions
-        @Argument(help: "The files to attach.") var files: [String]
+        @Argument(help: "The files to upload.") var files: [String]
 
         func run() async throws {
-            let repo = options.repo()
-            try await repo.publish(title: "v\(try repo.state().version)", files: files.map { URL(fileURLWithPath: $0) })
+            for url in try await options.repo().publish(files.map { URL(fileURLWithPath: $0) }) { print(url) }
         }
     }
 }

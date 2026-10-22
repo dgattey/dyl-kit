@@ -12,16 +12,6 @@ export type Screenshot = {
   height: number;
 };
 
-/** `[release.forge]`: where release-kit publishes each release's zip, `appcast.xml` and `release.json`. */
-export type Forge =
-  | { kind: "github"; repo: string }
-  | {
-      kind: "origin";
-      repo: string;
-      /** The public Blob store's base URL, without a trailing slash. */
-      assets: string;
-    };
-
 export type Site = {
   name: string;
   tagline: string;
@@ -30,7 +20,8 @@ export type Site = {
   /** The home-screen icon: the artifacts dir's full-bleed `apple-icon.png`, else the rounded `app-icon.png`. */
   appleIcon: string;
   screenshots: Screenshot[];
-  forge: Forge;
+  /** `release.assets`: the public Blob store release-kit uploads each release to, without a trailing slash. */
+  assets: string;
 };
 
 /**
@@ -49,21 +40,8 @@ export function loadSite(root: string = findRoot(process.cwd())): Site {
     accent: isRecord(accent) ? { light: requireString(manifest, "site.accent.light"), dark: requireString(manifest, "site.accent.dark") } : null,
     appleIcon: fs.existsSync(path.join(artifactsDir, "apple-icon.png")) ? "/apple-icon.png" : "/app-icon.png",
     screenshots: screenshotsFrom(lookup(manifest, "site.screenshots"), artifactsDir),
-    forge: forgeFrom(manifest),
+    assets: requireString(manifest, "release.assets").replace(/\/$/, ""),
   };
-}
-
-function forgeFrom(manifest: unknown): Forge {
-  const repo = requireString(manifest, "release.forge.repo");
-  const kind = requireString(manifest, "release.forge.kind");
-  switch (kind) {
-    case "github":
-      return { kind, repo };
-    case "origin":
-      return { kind, repo, assets: requireString(manifest, "release.forge.assets").replace(/\/$/, "") };
-    default:
-      throw new Error(`DylApp.toml: \`release.forge.kind\` must be \`github\` or \`origin\`, got \`${kind}\``);
-  }
 }
 
 function screenshotsFrom(value: unknown, artifactsDir: string): Screenshot[] {

@@ -233,10 +233,7 @@ import CryptoKit
         site-url = "https://saga.gattey.com"
         artifacts-dir = "server/public"
         check-interval = 3600
-
-        [release.forge]
-        kind = "github"
-        repo = "dgattey/saga"
+        assets = "https://saga.public.blob.vercel-storage.com"
 
         [site]
         tagline = "Your personal reading log."

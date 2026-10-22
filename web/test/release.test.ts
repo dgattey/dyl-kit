@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { appcastResponse, downloadResponse, latestAssetURL, latestRelease, liveBuild } from "../src/release.ts";
+import { appcastResponse, downloadResponse, latestRelease, liveBuild } from "../src/release.ts";
 import type { Release } from "../src/release.ts";
 import type { Site } from "../src/site.ts";
 
@@ -11,9 +11,9 @@ const site: Site = {
   accent: null,
   appleIcon: "/app-icon.png",
   screenshots: [],
-  forge: { kind: "github", repo: "dgattey/demo" },
+  assets: "https://demo.public.blob.vercel-storage.com",
 };
-const latest = (name: string) => `https://github.com/dgattey/demo/releases/latest/download/${name}`;
+const latest = (name: string) => `https://demo.public.blob.vercel-storage.com/${name}`;
 const live = "https://demo.gattey.com/appcast.xml";
 
 const release: Release = {
@@ -22,7 +22,7 @@ const release: Release = {
   minimumSystemVersion: "15.0",
   appleSiliconOnly: true,
   publishedAt: "2026-10-20T00:47:26.000Z",
-  download: "https://github.com/dgattey/demo/releases/download/v1.2.0/Demo-1.2.0.zip",
+  download: "https://demo.public.blob.vercel-storage.com/releases/v1.2.0/Demo-1.2.0.zip",
   sizeBytes: 5921083,
   notes: [{ version: "1.2.0", html: "<ul><li>New icon.</li></ul>" }],
 };
@@ -44,21 +44,8 @@ function serve(routes: Record<string, () => Response>) {
 beforeEach(() => delete process.env.DYLKIT_LIVE_BUILD);
 afterEach(() => mock.restoreAll());
 
-describe("latestAssetURL", () => {
-  it("points at the forge's newest release", () => {
-    assert.equal(
-      latestAssetURL({ kind: "github", repo: "dgattey/saga" }, "appcast.xml"),
-      "https://github.com/dgattey/saga/releases/latest/download/appcast.xml",
-    );
-    assert.equal(
-      latestAssetURL({ kind: "origin", repo: "dgattey/saga", assets: "https://saga.public.blob.vercel-storage.com" }, "release.json"),
-      "https://saga.public.blob.vercel-storage.com/release.json",
-    );
-  });
-});
-
 describe("latestRelease", () => {
-  it("reads the forge's release.json", async () => {
+  it("reads the Blob store's release.json", async () => {
     serve({ [latest("release.json")]: () => Response.json(release) });
     assert.deepEqual(await latestRelease(site), release);
   });
@@ -85,7 +72,7 @@ describe("latestRelease", () => {
 });
 
 describe("appcastResponse", () => {
-  it("serves the forge's newest feed for a minute", async () => {
+  it("serves the Blob store's newest feed for a minute", async () => {
     serve({ [latest("appcast.xml")]: () => new Response(feed(29, 31, 30)) });
     process.env.DYLKIT_LIVE_BUILD = "31";
     const response = await appcastResponse(site);

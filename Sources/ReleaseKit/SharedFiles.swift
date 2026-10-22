@@ -84,7 +84,8 @@ public enum SharedFiles {
             """#, executable: false)
 
     /// Every app releases the same way: a merged PR plans its version from tags and its Release info box, and
-    /// release-kit hands the assets to the forge, so nothing is committed to main. Releases queue without cancelling.
+    /// release-kit uploads the assets to the app's Blob store, so nothing is committed to main. Releases queue without
+    /// cancelling.
     static let release = File(
         path: ".github/workflows/release.yml", contents: #"""
             # \#(header)
@@ -158,7 +159,7 @@ public enum SharedFiles {
                     run: ./run release appcast
                   - name: Publish
                     env:
-                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
                     run: ./run release publish
 
               # Waiting for the deploy is plain polling, so it runs on ubuntu instead of billing macOS minutes.

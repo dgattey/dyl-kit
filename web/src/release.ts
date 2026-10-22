@@ -1,4 +1,4 @@
-import type { Forge, Site } from "./site";
+import type { Site } from "./site";
 
 export type ReleaseNotes = { version: string; html: string };
 
@@ -17,24 +17,10 @@ export type Release = {
   notes: ReleaseNotes[];
 };
 
-/** Where the forge serves the asset `name` of its newest release. */
-export function latestAssetURL(forge: Forge, name: string): string {
-  switch (forge.kind) {
-    case "github":
-      return `https://github.com/${forge.repo}/releases/latest/download/${name}`;
-    case "origin":
-      return `${forge.assets}/${name}`;
-    default: {
-      const unknown: never = forge;
-      throw new Error(`unknown forge ${JSON.stringify(unknown)}`);
-    }
-  }
-}
-
 /** The newest release, or null when it can't be read or is older than the build this deploy replaced. */
 export async function latestRelease(site: Site): Promise<Release | null> {
   try {
-    const response = await fetch(latestAssetURL(site.forge, "release.json"), { next: { revalidate: 60 } });
+    const response = await fetch(`${site.assets}/release.json`, { next: { revalidate: 60 } });
     if (!response.ok) return null;
     const release: Release = await response.json();
     return Number.isInteger(release.build) && release.build >= liveBuildFloor() ? release : null;
@@ -43,9 +29,9 @@ export async function latestRelease(site: Site): Promise<Release | null> {
   }
 }
 
-/** `/appcast.xml`: the forge's newest feed, which Sparkle polls. */
+/** `/appcast.xml`: the Blob store's newest feed, which Sparkle polls. */
 export async function appcastResponse(site: Site): Promise<Response> {
-  const feed = await fetch(latestAssetURL(site.forge, "appcast.xml"), { next: { revalidate: 60 } })
+  const feed = await fetch(`${site.assets}/appcast.xml`, { next: { revalidate: 60 } })
     .then((response) => (response.ok ? response.text() : null))
     .catch(() => null);
   const build = feed === null ? null : newestBuild(feed);

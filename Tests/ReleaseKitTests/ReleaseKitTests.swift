@@ -457,7 +457,7 @@ private let sconeosModules = [
         #expect(errors(ReleaseChecks(workspace: workspace).run()).isEmpty)
     }
 
-    private static let downloadPrefix = "https://github.com/o/r/releases/download/v1.0.9/"
+    private static let downloadPrefix = "https://abc123.public.blob.vercel-storage.com/releases/v1.0.9/"
 
     /// Stages `item` as the appcast `appcast` writes, and checks it against `published`.
     private func checkStaged(_ item: String, published: [AppcastItem]) throws -> [String: [String]] {
@@ -602,7 +602,7 @@ private let sconeosModules = [
         let sources = packageRoot.appending(path: "Sources")
         let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
         let allowed = [
-            "ReleaseKit/GitHubAdapter.swift", "ReleaseKit/OriginAdapter.swift",
+            "ReleaseKit/GitHub.swift",
             // pr-check.yml's text, which isn't a release workflow.
             "ReleaseKit/SharedFiles.swift",
         ]
@@ -628,7 +628,7 @@ private let sconeosModules = [
 
         let messages = errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] ?? []
         #expect(messages.count == 1)
-        #expect(messages.first?.contains("releases/download/v<version>/dylkit-web-<version>.tgz") == true)
+        #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
     }
 
     /// Saga: SwiftPM copies an un-excluded `.xcdatamodeld` raw into the resource bundle.
@@ -733,7 +733,7 @@ private let sconeosModules = [
         func version() throws -> String {
             let process = Process()
             process.executableURL = releaseKit
-            process.arguments = ["library", "version", "--github", "o/library", "--root", library.path]
+            process.arguments = ["library", "version", "--root", library.path]
             let stdout = Pipe()
             process.standardOutput = stdout
             process.standardError = FileHandle.nullDevice

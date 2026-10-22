@@ -1,8 +1,8 @@
 name: release
 
 # DylKit releases like its apps, minus the app: a merged PR's Release info box picks the bump, release-kit tags it, and
-# the GitHub release carries the @dylkit/web tarball apps' download sites install. The tag is the only version; nothing
-# is committed.
+# uploads the @dylkit/web tarball apps' download sites install to DylKit's Blob store. The tag is the only version;
+# nothing is committed.
 on:
   pull_request:
     types: [closed]
@@ -51,8 +51,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -o pipefail
-          .build/release/release-kit library version --github "$GITHUB_REPOSITORY" --type "$RELEASE_TYPE" \
-            ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
+          .build/release/release-kit library version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} |
+            tee -a "$GITHUB_OUTPUT"
       - name: Pack @dylkit/web at the planned version
         working-directory: web
         env:
@@ -62,6 +62,6 @@ jobs:
           npm pack
       - name: Publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
-        run: .build/release/release-kit library publish --github "$GITHUB_REPOSITORY" "web/dylkit-web-$VERSION.tgz"
+        run: .build/release/release-kit library publish "web/dylkit-web-$VERSION.tgz"

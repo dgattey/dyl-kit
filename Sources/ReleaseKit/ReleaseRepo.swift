@@ -1,30 +1,26 @@
 import DylToolSupport
 import Foundation
 
-/// What every release shares, an app's or DylKit's own: a checkout whose tags carry the versions, the forge it publishes
-/// to, and the plan `version` leaves in `build/release/plan.json` for the later steps.
+/// What every release shares, an app's or DylKit's own: a checkout whose tags carry the versions, the Blob store its
+/// files go to, and the plan `version` leaves in `build/release/plan.json` for the later steps.
 public struct ReleaseRepo: Sendable {
     public let root: URL
-    let forge: any ForgeAdapter
+    let environment: [String: String]
+    let transport: any HTTPTransport
 
-    public init(root: URL, forge: any ForgeAdapter) {
+    public init(
+        root: URL, environment: [String: String] = ProcessInfo.processInfo.environment,
+        transport: any HTTPTransport = URLSessionTransport()
+    ) {
         self.root = root
-        self.forge = forge
-    }
-
-    /// A package released to GitHub without a `DylApp.toml`, such as DylKit itself.
-    public static func github(root: URL, repo: String) -> ReleaseRepo {
-        ReleaseRepo(
-            root: root,
-            forge: forgeAdapter(
-                for: .github(repo: repo), environment: ProcessInfo.processInfo.environment,
-                transport: URLSessionTransport()))
+        self.environment = environment
+        self.transport = transport
     }
 
     public var stagingDir: URL { root.appending(path: "build/release") }
     private var planFile: URL { stagingDir.appending(path: "plan.json") }
 
-    /// Plans the release from the merged PR's body (the merge commit message when there's no PR or the forge can't
+    /// Plans the release from the merged PR's body (the merge commit message when there's no PR or GitHub can't
     /// return it), the tags and `published`, then resets `build/release/` around the new plan. A release tag already at
     /// HEAD is resumed instead (see `ReleasePipeline.plan`).
     ///
@@ -75,15 +71,18 @@ public struct ReleaseRepo: Sendable {
         return try JSONDecoder().decode(ReleasePipeline.State.self, from: data)
     }
 
-    /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and publishes `files`
-    /// as that release through the forge. Re-running after a partial publish finishes it.
+    /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and uploads the
+    /// release's `files` and the store root's `latest` to the Blob store at `assets` (see `BlobStore.publish`),
+    /// returning their URLs. Re-running after a partial publish finishes it.
     ///
     /// - Blocking: runs git.
-    public func publish(title: String, files: [URL]) async throws {
+    @discardableResult
+    public func publish(_ files: [URL], latest: [URL] = [], assets: String? = nil) async throws -> [String] {
         let state = try state()
-        for file in files where !FileManager.default.fileExists(atPath: file.path) {
+        for file in files + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path) to publish")
         }
+        let store = try BlobStore(environment: environment, transport: transport)
         let head = try Shell.capture(["git", "rev-parse", "HEAD"], cwd: root)
         let tagged = try Shell.capture(
             ["git", "rev-parse", "--quiet", "--verify", "refs/tags/\(state.tag)^{commit}"], cwd: root,
@@ -94,9 +93,7 @@ public struct ReleaseRepo: Sendable {
             throw ToolError("\(state.tag) already tags \(tagged), not HEAD (\(head))")
         }
         try Shell.run(["git", "push", "origin", "refs/tags/\(state.tag)"], cwd: root)
-        try await forge.publish(
-            tag: state.tag, title: title,
-            notes: ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject), files: files)
+        return try await store.publish(tag: state.tag, files: files, latest: latest, assets: assets)
     }
 
     /// - Blocking: runs git.
@@ -112,10 +109,10 @@ public struct ReleaseRepo: Sendable {
             return nil
         }
         do {
-            let body = try await forge.pullRequestBody(number: number)
+            let body = try await GitHub(environment: environment, transport: transport).pullRequestBody(number: number)
             return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : body
         } catch {
-            Log.warn("couldn't read PR #\(number) from the forge (\(error)); \(fallback)")
+            Log.warn("couldn't read PR #\(number) from GitHub (\(error)); \(fallback)")
             return nil
         }
     }

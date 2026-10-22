@@ -79,24 +79,11 @@ public struct DylAppManifest: Equatable, Sendable {
         public var siteUrl: String
         public var artifactsDir: String
         public var checkInterval: Int?
-        public var forge: Forge
+        /// The public Vercel Blob store that holds every release's zip, `appcast.xml` and `release.json`, without a
+        /// trailing `/`.
+        public var assets: String
 
         public var feedURL: String { "\(siteUrl)/appcast.xml" }
-    }
-
-    /// `[release.forge]`: where releases are tagged and their zip, appcast and `release.json` are hosted.
-    public enum Forge: Equatable, Sendable {
-        /// Assets attach to the GitHub release.
-        case github(repo: String)
-        /// Origin hosts no release assets, so they go to the public Vercel Blob store at `assets`.
-        case origin(repo: String, assets: String)
-
-        /// `owner/name`.
-        public var repo: String {
-            switch self {
-            case .github(let repo), .origin(let repo, _): repo
-            }
-        }
     }
 
     /// Info.plist keys DylKit derives itself, which `[bundle.info]` and `[ios.info]` can't override.
@@ -182,34 +169,11 @@ extension DylAppManifest {
                 siteUrl: withoutTrailingSlash(try toml.required("release.site-url")),
                 artifactsDir: try toml.required("release.artifacts-dir"),
                 checkInterval: try toml.integer("release.check-interval"),
-                forge: try forge(toml)
+                assets: withoutTrailingSlash(try toml.required("release.assets"))
             )
         )
         try manifest.validate(toml)
         return manifest
-    }
-
-    private static func forge(_ toml: Reader) throws(ManifestError) -> Forge {
-        let repo = try toml.required("release.forge.repo")
-        if repo.wholeMatch(of: /[\w.-]+\/[\w.-]+/) == nil {
-            throw toml.fail("release.forge.repo", "`release.forge.repo` must be `owner/name`, got `\(repo)`")
-        }
-        let assets = try toml.string("release.forge.assets")
-        switch try toml.required("release.forge.kind") {
-        case "github":
-            if assets != nil {
-                throw toml.fail("release.forge.assets", "`release.forge.assets` is for Origin; GitHub hosts the assets")
-            }
-            return .github(repo: repo)
-        case "origin":
-            guard let assets, assets.hasPrefix("https://") else {
-                throw toml.fail(
-                    "release.forge.assets", "Origin needs `release.forge.assets`, the public Blob store's https URL")
-            }
-            return .origin(repo: repo, assets: withoutTrailingSlash(assets))
-        case let kind:
-            throw toml.fail("release.forge.kind", "`release.forge.kind` must be `github` or `origin`, got `\(kind)`")
-        }
     }
 
     private static func withoutTrailingSlash(_ url: String) -> String {
@@ -222,6 +186,11 @@ extension DylAppManifest {
         }
         guard release.siteUrl.hasPrefix("https://") else {
             throw toml.fail("release.site-url", "`release.site-url` must be an https URL")
+        }
+        if release.assets.wholeMatch(of: /https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com/.ignoresCase()) == nil {
+            throw toml.fail(
+                "release.assets",
+                "`release.assets` must be a public Blob store's URL, https://<store>.public.blob.vercel-storage.com")
         }
         if toml.document["release.inputs"] != nil {
             throw toml.fail(

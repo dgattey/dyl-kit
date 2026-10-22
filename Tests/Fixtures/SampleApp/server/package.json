@@ -6,7 +6,7 @@
     "build": "next build"
   },
   "dependencies": {
-    "@dylkit/web": "https://github.com/dgattey/dyl-kit/releases/download/v0.2.0/dylkit-web-0.2.0.tgz",
+    "@dylkit/web": "https://dylkit.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
 # Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: sync, version, bundle, sign,
-# appcast. Then it asserts what Sparkle relies on: an enclosure on the forge's download for the tag (in the
+# appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements.
 set -euo pipefail
@@ -35,8 +35,8 @@ version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
 "$release_kit" sign
 "$release_kit" appcast --ed-key-file ed.key
 
-repo="$(sed -n 's/^repo = "\(.*\)"/\1/p' DylApp.toml)"
-download="https://github.com/$repo/releases/download/v$version/Sample-$version.zip"
+assets="$(sed -n 's/^assets = "\(.*\)"/\1/p' DylApp.toml)"
+download="$assets/releases/v$version/Sample-$version.zip"
 grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appcast's enclosure isn't $download"
 [[ -f build/release/release.json ]] || fail "appcast wrote no build/release/release.json"
 [[ "$(plutil -extract download raw -o - build/release/release.json)" == "$download" ]] ||

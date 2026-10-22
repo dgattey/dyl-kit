@@ -41,7 +41,7 @@ public struct ReleaseChecks: Sendable {
     public struct StagedRelease: Sendable {
         public var appcast: URL
         public var archive: URL
-        /// Where the forge serves the release's assets.
+        /// Where the Blob store serves the release's zip.
         public var downloadPrefix: String
         /// Every item in the published feeds.
         public var published: [AppcastItem]
@@ -265,8 +265,7 @@ public struct ReleaseChecks: Sendable {
 
     /// Environment variables release-kit itself reads, so a workflow that passes them to it uses them.
     static let releaseKitVariables: Set<String> = [
-        ReleasePipeline.edKeyVariable, GitHubAdapter.tokenVariable, OriginAdapter.tokenVariable,
-        OriginAdapter.blobTokenVariable,
+        ReleasePipeline.edKeyVariable, GitHub.tokenVariable, BlobStore.tokenVariable,
     ]
 
     private struct Source {
@@ -287,7 +286,7 @@ public struct ReleaseChecks: Sendable {
         return sources
     }
 
-    /// What in `text` talks to a forge directly. Only release-kit's forge adapters may.
+    /// What in `text` talks to a forge directly. Only release-kit may.
     public static func forgeCalls(in text: String) -> [String] {
         let forgeAPIs = [
             (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
@@ -305,7 +304,7 @@ public struct ReleaseChecks: Sendable {
                 findings.append(
                     error(
                         "forge_neutral", source.path,
-                        "\(problem); only release-kit's forge adapters talk to the forge ([release.forge])"))
+                        "\(problem); only release-kit talks to the forge"))
             }
         }
     }
@@ -371,9 +370,9 @@ public struct ReleaseChecks: Sendable {
     /// What `devkit icons` writes into `[build] site-icons`.
     public static let siteIconNames = ["favicon.ico", "icon.png", "apple-icon.png"]
 
-    /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release.
+    /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
     static let webTarballURL =
-        "https://github.com/dgattey/dyl-kit/releases/download/v<version>/dylkit-web-<version>.tgz"
+        "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
 
     private func checkSiteIcons(_ findings: inout [CheckFinding]) {
         guard let directory = manifest.build.siteIcons else { return }
@@ -422,8 +421,8 @@ public struct ReleaseChecks: Sendable {
 
     // MARK: - Staged release
 
-    /// The build must beat every published feed: the site's and the forge's latest, either of which can be ahead. The
-    /// same build and version is a re-run of the release that published them.
+    /// The build must beat every published feed: the site's and the Blob store's latest, either of which can be ahead.
+    /// The same build and version is a re-run of the release that published them.
     private func checkStaged(_ staged: StagedRelease, into findings: inout [CheckFinding]) {
         let file = relative(staged.appcast)
         guard let item = items(at: staged.appcast, "staged_release", &findings)?.newest else {

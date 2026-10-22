@@ -23,17 +23,14 @@ struct DylAppManifestTests {
         site-url = "https://demo.gattey.com"
         artifacts-dir = "server/public"
         check-interval = 3600
-
-        [release.forge]
-        kind = "github"
-        repo = "o/demo"
+        assets = "https://store.public.blob.vercel-storage.com"
         """
 
     @Test func decodesKebabKeysAndKeepsUsageKeys() throws {
         let manifest = try DylAppManifest.decode(Self.valid)
         #expect(manifest.app.bundleId == "com.example.Demo")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
-        #expect(manifest.release.forge == .github(repo: "o/demo"))
+        #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
         #expect(manifest.release.checkInterval == 3600)
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
         #expect(manifest.ios == nil)
@@ -58,10 +55,6 @@ struct DylAppManifestTests {
             site-url = "https://demo.gattey.com/"
             artifacts-dir = "server/public"
             check-interval = 3600
-
-            [release.forge]
-            kind = "origin"
-            repo = "o/sconeos"
             assets = "https://store.public.blob.vercel-storage.com/"
 
             [site]
@@ -77,9 +70,7 @@ struct DylAppManifestTests {
         #expect(manifest.release.checkInterval == 3600)
         #expect(manifest.release.siteUrl == "https://demo.gattey.com")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
-        #expect(
-            manifest.release.forge
-                == .origin(repo: "o/sconeos", assets: "https://store.public.blob.vercel-storage.com"))
+        #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
     }
 
     @Test func reportsTheLineOfAnError() {
@@ -195,12 +186,9 @@ struct DylAppManifestTests {
         ("product = \"Demo\"\n", "product = \"Demo\"\nresources = [\"Sources/Demo/Model.momd\"]\n", "isn't a"),
         ("[release]\n", "[bundle.info]\nCFBundleVersion = \"9\"\n\n[release]\n", "can't set CFBundleVersion"),
         ("[release]\n", "[local-values]\nkeys = { A = \"A\" }\ndefaults = { B = \"b\" }\n\n[release]\n", "isn't in"),
-        ("repo = \"o/demo\"", "repo = \"demo\"", "must be `owner/name`"),
-        ("kind = \"github\"", "kind = \"gitlab\"", "must be `github` or `origin`"),
-        ("kind = \"github\"", "kind = \"github\"\nassets = \"https://store.example\"", "is for Origin"),
-        ("kind = \"github\"", "kind = \"origin\"", "Origin needs `release.forge.assets`"),
-        ("kind = \"github\"", "kind = \"origin\"\nassets = \"http://store.example\"", "Origin needs"),
-        ("[release.forge]\nkind = \"github\"\nrepo = \"o/demo\"", "", "`release.forge.repo`"),
+        ("assets = \"https://store.public.blob.vercel-storage.com\"", "", "missing required key `release.assets`"),
+        ("store.public.blob", "store.private.blob", "must be a public Blob store's URL"),
+        ("https://store.public", "http://store.public", "must be a public Blob store's URL"),
     ])
     func rejectsInvalidAdditions(_ find: String, _ replacement: String, _ message: String) {
         do {

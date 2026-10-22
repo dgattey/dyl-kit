@@ -175,7 +175,7 @@ public struct LiveComparison: Sendable {
 }
 
 /// Collects both snapshots on macOS: the staged release from `build/release/`, and the live one from the newest item
-/// across the site's feed and the forge's latest feed, by downloading its enclosure and unzipping it with `ditto`.
+/// across the site's feed and the Blob store's latest feed, by downloading its enclosure and unzipping it with `ditto`.
 public struct LiveChecks: Sendable {
     public let workspace: Workspace
 
@@ -197,7 +197,7 @@ public struct LiveChecks: Sendable {
         let published = try await pipeline.publishedFeeds()
         guard let enclosure = published.newest?.enclosureURL else {
             throw ToolError(
-                "neither \(feedURL) nor \(pipeline.forge.latestAppcastURL) has an item with an enclosure to compare with")
+                "neither \(feedURL) nor \(pipeline.latestAppcastURL) has an item with an enclosure to compare with")
         }
         let liveArchive = try await Appcast.download(enclosure)
 

@@ -384,11 +384,9 @@ public struct ReleaseChecks: Sendable {
     }
 
     /// SwiftPM and npm pin DylKit separately, so the app and its site can drift onto different releases. A DylKit
-    /// pinned to a branch or revision has no version to compare. Neither does a site still serving its committed
-    /// appcast: it moves to the new `@dylkit/web` when it switches to Blob, after the app's first release there.
+    /// pinned to a branch or revision has no version to compare.
     private func checkWebMatchesPin(_ findings: inout [CheckFinding]) {
-        guard read("\(manifest.release.artifactsDir)/appcast.xml") == nil,
-            let (siteRoot, package) = site,
+        guard let (siteRoot, package) = site,
             let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
             let resolved = read("Package.resolved")
                 .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) }),

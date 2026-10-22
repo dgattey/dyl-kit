@@ -631,15 +631,13 @@ private let sconeosModules = [
         func resolved(_ state: String) -> [String: String] {
             ["Package.resolved": #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#]
         }
-        func messages(_ state: String, committedFeed: Bool = false) throws -> [String]? {
-            let feed = committedFeed ? ["server/public/appcast.xml": "<rss/>"] : [:]
-            let workspace = try scratchWorkspace(resolved(state).merging(feed) { $1 })
+        func messages(_ state: String) throws -> [String]? {
+            let workspace = try scratchWorkspace(resolved(state))
             defer { try? FileManager.default.removeItem(at: workspace.root) }
             return errors(ReleaseChecks(workspace: workspace).run())["dylkit_web_version"]
         }
         #expect(try messages(#"{ "version": "0.2.0" }"#) == nil)
         #expect(try messages(#"{ "branch": "main" }"#) == nil)
-        #expect(try messages(#"{ "version": "0.3.1" }"#, committedFeed: true) == nil)
         #expect(
             try messages(#"{ "version": "0.3.1" }"#) == [
                 "@dylkit/web is 0.2.0 but Package.resolved pins DylKit 0.3.1; depend on "

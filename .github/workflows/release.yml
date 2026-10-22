@@ -1,8 +1,5 @@
 name: release
 
-# DylKit releases like its apps, minus the app: a merged PR's Release info box picks the bump, release-kit tags it, and
-# uploads the @dylkit/web tarball apps' download sites install to DylKit's Blob store. The tag is the only version;
-# nothing is committed.
 on:
   pull_request:
     types: [closed]

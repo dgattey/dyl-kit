@@ -38,7 +38,7 @@ public struct SettingsSection: Identifiable {
     }
 }
 
-/// Settings as Saga #60 builds it. On macOS a sidebar of badged pages under the window controls, and a detail pane
+/// On macOS a sidebar of badged pages under the window controls, and a detail pane
 /// with the page's badge and big title in the toolbar over a grouped form whose sections are the cards. On iOS a
 /// pushed list.
 public struct SettingsView: View {

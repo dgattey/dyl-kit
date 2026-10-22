@@ -1,7 +1,7 @@
 #if canImport(SwiftUI)
 import SwiftUI
 
-/// A Settings row as Saga's Credits draws one: a tinted icon tile, a bold title over a subtitle, optional monospaced
+/// A Settings row: a tinted icon tile, a bold title over a subtitle, optional monospaced
 /// tags in the palette's accent, and an optional round button that opens `link`. The tile uses `color`, or the
 /// palette's accent without one.
 public struct SettingsRow: View {

@@ -49,7 +49,7 @@ Run everything from the app repo through `./run dev …`, which builds `devkit` 
 
 ## Verify a release build without launching it
 
-After `./run release bundle`, `sign` and `appcast`, run `./run release check --live`. It downloads the release installs run now, from the live feed, and compares it with the staged one: designated requirement, entitlements, signature kind, Info.plist keys (with `[local-values]` printed only as lengths), the feed and a strict verify of the staged app. Expect only the version, build number and code hashes to differ. Never open either app to check.
+After `./run release bundle`, `sign` and `appcast`, run `./run release check --live`. It compares the staged app with the live release's signature, entitlements, Info.plist and feed. Expect only the version, build number and code hashes to differ. Never open either app to check.
 
 ## When a capture comes back wrong
 

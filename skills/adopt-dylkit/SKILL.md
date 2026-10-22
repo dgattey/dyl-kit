@@ -51,7 +51,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
    - Check: `Package.resolved` pins `dyl-kit` at `"version" : "0.2.0"`, not a branch or revision.
 2. `./run dev sync`. It writes `./run`, `.github/workflows/pr-check.yml`, `.github/workflows/release.yml` and `.github/pull_request_template.md`, replacing an upgrade's 0.1 copies. App-owned workflows such as `verify.yml` stay.
    - Check: all four exist and `git diff` shows only DylKit's copies.
-3. In `DylApp.toml`, under `[release]`, add `assets = "https://<store>.public.blob.vercel-storage.com"`. Delete `inputs` (DylKit rejects it) and any `[release.forge]` table (ignored; it only existed on pre-release branches).
+3. In `DylApp.toml`, under `[release]`, add `assets = "https://<store>.public.blob.vercel-storage.com"`. Delete `inputs` (DylKit rejects it) and any `[release.forge]` table.
 4. Delete `ci/github/pr-body.sh`. Saga also deletes `verify-release.sh` (`./run release check --live` replaces it) and moves `format`, `ui` and `bootstrap` from its `./run` into an executable `scripts/run`, which `./run` hands every other mode.
 5. In `.swiftlint.yml`, delete `parent_config`; devkit passes DylKit's config itself. `mise.toml` pins SwiftLint under `[tools]`.
 6. Update the Swift code:

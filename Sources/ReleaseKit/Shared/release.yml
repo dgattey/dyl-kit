@@ -37,6 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       site: ${{ steps.version.outputs.site }}
+      assets: ${{ steps.version.outputs.assets }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,19 +80,22 @@ jobs:
     timeout-minutes: 17
     permissions: {}
     steps:
-      - name: Wait for the site to serve the release
+      - name: Wait for the site to serve the release and its icons
         env:
           SITE: ${{ needs.release.outputs.site }}
+          ASSETS: ${{ needs.release.outputs.assets }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
+          same() { cmp -s <(curl -fsSL "$SITE/$1" || true) <(curl -fsSL "$ASSETS/icons/$2" || echo missing); }
           for _ in $(seq 60); do
             feed="$(curl -fsSL "$SITE/appcast.xml" || true)"
             page="$(curl -fsSL "$SITE" || true)"
-            if grep -qF "<sparkle:shortVersionString>$VERSION<" <<<"$feed" && grep -qF "Version $VERSION" <<<"$page"; then
-              echo "$SITE serves $VERSION"
+            if grep -qF "<sparkle:shortVersionString>$VERSION<" <<<"$feed" && grep -qF "Version $VERSION" <<<"$page" &&
+              same icon.png icon.png && same apple-touch-icon.png apple-touch-icon.png; then
+              echo "$SITE serves $VERSION and its icons"
               exit 0
             fi
             sleep 15
           done
-          echo "::error::$SITE didn't serve $VERSION within 15 minutes"
+          echo "::error::$SITE didn't serve $VERSION, or the icons it uploaded, within 15 minutes"
           exit 1

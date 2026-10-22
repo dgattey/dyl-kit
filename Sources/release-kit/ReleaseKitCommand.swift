@@ -47,6 +47,7 @@ extension ReleaseKitCommand {
             print("version=\(state.version)")
             print("build=\(state.build)")
             print("site=\(workspace.manifest.release.siteUrl)")
+            print("assets=\(workspace.manifest.release.assets)")
         }
     }
 

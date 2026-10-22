@@ -644,7 +644,7 @@ private let sconeosModules = [
         #expect(
             try messages(#"{ "version": "0.3.1" }"#) == [
                 "@dylkit/web is 0.2.0 but Package.resolved pins DylKit 0.3.1; depend on "
-                    + "\"https://dylkit.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
             ])
     }
 

@@ -39,8 +39,7 @@ jobs:
         run: swift test
       - name: dyl-lint DylKit's own sources
         run: swift run dyl-lint Sources
-      # Bundles, signs and checks SampleApp, the code a hand release on Dylan's Mac used to be the only test of. It
-      # shares this job so a push holds one macOS runner, not two.
+      # Shares the swift job so a push holds one macOS runner.
       - name: Release SampleApp with a throwaway key
         run: scripts/release-e2e.sh "$RUNNER_TEMP/sample"
 

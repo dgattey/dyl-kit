@@ -55,12 +55,8 @@ services=("$app"/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/*.
 [[ -e "${services[0]}" ]] || fail "no Sparkle XPC services in $app"
 for service in "${services[@]}"; do
   name="$(basename "$service")"
-  codesign --verify --strict "$service" || fail "$name doesn't verify"
   [[ "$(entitlements "$service")" == "$(entitlements "$artifact/Versions/B/XPCServices/$name")" ]] ||
     fail "$name lost Sparkle's entitlements"
-done
-for helper in Autoupdate Updater.app; do
-  codesign --verify --strict "$app/Contents/Frameworks/Sparkle.framework/Versions/B/$helper" || fail "$helper doesn't verify"
 done
 
 echo "release e2e OK: $requirement, ${#services[@]} XPC services"

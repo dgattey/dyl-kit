@@ -33,19 +33,18 @@ public enum SharedFiles {
         case notExecutable = "isn't executable"
     }
 
-    /// Every shared file under `root` that isn't as DylKit ships it. Line endings and trailing newlines don't count,
-    /// so an editor or git's autocrlf can't fail the check.
+    /// Every shared file under `root` that isn't byte for byte DylKit's copy.
     ///
     /// - Blocking: reads files.
     public static func drift(root: URL) -> [(file: File, drift: Drift)] {
-        all.compactMap { file in drift(of: file, root: root, exact: false).map { (file, $0) } }
+        all.compactMap { file in drift(of: file, root: root).map { (file, $0) } }
     }
 
-    /// Rewrites every shared file under `root` that isn't byte for byte DylKit's copy, and returns their paths.
+    /// Rewrites every shared file under `root` that drifted, and returns their paths.
     ///
     /// - Blocking: reads and writes files.
     public static func sync(root: URL) throws -> [String] {
-        let stale = all.filter { drift(of: $0, root: root, exact: true) != nil }
+        let stale = all.filter { drift(of: $0, root: root) != nil }
         for file in stale {
             let url = root.appending(path: file.path)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -55,17 +54,11 @@ public enum SharedFiles {
         return stale.map(\.path)
     }
 
-    private static func drift(of file: File, root: URL, exact: Bool) -> Drift? {
+    private static func drift(of file: File, root: URL) -> Drift? {
         let url = root.appending(path: file.path)
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return .missing }
-        if exact ? text != file.contents : normalized(text) != normalized(file.contents) { return .differs }
+        if text != file.contents { return .differs }
         if file.executable, !FileManager.default.isExecutableFile(atPath: url.path) { return .notExecutable }
         return nil
-    }
-
-    private static func normalized(_ text: String) -> String {
-        var text = text.replacingOccurrences(of: "\r\n", with: "\n")
-        while text.hasSuffix("\n") { text.removeLast() }
-        return text
     }
 }

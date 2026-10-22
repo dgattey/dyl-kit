@@ -543,23 +543,6 @@ private let sconeosModules = [
         #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
     }
 
-    /// An editor or git's autocrlf only changes the formatting, which the check ignores and sync still rewrites.
-    @Test func sharedFilesDriftIgnoresLineEndings() throws {
-        let workspace = try scratchWorkspace()
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let check = workspace.url(".github/workflows/pr-check.yml")
-        let crlf = SharedFiles.prCheck.contents.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n"
-        try Data(crlf.utf8).write(to: check)
-        let template = workspace.url(".github/pull_request_template.md")
-        try Data(SharedFiles.prTemplate.contents.dropLast().utf8).write(to: template)
-
-        #expect(SharedFiles.drift(root: workspace.root).isEmpty)
-        #expect(
-            try SharedFiles.sync(root: workspace.root)
-                == [".github/workflows/pr-check.yml", ".github/pull_request_template.md"])
-        #expect(try Data(contentsOf: check) == Data(SharedFiles.prCheck.contents.utf8))
-    }
-
     /// Sync never touches `scripts/run`, so an app keeps its own modes behind DylKit's `./run`.
     @Test func runHandsOtherModesToTheAppsScript() throws {
         let workspace = try scratchWorkspace(["scripts/run": "#!/bin/sh\necho \"app: $*\"\n"])

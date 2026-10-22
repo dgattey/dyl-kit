@@ -17,12 +17,27 @@ DylKit 0.2.0 must be released first. `git ls-remote --tags https://github.com/dg
 
 ## Blob store and secrets (Dylan, once per app)
 
-An agent can't create the store or set secrets. Ask Dylan for each step, then run its check.
+An agent can't create the store or set secrets. Hand Dylan each step as written, then run its check.
 
-1. In the Vercel team that holds the app's site project, Storage → Create → Blob, named after the app, with public access. One store per app: the newest `appcast.xml` and `release.json` sit at the store root, so two apps can't share one.
+One store per app: the newest `appcast.xml` and `release.json` sit at the store root, so two apps can't share one. The release workflow uploads to the store with its token. The site and Sparkle read the store's public URLs, which need no token.
+
+1. Create the store.
+   1. Open the Vercel team that holds the app's site project, and click the **Storage** tab.
+   2. Click **Create Database**, pick **Blob**, and click **Continue**.
+   3. Name it after the app, such as `saga-releases`. Set access to **Public**. A private store's files can't be downloaded by Sparkle or the site.
+   4. Click **Create**. If Vercel offers to connect the store to a project, skip it.
+   5. On the store's page, copy its public URL, `https://<store>.public.blob.vercel-storage.com`. PR 1 puts it in `DylApp.toml`.
    - Check: `curl -s -o /dev/null -w '%{http_code}' https://<store>.public.blob.vercel-storage.com/appcast.xml` prints `404` before the first release.
-2. Copy the store's read-write token (the store's page → `.env.local` tab, `BLOB_READ_WRITE_TOKEN`) into the GitHub repo's Actions secrets as `BLOB_READ_WRITE_TOKEN`. Only the release workflow's Publish step reads it. The site reads the store's public URLs and needs no token, so leave it out of the Vercel project's env vars. Connecting the store to the project adds it there, harmlessly; there's no need to connect it.
+2. Copy the token.
+   1. In the team's **Storage** tab, click the store.
+   2. In its **Quickstart** section, open the **`.env.local`** tab and click **Show secret**.
+   3. Copy the value of `BLOB_READ_WRITE_TOKEN`, without the quotes. It starts with `vercel_blob_rw_`.
+3. Add it to GitHub.
+   1. In the app's GitHub repo, open **Settings**, then **Secrets and variables**, then **Actions**.
+   2. Under **Repository secrets**, click **New repository secret**.
+   3. Set **Name** to `BLOB_READ_WRITE_TOKEN`, paste the token into **Secret**, and click **Add secret**.
    - Check: `gh secret list` shows `BLOB_READ_WRITE_TOKEN` and `SPARKLE_ED_PRIVATE_KEY_BASE64`.
+4. Leave the Vercel project alone. Only the release workflow's Publish step reads the token, and the site's build and routes read public URLs. Connecting the store to the project is optional. It adds `BLOB_READ_WRITE_TOKEN` to the project's environment variables, which nothing reads.
 
 ## Fresh only
 

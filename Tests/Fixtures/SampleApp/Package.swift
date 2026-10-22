@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .executable(name: "Sample", targets: ["SampleApp"]),
+        .library(name: "SampleDockTile", type: .dynamic, targets: ["SampleDockTile"]),
     ],
     dependencies: [
         .package(path: "../../.."),
@@ -19,5 +20,6 @@ let package = Package(
                 .product(name: "DylUpdates", package: "dyl-kit"),
             ]
         ),
+        .target(name: "SampleDockTile"),
     ]
 )

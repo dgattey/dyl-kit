@@ -71,6 +71,26 @@ import CryptoKit
         #expect(!InfoPlist.rawKeys(manifest, iOS: false).contains("UIRequiresFullScreen"))
     }
 
+    /// The plug-in's identifier tracks the app's, so a dev build's plug-in finds the dev app's preferences.
+    @Test func dockTilePluginFollowsTheAppIdentity() throws {
+        let manifest = try manifest("")
+        let plugin = try #require(manifest.build.dockTilePlugin)
+        for (identity, bundleId) in [(AppIdentity.release, "com.dylkit.Sample"), (.dev, "com.dylkit.Sample.dev")] {
+            let app = InfoPlist.contents(
+                manifest: manifest, identity: identity, shortVersion: "1.2.0", build: "7", sparklePublicKey: nil)
+            #expect(app["NSDockTilePlugIn"] == .string("SampleDockTile.docktileplugin"))
+            let plist = InfoPlist.dockTilePlugin(
+                plugin, manifest: manifest, identity: identity, shortVersion: "1.2.0", build: "7")
+            #expect(plist["CFBundleIdentifier"] == .string("\(bundleId).docktile"))
+            #expect(plist["CFBundlePackageType"] == .string("BNDL"))
+            #expect(plist["CFBundleExecutable"] == .string("SampleDockTile"))
+            #expect(plist["NSPrincipalClass"] == .string("SampleDockTilePlugIn"))
+            #expect(plist["CFBundleVersion"] == .string("7"))
+        }
+        let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0")
+        #expect(iOS["NSDockTilePlugIn"] == nil)
+    }
+
     @Test func actoolOutputYieldsToRawKeysAndLocalValuesWinOverAll() {
         let derived: Plist = ["CFBundleIconName": .string("AppIcon"), "NSAccentColorName": .string("Raw")]
         let generated: Plist = ["CFBundleIconName": .string("Generated"), "NSAccentColorName": .string("Generated")]

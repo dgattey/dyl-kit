@@ -125,7 +125,7 @@ struct DylAppManifestTests {
         }
     }
 
-    @Test func decodesBuildResourcesIconAndLocalValues() throws {
+    @Test func decodesBuildResourcesIconDockTileAndLocalValues() throws {
         let text = Self.valid
             .replacingOccurrences(
                 of: "entitlements = \"Demo.entitlements\"\n",
@@ -134,6 +134,7 @@ struct DylAppManifestTests {
                     icon = "Resources/AppIcon.icon"
                     accent-color = "AccentColor"
                     resources = ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"]
+                    dock-tile-plugin = { product = "DemoDockTile", principal-class = "DemoDockTilePlugIn" }
 
                     """)
             + """
@@ -147,6 +148,9 @@ struct DylAppManifestTests {
         #expect(manifest.build.icon == "Resources/AppIcon.icon")
         #expect(manifest.build.accentColor == "AccentColor")
         #expect(manifest.build.resources == ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"])
+        #expect(
+            manifest.build.dockTilePlugin
+                == DylAppManifest.DockTilePlugin(product: "DemoDockTile", principalClass: "DemoDockTilePlugIn"))
         #expect(manifest.localValues?.file == "Config.xcconfig")
         #expect(manifest.localValues?.keys["ContentfulToken"] == "CONTENTFUL_TOKEN")
         #expect(manifest.localValues?.defaults == ["ContentfulSpaceID": "placeholder"])
@@ -156,6 +160,8 @@ struct DylAppManifestTests {
         ("product = \"Demo\"\n", "product = \"Demo\"\nicon = \"A.icon\"\nicon-generator = \"g.swift\"\n", "not both"),
         ("product = \"Demo\"\n", "product = \"Demo\"\nresources = [\"Sources/Demo/Model.momd\"]\n", "isn't a"),
         ("[release]\n", "[bundle.info]\nCFBundleVersion = \"9\"\n\n[release]\n", "can't set CFBundleVersion"),
+        ("[release]\n", "[bundle.info]\nNSDockTilePlugIn = \"X\"\n\n[release]\n", "can't set NSDockTilePlugIn"),
+        ("product = \"Demo\"\n", "product = \"Demo\"\ndock-tile-plugin = { product = \"T\" }\n", "needs `product`"),
         ("[release]\n", "[local-values]\nkeys = { A = \"A\" }\ndefaults = { B = \"b\" }\n\n[release]\n", "isn't in"),
         ("assets = \"https://store.public.blob.vercel-storage.com\"", "", "missing required key `release.assets`"),
         ("store.public.blob", "store.private.blob", "must be a public Blob store's URL"),

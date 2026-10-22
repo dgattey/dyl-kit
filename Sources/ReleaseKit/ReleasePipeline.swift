@@ -2,7 +2,7 @@ import DylToolSupport
 import Foundation
 
 /// The release as separate steps, so a CI wrapper can run them one at a time: `version`, `bundle`, `sign`,
-/// `appcast`, `check`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` pushes the
+/// `appcast`, `publish`. Each step reads what the earlier ones left in `build/release/`. `publish` pushes the
 /// tag with plain git and hands the zip, appcast and `release.json` to the manifest's forge adapter; nothing is
 /// committed.
 public struct ReleasePipeline: Sendable {

@@ -9,10 +9,10 @@ export type Release = {
   minimumSystemVersion: string;
   appleSiliconOnly: boolean;
   /** ISO 8601. */
-  publishedAt: string | null;
+  publishedAt?: string;
   /** The zip's URL. */
   download: string;
-  sizeBytes: number | null;
+  sizeBytes: number;
   /** Newest first, versions without notes left out. */
   notes: ReleaseNotes[];
 };

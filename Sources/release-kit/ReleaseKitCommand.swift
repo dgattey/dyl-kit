@@ -9,7 +9,7 @@ struct ReleaseKitCommand: AsyncParsableCommand {
         commandName: "release-kit",
         abstract: "Version, bundle, sign and publish a Sparkle release, and check the release invariants.",
         discussion: """
-            CI runs the steps in order: version, bundle, sign, appcast, check, publish. Each step reads \
+            CI runs the steps in order: version, bundle, sign, appcast, publish. Each step reads \
             what the earlier ones left in build/release/.
             """,
         subcommands: [
@@ -29,16 +29,6 @@ enum BumpChoice: String, ExpressibleByArgument, CaseIterable {
     case auto, patch, minor, major
 
     var bump: AppVersion.Bump? { AppVersion.Bump(rawValue: rawValue) }
-}
-
-/// - Blocking: reads the file.
-private func readBody(_ path: String?) throws -> String? {
-    guard let path else { return nil }
-    do {
-        return try String(contentsOfFile: path, encoding: .utf8)
-    } catch {
-        throw ToolError("can't read \(path): \(error.localizedDescription)")
-    }
 }
 
 extension ReleaseKitCommand {
@@ -142,7 +132,8 @@ extension ReleaseKitCommand {
             let workspace = try options.workspace()
             let pipeline = ReleasePipeline(workspace: workspace)
             var state = try? pipeline.state()
-            if let body = try readBody(bodyFile) {
+            if let bodyFile {
+                let body = try String(contentsOfFile: bodyFile, encoding: .utf8)
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }

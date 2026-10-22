@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
-# Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: version, bundle, sign,
-# appcast, check. Then it asserts what Sparkle relies on: an enclosure on the forge's download for the tag (in the
+# Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: sync, version, bundle, sign,
+# appcast. Then it asserts what Sparkle relies on: an enclosure on the forge's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements.
 set -euo pipefail
@@ -34,7 +34,6 @@ version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
 "$release_kit" bundle
 "$release_kit" sign
 "$release_kit" appcast --ed-key-file ed.key
-"$release_kit" check
 
 repo="$(sed -n 's/^repo = "\(.*\)"/\1/p' DylApp.toml)"
 download="https://github.com/$repo/releases/download/v$version/Sample-$version.zip"

@@ -284,7 +284,7 @@ private func item(_ version: String, build: Int) -> String {
         return try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
     }
 
-    /// What `@dylkit/web` renders: each version's notes without Sparkle's styles, and every key present.
+    /// What `@dylkit/web` renders: each version's notes without Sparkle's styles.
     @Test func carriesTheStagedItemForTheSite() throws {
         let release = try PublishedRelease(
             stagedItem(
@@ -307,20 +307,10 @@ private func item(_ version: String, build: Int) -> String {
         #expect(object["minimumSystemVersion"] as? String == "14.0")
     }
 
-    @Test func writesMissingValuesAsNull() throws {
-        let release = try PublishedRelease(stagedItem(#"<enclosure url="https://example.com/App-1.2.0.zip"/>"#))
-        #expect(!release.appleSiliconOnly)
-        let object = try json(release)
-        #expect(object["publishedAt"] is NSNull)
-        #expect(object["sizeBytes"] is NSNull)
-        #expect(
-            Set(object.keys) == [
-                "version", "build", "minimumSystemVersion", "appleSiliconOnly", "publishedAt", "download", "sizeBytes",
-                "notes",
-            ])
-    }
-
-    @Test func needsAnEnclosure() throws {
+    @Test func needsAnEnclosureWithALength() throws {
         #expect(throws: ToolError.self) { try PublishedRelease(try stagedItem("")) }
+        #expect(throws: ToolError.self) {
+            try PublishedRelease(try stagedItem(#"<enclosure url="https://example.com/App-1.2.0.zip"/>"#))
+        }
     }
 }

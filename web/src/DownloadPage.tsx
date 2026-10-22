@@ -59,7 +59,7 @@ export function DownloadPage({ site, release }: { site: Site; release: Release |
 }
 
 function Download({ name, release }: { name: string; release: Release }) {
-  const facts = [`Version ${release.version}`, release.sizeBytes && megabytes(release.sizeBytes), date(release.publishedAt)];
+  const facts = [`Version ${release.version}`, megabytes(release.sizeBytes), date(release.publishedAt)];
   return (
     <div className={styles.download}>
       <a className={styles.button} href="/download/macos">
@@ -124,7 +124,7 @@ function ScreenshotImage({ shot, className, priority }: { shot: Screenshot; clas
 }
 
 function requirements(release: Release): string {
-  const os = release.minimumSystemVersion ? `macOS ${release.minimumSystemVersion.replace(/\.0$/, "")}+` : "macOS";
+  const os = `macOS ${release.minimumSystemVersion.replace(/\.0$/, "")}+`;
   return release.appleSiliconOnly ? `${os} · Apple Silicon` : os;
 }
 
@@ -132,7 +132,7 @@ function megabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-function date(iso: string | null): string | null {
+function date(iso: string | undefined): string | null {
   return iso
     ? new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
     : null;

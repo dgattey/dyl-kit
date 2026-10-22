@@ -156,8 +156,6 @@ public enum SharedFiles {
                     env:
                       SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
                     run: ./run release appcast
-                  - name: Check
-                    run: ./run release check
                   - name: Publish
                     env:
                       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

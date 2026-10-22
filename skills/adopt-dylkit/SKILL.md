@@ -7,11 +7,7 @@ description: Adopt DylKit in an app, or upgrade one to DylKit 0.2, start to fini
 
 Adoption is one PR. It moves the app onto DylKit 0.2 and the site onto `@dylkit/web`, and its merge is the first release to Blob. Before it merges, the store must already hold the app's current feed and the repo must stop committing one. DylKit no longer reads a committed appcast, its git history or the 0.1 settings, so nothing flags a step skipped here.
 
-Work out the path first. It changes a few steps below.
-
-- **Fresh.** No DylKit yet. Start with "Fresh only".
-- **Upgrade from 0.1.** Sconeos: `main` pins DylKit 0.1 and commits its appcast to `server/public`.
-- **Open adoption PR.** Saga and Gattey Photos: a branch that pins a DylKit branch or revision. Finish it as an upgrade, pinned to the release.
+Sconeos (`main`), Saga (PR #57) and Gattey Photos (PR #19) all pin DylKit 0.1.0 and its `@dylkit/web` 0.1.0 tarball, so each follows the adoption PR below. A new app starts with "Fresh only".
 
 DylKit 0.2.0 must be released first. `git ls-remote --tags https://github.com/dgattey/dyl-kit v0.2.0` prints the tag, and the README's `@dylkit/web` line names its tarball URL.
 
@@ -54,21 +50,21 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 Start once the store holds the seeded feed.
 
 1. Pin the release in `Package.swift`, `.package(url: "https://github.com/dgattey/dyl-kit", from: "0.2.0")`, then `swift package update dyl-kit`.
-   - Check: `Package.resolved` pins `dyl-kit` at `"version" : "0.2.0"`, not a branch or revision.
+   - Check: `Package.resolved` pins `dyl-kit` at `"version" : "0.2.0"`.
 2. `./run dev sync`. It writes `./run`, `.github/workflows/pr-check.yml`, `.github/workflows/release.yml` and `.github/pull_request_template.md`, replacing an upgrade's 0.1 copies. App-owned workflows such as `verify.yml` stay.
    - Check: all four exist and `git diff` shows only DylKit's copies.
-3. In `DylApp.toml`, under `[release]`, add `assets = "https://<store>.public.blob.vercel-storage.com"`. Delete `inputs` and any `[release.forge]` table. DylKit ignores both now, so they'd only mislead.
-4. Delete `ci/github/pr-body.sh`. Saga also deletes `verify-release.sh` (`./run release check --live` replaces it) and moves `format`, `ui` and `bootstrap` from its `./run` into an executable `scripts/run`, which `./run` hands every other mode.
+3. In `DylApp.toml`, under `[release]`, add `assets = "https://<store>.public.blob.vercel-storage.com"`. Delete `inputs`. DylKit ignores it now, so it would only mislead.
+4. Delete `ci/github/pr-body.sh` (Sconeos and Gattey Photos). Saga moves `format`, `ui` and `bootstrap` from its `./run` into an executable `scripts/run`, which `./run` hands every other mode.
 5. In `.swiftlint.yml`, delete `parent_config`. devkit passes DylKit's config itself and no longer flags a leftover one. `mise.toml` pins SwiftLint under `[tools]`.
 6. Update the Swift code:
-   - Launch overrides come only from `DYLKIT_*`. Sconeos replaces `LaunchOverrides(prefix:)` with `LaunchOverrides.current`, drops `launch:` from `AppWindow` and `AppUpdater.mainWindowDidAppear`, and renames its `SCONEOS_*` variables. Map `initialView` with `Screen.init(rawValue:)`.
-   - `SettingsView(pages:)` and `SettingsWindow(palette:pages:)` take `sections:`; wrap pages in `SettingsSection(pages:)`. A `ThemePalette` type needs `init()`, and keeps `secondaryText`, `subtleFill` and `border` as its own properties if it uses them. Read the palette with `@Palette`, not `\.palette`. `StatusPill` and `SystemPalette` are gone.
-   - Tests use `AppDirectories.withTemporarySupportFolder` instead of `setSupportFolderForTesting`.
+   - Launch overrides come only from `DYLKIT_*`. Replace `LaunchOverrides(prefix:)` with `LaunchOverrides.current`, drop `launch:` from `AppWindow` and `AppUpdater.mainWindowDidAppear`, and rename the app's own prefixed variables, such as Sconeos's `SCONEOS_*`. Map `initialView` with `Screen.init(rawValue:)`.
+   - Saga's `SettingsView(pages:)` and `SettingsWindow(palette:pages:)` take `sections:`; wrap pages in `SettingsSection(pages:)`. Sconeos's `ThemePalette` type needs `init()`, and keeps `secondaryText`, `subtleFill` and `border` as its own properties. Read the palette with `@Palette`. `StatusPill` is gone.
+   - Gattey Photos' tests use `AppDirectories.withTemporarySupportFolder` instead of its `AppConfig.setSupportFolderForTesting`.
    - Check: `swift build` succeeds.
-7. Stop committing an appcast. Delete `server/public/appcast.xml` (Sconeos still commits an unstamped one) and any app-owned workflow step or script that writes or commits it. Keep the committed zips until the first 0.2 release ships: the seeded feed's enclosures still point at them.
+7. Sconeos only: delete `server/public/appcast.xml`. 0.1's `release publish` committed it, and the synced release workflow doesn't. Keep its committed `server/public/Sconeos-*.zip` until the first 0.2 release ships: the seeded feed's enclosure still points at it.
 8. Switch the site to Blob in the same PR.
-   1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved`, `https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz`, and run `npm install`. `dylkit_web_version` fails until the versions match.
-   2. Set `transpilePackages: ["@dylkit/web"]` in `next.config.ts`, add `app/appcast.xml/route.ts` and `app/download/macos/route.ts`, and render `DownloadPage` with `latestRelease`. DylKit's README has the code. Saga also drops its `/appcast.xml` redirect.
+   1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved`, `https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz`, and run `npm install`. Every app pins 0.1.0 today, and `dylkit_web_version` fails until the versions match.
+   2. Set `transpilePackages: ["@dylkit/web"]` in `next.config.ts`, add `app/appcast.xml/route.ts` and `app/download/macos/route.ts`, and render `DownloadPage` with `latestRelease`. DylKit's README has the code. Saga and Gattey Photos drop their `/appcast.xml` redirect to the latest GitHub release.
    - Check: `npm run build` in `server/` succeeds, and `npm run dev` serves `/appcast.xml` with the seeded feed. The download page and `/download/macos` stay unavailable until the first release writes `release.json`.
 9. List tags that never shipped. `version` plans from the highest tag, so one with no shipped zip skews it. Put the list in the PR for Dylan to confirm, and delete nothing yourself:
 
@@ -87,7 +83,7 @@ git fetch --tags && git tag -l 'v*' | sort -u | comm -23 - <(sort -u shipped.txt
 10. Verify on the Mac: `./run dev checks` and `./run release check` report 0 errors, and `./run dev capture` shows the app in the macOS 26 design.
 11. Open the PR from the synced template with exactly one Release info box checked. When it merges, the `release` run tags `v<version>` and uploads to the store.
     - Check: `git ls-remote --tags origin v<version>` prints the tag, `curl -fsSL <assets>/release.json` shows that version, and `curl -fsSL <site>/appcast.xml` matches `curl -fsSL <assets>/appcast.xml`.
-12. In a follow-up PR, delete the committed zips. Check one Release info box as the PR check requires. A PR that only touches `server/` doesn't release.
+12. Sconeos only: in a follow-up PR, delete that zip. Check one Release info box as the PR check requires. A PR that only touches `server/` doesn't release.
 
 ## Later upgrades
 

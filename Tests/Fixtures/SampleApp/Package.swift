@@ -14,6 +14,7 @@ let package = Package(
         .executableTarget(
             name: "SampleApp",
             dependencies: [
+                .product(name: "DylCore", package: "dyl-kit"),
                 .product(name: "DylUI", package: "dyl-kit"),
                 .product(name: "DylUpdates", package: "dyl-kit"),
             ]

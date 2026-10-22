@@ -121,7 +121,33 @@ public enum InfoPlist {
         case .dev:
             break
         }
-        return plist
+        return merging(manifest.bundle.info, into: plist)
+    }
+
+    /// `[bundle.info]`-style raw keys over `plist`. The manifest already refused keys DylKit derives.
+    public static func merging(_ info: [String: TOMLValue], into plist: Plist) -> Plist {
+        plist.merging(info.mapValues(value)) { _, raw in raw }
+    }
+
+    static func value(_ toml: TOMLValue) -> PlistValue {
+        switch toml {
+        case .string(let value): .string(value)
+        case .integer(let value): .integer(value)
+        case .boolean(let value): .boolean(value)
+        case .array(let items): .array(items.map(value))
+        case .table(let entries): .dictionary(entries.mapValues(value))
+        }
+    }
+
+    /// Merges what `actool` generated (icon names, `NSAccentColorName`, `CFBundleIcons`) under the manifest's raw
+    /// keys, then the local values over everything.
+    public static func finalizing(
+        _ plist: Plist, generated: Plist, rawKeys: Set<String>, localValues: ResolvedLocalValues
+    ) -> Plist {
+        var result = plist
+        for (key, value) in generated where !rawKeys.contains(key) { result[key] = value }
+        for (key, value) in localValues.values { result[key] = .string(value) }
+        return result
     }
 
     /// The iOS Simulator dev build's `Info.plist`: the shared bundle keys without Sparkle or AppKit ones. `actool`'s
@@ -143,7 +169,14 @@ public enum InfoPlist {
         plist["UILaunchScreen"] = .dictionary([:])
         plist["UISupportedInterfaceOrientations"] = .array(
             ["Portrait", "LandscapeLeft", "LandscapeRight"].map { .string("UIInterfaceOrientation\($0)") })
-        return plist
+        return merging(manifest.bundle.info.merging(manifest.ios?.info ?? [:]) { $1 }, into: plist)
+    }
+
+    /// Keys the manifest sets raw, which win over what `actool` generates.
+    public static func rawKeys(_ manifest: DylAppManifest, iOS: Bool) -> Set<String> {
+        var keys = Set(manifest.bundle.info.keys)
+        if iOS, let info = manifest.ios?.info { keys.formUnion(info.keys) }
+        return keys
     }
 
     /// A resource bundle SwiftPM emits without an `Info.plist`; codesign refuses to seal the app without one.

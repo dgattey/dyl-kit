@@ -1,3 +1,4 @@
+import DylManifest
 import DylToolSupport
 import Foundation
 import ReleaseKit
@@ -11,7 +12,12 @@ public struct IOSBuild: Sendable {
 
     private var derivedData: URL { workspace.buildDir.appending(path: "ios/DerivedData") }
     public var appURL: URL { workspace.buildDir.appending(path: "\(workspace.manifest.app.name)-iOS.app") }
-    private var bundleId: String { workspace.manifest.ios?.bundleId ?? workspace.manifest.app.bundleId }
+    private var bundleId: String { Self.devBundleId(workspace.manifest) }
+
+    /// The `[ios]` bundle ID with `.dev`, so the simulator build never shares an identity with the release.
+    static func devBundleId(_ manifest: DylAppManifest) -> String {
+        "\(manifest.ios?.bundleId ?? manifest.app.bundleId).dev"
+    }
 
     /// - Blocking: runs `xcodebuild`, `actool` and `codesign`.
     @discardableResult
@@ -21,15 +27,21 @@ public struct IOSBuild: Sendable {
             throw ToolError("DylApp.toml has no [app] platforms.ios")
         }
         let product = manifest.build.product
-        Log.step("xcodebuild \(product) for the iOS Simulator")
+        let scheme = try Self.scheme(for: product, in: try schemes())
+        let platform = ResourceCompiler.Platform.iOSSimulator
+        let sdkVersion = try platform.sdkVersion()
+        let linkerFlags = platform.platformVersionFlags(minimumOS: minimumOS, sdkVersion: sdkVersion)
+        Log.step("xcodebuild \(scheme) for the iOS Simulator (SDK \(sdkVersion))")
         try Shell.run(
             [
-                "xcodebuild", "build", "-quiet", "-scheme", product, "-destination", "generic/platform=iOS Simulator",
+                "xcodebuild", "build", "-quiet", "-scheme", scheme, "-destination", "generic/platform=iOS Simulator",
                 "-derivedDataPath", derivedData.path, "-skipPackagePluginValidation", "-skipMacroValidation",
+                "OTHER_LDFLAGS=$(inherited) \(linkerFlags.joined(separator: " "))",
             ],
             cwd: workspace.root
         )
         let products = derivedData.appending(path: "Build/Products/Debug-iphonesimulator")
+        try ResourceCompiler.Platform.verifySDK(of: products.appending(path: product), sdkVersion: sdkVersion)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: appURL)
         try fileManager.createDirectory(at: appURL, withIntermediateDirectories: true)
@@ -38,24 +50,39 @@ public struct IOSBuild: Sendable {
             try fileManager.copyItem(at: products.appending(path: name), to: appURL.appending(path: name))
         }
 
-        var plist = InfoPlist.iOSContents(manifest: manifest, bundleId: bundleId, minimumOS: minimumOS)
-        if let catalog = try Bundler(workspace: workspace).generateIcons() {
-            let partial = workspace.buildDir.appending(path: "ios/assetcatalog_generated_info.plist")
-            try Shell.run(
-                [
-                    "xcrun", "actool", catalog.path, "--compile", appURL.path, "--platform", "iphonesimulator",
-                    "--minimum-deployment-target", minimumOS, "--app-icon", "AppIcon",
-                    "--output-partial-info-plist", partial.path,
-                ],
-                allowFailure: true
-            )
-            plist.merge(InfoPlist.read(partial) ?? [:]) { _, generated in generated }
-            try? fileManager.removeItem(at: partial)
-        }
+        let generated = try ResourceCompiler(workspace: workspace)
+            .compile(into: appURL, platform: .iOSSimulator, minimumOS: minimumOS)
+        let localValues = ResolvedLocalValues.resolve(workspace)
+        if manifest.localValues != nil { Log.step(localValues.summary) }
+        let plist = InfoPlist.finalizing(
+            InfoPlist.iOSContents(manifest: manifest, bundleId: bundleId, minimumOS: minimumOS),
+            generated: generated, rawKeys: InfoPlist.rawKeys(manifest, iOS: true), localValues: localValues)
         try InfoPlist.data(plist).write(to: appURL.appending(path: "Info.plist"))
         try Shell.run(["codesign", "--force", "--sign", "-", appURL.path])
         Log.step("built \(appURL.path)")
         return appURL
+    }
+
+    private struct SchemeList: Decodable {
+        struct Workspace: Decodable { let schemes: [String] }
+        let workspace: Workspace
+    }
+
+    /// - Blocking: runs `xcodebuild -list`.
+    private func schemes() throws -> [String] {
+        let json = try Shell.capture(["xcodebuild", "-list", "-json"], cwd: workspace.root)
+        return try JSONDecoder().decode(SchemeList.self, from: Data(json.utf8)).workspace.schemes
+    }
+
+    /// Xcode names a package's scheme after the product when the package has several, but after the executable
+    /// target when it's the only one, so the product name alone isn't always a scheme.
+    static func scheme(for product: String, in schemes: [String]) throws -> String {
+        if schemes.contains(product) { return product }
+        let apps = schemes.filter { !$0.hasSuffix("-Package") }
+        guard apps.count == 1, let only = apps.first else {
+            throw ToolError("no Xcode scheme named \(product); schemes: \(schemes.joined(separator: ", "))")
+        }
+        return only
     }
 
     private struct DeviceList: Decodable {
@@ -87,10 +114,13 @@ public struct IOSBuild: Sendable {
         if device.state != "Booted" {
             try Shell.run(["xcrun", "simctl", "boot", device.udid])
         }
+        // The simulator's own setting, not the Mac's; without --appearance it stays as the last run left it.
+        if let appearance = options.appearance {
+            try Shell.run(["xcrun", "simctl", "ui", device.udid, "appearance", appearance.rawValue])
+        }
         try Shell.run(["xcrun", "simctl", "install", device.udid, appURL.path])
-        let prefix = workspace.manifest.launchPrefix
         let environment = Dictionary(
-            uniqueKeysWithValues: options.environment(prefix: prefix).map { ("SIMCTL_CHILD_\($0.key)", $0.value) })
+            uniqueKeysWithValues: options.environment.map { ("SIMCTL_CHILD_\($0.key)", $0.value) })
         try Shell.run(
             ["xcrun", "simctl", "launch", "--terminate-running-process", device.udid, bundleId],
             environment: environment
@@ -99,11 +129,13 @@ public struct IOSBuild: Sendable {
         return device.udid
     }
 
+    /// Screenshots the simulator once the app stops changing, so a launch spinner never ends up in the capture.
+    ///
     /// - Blocking: runs `simctl io`.
-    public func screenshot(udid: String, to output: URL) throws {
-        try FileManager.default.createDirectory(
-            at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Shell.run(["xcrun", "simctl", "io", udid, "screenshot", output.path])
+    public func screenshot(udid: String, to output: URL, settle: SettleWait = .init()) async throws {
+        try await settle.capture(to: output) { frame in
+            try Shell.run(["xcrun", "simctl", "io", udid, "screenshot", frame.path], quiet: true)
+        }
         Log.step("captured \(output.path)")
     }
 }

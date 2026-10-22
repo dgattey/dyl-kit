@@ -29,7 +29,7 @@ public struct CheckReport: Sendable {
 }
 
 /// Tier 3: release and workflow invariants, checked against the real files (manifest, `Package.swift`,
-/// workflows, the committed appcast and, when given, a staged release).
+/// workflows, the staged appcast in `build/release/` and, when given, what's published).
 public struct ReleaseChecks: Sendable {
     public let workspace: Workspace
 
@@ -37,10 +37,18 @@ public struct ReleaseChecks: Sendable {
 
     private var manifest: DylAppManifest { workspace.manifest }
 
+    /// A staged release and what it must replace.
+    public struct StagedRelease: Sendable {
+        public var appcast: URL
+        public var archive: URL
+        /// Where the Blob store serves the release's zip.
+        public var downloadPrefix: String
+        /// Every item in the published feeds.
+        public var published: [AppcastItem]
+    }
+
     /// - Blocking: reads repo files.
-    public func run(
-        stagedAppcast: URL? = nil, stagedArchive: URL? = nil, liveFeed: [AppcastItem] = []
-    ) -> CheckReport {
+    public func run(staged: StagedRelease? = nil) -> CheckReport {
         var report = CheckReport()
         func check(_ rule: String, _ body: (inout [CheckFinding]) -> Void) {
             report.checked.append(rule)
@@ -52,18 +60,16 @@ public struct ReleaseChecks: Sendable {
         check("swift_language_mode", checkPackageManifests)
         check("min_os_consistency", checkMinimumOS)
         check("swiftpm_only", checkNoXcodeProject)
-        check("appcast_signature", checkCommittedAppcast)
-        check("release_trigger_drift", checkTriggerDrift)
+        check("appcast_signature", checkStagedAppcast)
         check("unused_ci_secret", checkSecrets)
         check("forge_neutral", checkForgeNeutral)
-        check("workflow_hygiene", checkWorkflowHygiene)
-        check("pr_template_contract", checkPRTemplate)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
-        if let stagedAppcast, let stagedArchive {
-            check("staged_release") {
-                checkStaged(appcast: stagedAppcast, archive: stagedArchive, liveFeed: liveFeed, into: &$0)
-            }
+        check("dylkit_web_version", checkWebMatchesPin)
+        check("local_values_ignored", checkLocalValuesIgnored)
+        check("shared_files", checkSharedFiles)
+        if let staged {
+            check("staged_release") { checkStaged(staged, into: &$0) }
         }
         return report
     }
@@ -76,6 +82,14 @@ public struct ReleaseChecks: Sendable {
 
     private func error(_ rule: String, _ file: String?, _ message: String) -> CheckFinding {
         CheckFinding(rule: rule, severity: .error, file: file, message: message)
+    }
+
+    private func checkSharedFiles(_ findings: inout [CheckFinding]) {
+        // Without `./run` there's no `./run dev`; SwiftPM runs a dependency's executables directly.
+        let fix = read("run") == nil ? "`swift run devkit sync`" : "`./run dev sync`"
+        for (file, drift) in SharedFiles.drift(root: workspace.root) {
+            findings.append(error("shared_files", file.path, "\(drift.rawValue); run \(fix)"))
+        }
     }
 
     private var publicKey: String? {
@@ -146,39 +160,46 @@ public struct ReleaseChecks: Sendable {
                     error("min_os_consistency", "Package.swift", ".iOS(.v\(declared.1)) but DylApp.toml says \(iOS)"))
             }
         }
-        let appcastPath = workspace.appcastPath
-        if let item = Appcast.items(at: workspace.appcastURL).first, let published = item.minimumSystemVersion,
-            published != macOS
+        if let item = items(at: stagedAppcast, "min_os_consistency", &findings)?.newest,
+            let staged = item.minimumSystemVersion, staged != macOS
         {
             findings.append(
                 error(
-                    "min_os_consistency", appcastPath, "minimumSystemVersion is \(published), DylApp.toml says \(macOS)"
-                ))
+                    "min_os_consistency", relative(stagedAppcast),
+                    "minimumSystemVersion is \(staged), DylApp.toml says \(macOS)"))
         }
     }
 
-    private func checkCommittedAppcast(_ findings: inout [CheckFinding]) {
-        let appcastPath = workspace.appcastPath
-        guard let item = Appcast.items(at: workspace.appcastURL).first else { return }
-        guard let signature = item.edSignature, !signature.isEmpty else {
-            findings.append(error("appcast_signature", appcastPath, "newest item has no sparkle:edSignature"))
-            return
+    private var stagedAppcast: URL { ReleasePipeline(workspace: workspace).stagedAppcast }
+
+    private func relative(_ url: URL) -> String {
+        url.path.replacingOccurrences(of: workspace.root.path + "/", with: "")
+    }
+
+    /// The appcast's items, nil when none is staged. One that doesn't parse is a finding under `rule`.
+    private func items(at appcast: URL, _ rule: String, _ findings: inout [CheckFinding]) -> [AppcastItem]? {
+        guard FileManager.default.fileExists(atPath: appcast.path) else { return nil }
+        do {
+            return try Appcast.items(at: appcast)
+        } catch let failure {
+            findings.append(error(rule, relative(appcast), "\(failure)"))
+            return nil
         }
-        guard let enclosure = item.enclosureURL, let name = enclosure.split(separator: "/").last.map(String.init) else {
+    }
+
+    private func checkStagedAppcast(_ findings: inout [CheckFinding]) {
+        let appcastPath = relative(stagedAppcast)
+        guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.newest else { return }
+        guard let name = item.enclosureURL?.split(separator: "/").last.map(String.init) else {
             findings.append(error("appcast_signature", appcastPath, "newest item has no enclosure URL"))
             return
         }
-        let archive = workspace.artifactsDir.appending(path: name)
-        guard let data = try? Data(contentsOf: archive) else {
-            findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't committed next to it"))
+        guard let data = try? Data(contentsOf: stagedAppcast.deletingLastPathComponent().appending(path: name)) else {
+            findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't staged next to it"))
             return
         }
-        if let length = item.enclosureLength, length != data.count {
-            findings.append(
-                error("appcast_signature", appcastPath, "enclosure length \(length) != \(name) size \(data.count)"))
-        }
         guard let publicKey else { return }
-        switch EdSignature.verify(archive: data, signature: signature, publicKey: publicKey) {
+        switch EdSignature.check(item, archive: data, publicKey: publicKey) {
         case .valid: break
         case .invalid(let reason): findings.append(error("appcast_signature", appcastPath, "\(name): \(reason)"))
         case .unverifiable:
@@ -191,78 +212,17 @@ public struct ReleaseChecks: Sendable {
 
     // MARK: - Workflows
 
-    private struct Workflow {
+    private struct Source {
         let path: String
         let text: String
-
-        /// A workflow that versions, signs or publishes a release, through release-kit or the scripts it replaces.
-        var runsRelease: Bool {
-            text.matches(
-                pattern:
-                    #"(?:release-kit|run release) (?:release|version|appcast|publish)\b|generate_appcast|SPARKLE_ED_PRIVATE_KEY"#
-            )
-        }
-
-        /// Items of the `paths:` list under `on.push`.
-        var pushPaths: [String]? {
-            let lines = text.components(separatedBy: "\n")
-            guard let push = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "push:" }) else {
-                return nil
-            }
-            let pushIndent = lines[push].prefix { $0 == " " }.count
-            var index = push + 1
-            while index < lines.count {
-                let line = lines[index]
-                let indent = line.prefix { $0 == " " }.count
-                if !line.trimmingCharacters(in: .whitespaces).isEmpty, indent <= pushIndent { return nil }
-                if line.trimmingCharacters(in: .whitespaces) == "paths:" { break }
-                index += 1
-            }
-            guard index < lines.count else { return nil }
-            let pathsIndent = lines[index].prefix { $0 == " " }.count
-            var items: [String] = []
-            for line in lines[(index + 1)...] {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard trimmed.hasPrefix("- "), line.prefix(while: { $0 == " " }).count > pathsIndent else { break }
-                items.append(String(trimmed.dropFirst(2)).trimmingCharacters(in: CharacterSet(charactersIn: "'\" ")))
-            }
-            return items
-        }
     }
 
-    private var workflows: [Workflow] {
+    private var workflows: [Source] {
         let directory = ".github/workflows"
         let names = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url(directory).path)) ?? []
         return names.sorted().filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.compactMap { name in
             let path = "\(directory)/\(name)"
-            return read(path).map { Workflow(path: path, text: $0) }
-        }
-    }
-
-    private func checkTriggerDrift(_ findings: inout [CheckFinding]) {
-        for workflow in workflows where workflow.runsRelease {
-            let expected = Set(workspace.manifest.release.inputs)
-            guard let paths = workflow.pushPaths else {
-                findings.append(
-                    error("release_trigger_drift", workflow.path, "release runs on every push; add `paths:`"))
-                continue
-            }
-            let actual = Set(paths)
-            let missing = expected.subtracting(actual).sorted()
-            let extra = actual.subtracting(expected).sorted()
-            if !missing.isEmpty {
-                findings.append(
-                    error(
-                        "release_trigger_drift", workflow.path,
-                        "doesn't trigger on release inputs \(missing.joined(separator: ", ")) from DylApp.toml"))
-            }
-            if !extra.isEmpty {
-                findings.append(
-                    error(
-                        "release_trigger_drift", workflow.path,
-                        "triggers on \(extra.joined(separator: ", ")), which DylApp.toml's release.inputs doesn't list")
-                )
-            }
+            return read(path).map { Source(path: path, text: $0) }
         }
     }
 
@@ -295,78 +255,38 @@ public struct ReleaseChecks: Sendable {
     }
 
     /// Environment variables release-kit itself reads, so a workflow that passes them to it uses them.
-    static let releaseKitVariables: Set<String> = [ReleasePipeline.edKeyVariable]
-
-    private struct Source {
-        let path: String
-        let text: String
-    }
+    static let releaseKitVariables: Set<String> = [
+        ReleasePipeline.edKeyVariable, GitHub.tokenVariable, BlobStore.tokenVariable,
+    ]
 
     private func toolSources() -> [Source] {
         var sources: [Source] = []
-        for directory in ["scripts", "ci"] {
-            let enumerator = FileManager.default.enumerator(atPath: workspace.url(directory).path)
-            while let relative = enumerator?.nextObject() as? String {
-                let path = "\(directory)/\(relative)"
-                if let text = read(path) { sources.append(Source(path: path, text: text)) }
-            }
+        let enumerator = FileManager.default.enumerator(atPath: workspace.url("scripts").path)
+        while let relative = enumerator?.nextObject() as? String {
+            let path = "scripts/\(relative)"
+            if let text = read(path) { sources.append(Source(path: path, text: text)) }
         }
         if let run = read("run") { sources.append(Source(path: "run", text: run)) }
         return sources
     }
 
-    /// What in `text` talks to a forge directly. Only the thin wrapper in `ci/github/` may.
+    /// What in `text` talks to a forge directly. Only release-kit may.
     public static func forgeCalls(in text: String) -> [String] {
         let forgeAPIs = [
             (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
             (#"api\.github\.com"#, "calls the GitHub API"),
-            (#"actions/github\-script"#, "uses the github-script action"),
-            (#"action\-gh\-release"#, "uploads a GitHub Release"),
         ]
         return forgeAPIs.filter { text.matches(pattern: $0.0) }.map(\.1)
     }
 
     private func checkForgeNeutral(_ findings: inout [CheckFinding]) {
-        let releaseWorkflows = workflows.filter(\.runsRelease).map { Source(path: $0.path, text: $0.text) }
-        for source in releaseWorkflows + toolSources() where !source.path.hasPrefix("ci/github/") {
+        for source in toolSources() {
             for problem in Self.forgeCalls(in: source.text) {
                 findings.append(
                     error(
                         "forge_neutral", source.path,
-                        "\(problem); only the thin wrapper in ci/github/ may talk to the forge"))
+                        "\(problem); only release-kit talks to the forge"))
             }
-        }
-    }
-
-    private func checkWorkflowHygiene(_ findings: inout [CheckFinding]) {
-        for workflow in workflows where workflow.runsRelease {
-            if !workflow.text.contains("concurrency:") || !workflow.text.contains("cancel-in-progress: false") {
-                findings.append(
-                    error(
-                        "workflow_hygiene", workflow.path,
-                        "releases must run one at a time without cancelling (`concurrency` + `cancel-in-progress: false`)"
-                    ))
-            }
-        }
-    }
-
-    private func checkPRTemplate(_ findings: inout [CheckFinding]) {
-        let path = ".github/pull_request_template.md"
-        guard let text = read(path) else {
-            findings.append(
-                error("pr_template_contract", nil, "no PR template; release-kit reads its Release info checkboxes"))
-            return
-        }
-        if !text.matches(pattern: #"(?im)^#+\s*Release info\s*$"#) {
-            findings.append(error("pr_template_contract", path, "has no `# Release info` section"))
-        }
-        for name in ["Major", "Minor", "Patch"] where !text.matches(pattern: "(?m)^\\s*-\\s*\\[[ xX]\\]\\s*\(name)\\b")
-        {
-            findings.append(error("pr_template_contract", path, "has no `- [ ] \(name)` checkbox"))
-        }
-        if !ReleaseInfo.notesHeadings.contains(where: { text.matches(pattern: "(?im)^#+\\s*\(regexEscaped($0))\\s*$") })
-        {
-            findings.append(error("pr_template_contract", path, "has no `# Release notes` section"))
         }
     }
 
@@ -384,32 +304,51 @@ public struct ReleaseChecks: Sendable {
     static let libraryValidationKey = "com.apple.security.cs.disable-library-validation"
 
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
-    /// That command must still deploy release commits, which only touch the artifacts dir, and changes to what the
-    /// site builds from outside its root: `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45).
+    /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
+    /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45). It diffs from the last deployed commit, so a
+    /// site change in a skipped commit still deploys with the next one.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
 
-    private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
-        var siteRoot = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
-        while !siteRoot.isEmpty, read("\(siteRoot)/package.json") == nil {
-            siteRoot = (siteRoot as NSString).deletingLastPathComponent
+    /// The site's root, the nearest folder above the artifacts dir with a `package.json`, and that file's text.
+    private var site: (root: String, package: String)? {
+        var root = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
+        while !root.isEmpty {
+            if let package = read("\(root)/package.json") { return (root, package) }
+            root = (root as NSString).deletingLastPathComponent
         }
-        guard !siteRoot.isEmpty, let package = read("\(siteRoot)/package.json") else { return }
+        return nil
+    }
+
+    private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site else { return }
+        if let path = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"file:([^"]+)"/)?.1 {
+            findings.append(
+                error(
+                    "site_deploy", "\(siteRoot)/package.json",
+                    "@dylkit/web is a `file:\(path)` dependency, which Vercel can't build; depend on the release "
+                        + "tarball instead: \"\(Self.webTarballURL)\""))
+        }
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
-        let prefix = "git diff --quiet HEAD^ HEAD -- "
+        let prefix = #"git diff --quiet "${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}" HEAD -- "#
         guard command.hasPrefix(prefix) else {
+            let json = prefix.replacingOccurrences(of: "\"", with: #"\""#)
+            let reason =
+                command.hasPrefix("git diff --quiet HEAD^ HEAD -- ")
+                ? "diffs from HEAD^, so a site change in a commit Vercel skipped never deploys; use"
+                : "needs"
             findings.append(
-                error("site_deploy", file, "needs `\"ignoreCommand\": \"\(prefix)<paths>\"` so app-only commits don't deploy"))
+                error("site_deploy", file, "\(reason) `\"ignoreCommand\": \"\(json)<paths>\"`"))
             return
         }
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
             workspace.url(siteRoot).appending(path: String(path)).standardized.path
         }
         var needed = [manifest.release.artifactsDir]
-        for match in package.matches(of: /"file:([^"]+)"/) {
+        for match in package.matches(of: /"(?!@dylkit\/web")[^"]+"\s*:\s*"file:([^"]+)"/) {
             needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
         }
         if package.contains("\"@dylkit/web\"") { needed.append(DylAppManifest.fileName) }
@@ -421,34 +360,74 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    private struct PackageResolved: Decodable {
+        struct Pin: Decodable {
+            struct State: Decodable { var version: String? }
+            var identity: String
+            var state: State
+        }
+        var pins: [Pin]
+    }
+
+    /// SwiftPM and npm pin DylKit separately, so the app and its site can drift onto different releases. A DylKit
+    /// pinned to a branch or revision has no version to compare.
+    private func checkWebMatchesPin(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site,
+            let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
+            let resolved = read("Package.resolved")
+                .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) }),
+            let pinned = resolved.pins.first(where: { $0.identity == "dyl-kit" })?.state.version,
+            match.2 != pinned
+        else { return }
+        let url = match.1.replacingOccurrences(of: match.2, with: pinned)
+        findings.append(
+            error(
+                "dylkit_web_version", "\(siteRoot)/package.json",
+                "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
+    }
+
+    /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
+    static let webTarballURL =
+        "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
+
+    /// Local values are credentials; their file must never be committed.
+    private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {
+        guard let file = manifest.localValues?.file else { return }
+        let root = workspace.root
+        let tracked = (try? Shell.run(
+            ["git", "ls-files", "--error-unmatch", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
+        let ignored = (try? Shell.run(
+            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
+        if tracked {
+            findings.append(error("local_values_ignored", file, "is committed; `git rm --cached` it and rotate its values"))
+        } else if !ignored {
+            findings.append(error("local_values_ignored", file, "isn't in .gitignore"))
+        }
+    }
+
     // MARK: - Staged release
 
-    /// The build must beat both the committed feed and the live one, which can be ahead of a stale checkout. The
-    /// `check` step after install covers everything else in the new feed.
-    private func checkStaged(appcast: URL, archive: URL, liveFeed: [AppcastItem], into findings: inout [CheckFinding]) {
-        let file = appcast.path
-        guard let item = Appcast.items(at: appcast).first else {
-            findings.append(error("staged_release", file, "has no items"))
+    /// The build must beat every published feed: the site's and the Blob store's latest, either of which can be ahead.
+    /// The same build and version is a re-run of the release that published them.
+    private func checkStaged(_ staged: StagedRelease, into findings: inout [CheckFinding]) {
+        let file = relative(staged.appcast)
+        guard let item = items(at: staged.appcast, "staged_release", &findings)?.newest else {
+            if findings.isEmpty { findings.append(error("staged_release", file, "has no items")) }
             return
         }
-        let published = Appcast.items(at: workspace.appcastURL) + liveFeed
-        if let newBuild = item.build.flatMap({ Int($0) }),
-            let oldBuild = published.compactMap({ $0.build.flatMap { Int($0) } }).max(), newBuild <= oldBuild
+        if let published = staged.published.newest,
+            item.build < published.build || (item.build == published.build && item.displayVersion != published.displayVersion)
         {
             findings.append(
-                error("build_number_monotonic", file, "build \(newBuild) isn't above the published build \(oldBuild)"))
+                error(
+                    "build_number_monotonic", file, "build \(item.build) isn't above the published build \(published.build)"
+                ))
         }
-        let expectedURL = manifest.release.siteUrl.trimmingSuffix("/") + "/" + archive.lastPathComponent
+        let expectedURL = staged.downloadPrefix + staged.archive.lastPathComponent
         if item.enclosureURL != expectedURL {
             findings.append(
                 error("staged_release", file, "enclosure is \(item.enclosureURL ?? "missing"), expected \(expectedURL)")
             )
         }
-    }
-}
-
-extension String {
-    func trimmingSuffix(_ suffix: String) -> String {
-        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
     }
 }

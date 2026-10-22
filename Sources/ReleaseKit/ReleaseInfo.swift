@@ -3,7 +3,7 @@ import Foundation
 
 /// The parsing contract with the shared PR template: exactly one `# Release info` checkbox picks the bump, and the
 /// notes come from the first non-empty section in `notesHeadings`. The CI wrapper hands release-kit the merged PR's
-/// body; the merge commit message is the fallback when the wrapper's forge lookup fails.
+/// body; the merge commit message is the fallback when the GitHub lookup fails.
 public enum ReleaseInfo {
     public static let notesHeadings = [
         "Release notes", "Highlights", "What changed?", "Summary", "Overview", "Changes", "Description",

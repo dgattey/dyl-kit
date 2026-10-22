@@ -42,12 +42,6 @@ public struct Workspace: Sendable {
     /// `build/` in the repo: dev bundles, generated icons and release staging all live under it.
     public var buildDir: URL { url("build") }
 
-    public var artifactsDir: URL { url(manifest.release.artifactsDir) }
-
-    public var appcastPath: String { "\(manifest.release.artifactsDir)/appcast.xml" }
-
-    public var appcastURL: URL { url(appcastPath) }
-
     /// Sparkle's command-line tools, which SwiftPM unpacks from the Sparkle binary artifact.
     public func sparkleTool(_ name: String) -> URL {
         url(".build/artifacts/sparkle/Sparkle/bin/\(name)")

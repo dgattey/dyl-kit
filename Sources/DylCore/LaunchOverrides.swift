@@ -1,24 +1,25 @@
 import Foundation
 
-/// Launch-time state for screenshots and agent runs, set by `devkit relaunch` and `devkit ios`. Option `name` reads
-/// the environment variable `<PREFIX>_<NAME>` (uppercased, dashes as underscores), then the argument `--name=value`
-/// or `--name value`. Callers pass `prefix` (the app name, uppercased, letters and digits only).
+/// Launch-time state for screenshots and agent runs, set by `devkit relaunch`, `capture` and `ios`. Option `name`
+/// reads the environment variable `DYLKIT_<NAME>` (uppercased, dashes as underscores) that devkit sets, then the
+/// argument `--name=value` or `--name value`. `AppWindow` applies the appearance and window size itself; apps only
+/// read `initialView`.
 public struct LaunchOverrides: Sendable {
-    public let prefix: String
+    /// The process's own overrides, which `AppWindow` and `AppUpdater` read.
+    public static let current = LaunchOverrides()
+
     private let environment: [String: String]
     private let arguments: [String]
 
     public init(
-        prefix: String,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
-        self.prefix = prefix
         self.environment = environment
         self.arguments = arguments
     }
 
-    public enum Appearance: String, Sendable {
+    public enum Appearance: String, Sendable, CaseIterable {
         case light, dark
     }
 
@@ -38,7 +39,7 @@ public struct LaunchOverrides: Sendable {
         return nil
     }
 
-    /// `true` for `<PREFIX>_<NAME>=1|true|yes` or a bare `--name`.
+    /// `true` for `DYLKIT_<NAME>=1|true|yes` or a bare `--name`.
     public func flag(_ name: String) -> Bool {
         if let value = environment[variable(name)]?.lowercased() { return ["1", "true", "yes"].contains(value) }
         return arguments.contains { $0.lowercased() == "--\(name)" }
@@ -59,6 +60,6 @@ public struct LaunchOverrides: Sendable {
     }
 
     private func variable(_ name: String) -> String {
-        "\(prefix)_\(name.uppercased().replacingOccurrences(of: "-", with: "_"))"
+        "DYLKIT_\(name.uppercased().replacingOccurrences(of: "-", with: "_"))"
     }
 }

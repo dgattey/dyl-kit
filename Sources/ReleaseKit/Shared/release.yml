@@ -1,19 +1,21 @@
+# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.
 name: release
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
-    paths:
-      - 'Sources/**'
-      - 'Package.swift'
-      - 'Package.resolved'
-      - 'DylApp.toml'
-      - 'Sample.entitlements'
-      - 'sparkle-public-key.txt'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'server/**'
+      - 'Tests/**'
+      - '.github/**'
+      - '.cursor/**'
   workflow_dispatch:
     inputs:
       release_type:
-        description: 'Bump type; auto reads the merged PR''s Release info checkbox'
+        description: 'Bump type; auto reads the Release info checkbox in the merge commit'
         required: false
         default: auto
         type: choice
@@ -23,34 +25,40 @@ permissions:
   contents: write
   pull-requests: read
 
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    # Job-level, so a PR closed without merging never queues behind a release.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: macos-26
     timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
+      site: ${{ steps.version.outputs.site }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          # Every tag plans the version, and build numbers count commits.
           fetch-depth: 0
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
-      - name: Fetch the merged PR's body
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ci/github/pr-body.sh "$GITHUB_SHA" "$RUNNER_TEMP/pr-body.md"
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-
       - name: Plan the version
         id: version
         env:
-          RELEASE_TYPE: ${{ inputs.release_type }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TYPE: ${{ inputs.release_type || 'auto' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -o pipefail
-          ./run release version --type "${RELEASE_TYPE:-auto}" --pr-body-file "$RUNNER_TEMP/pr-body.md" \
-            | tee -a "$GITHUB_OUTPUT"
+          ./run release version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
       - name: Bundle
         run: ./run release bundle
       - name: Sign
@@ -59,13 +67,10 @@ jobs:
         env:
           SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
         run: ./run release appcast
-      - name: Check
-        run: ./run release check
       - name: Publish
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          ./run release publish
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: ./run release publish
 
   # Waiting for the deploy is plain polling, so it runs on ubuntu instead of billing macOS minutes.
   live-site:
@@ -76,7 +81,7 @@ jobs:
     steps:
       - name: Wait for the site to serve the release
         env:
-          SITE: https://sample.example.com
+          SITE: ${{ needs.release.outputs.site }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
           for _ in $(seq 60); do

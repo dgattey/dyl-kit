@@ -1,16 +1,12 @@
-# DylKit tier 1: regex rules for pitfalls that shipped in Dylan's apps. Apps inherit this with
-#   parent_config: .build/checkouts/dyl-kit/lint/swiftlint.yml
-# and add their own `included` paths. `./run dev checks` runs it.
+# DylKit tier 1: regex rules for pitfalls that shipped in Dylan's apps. `./run dev checks` passes this as the parent of
+# the app's own `.swiftlint.yml`, which adds `included` paths and has no `parent_config`. Paths here resolve against
+# this file's folder, so devkit excludes the app's `.build` and `build/` in a layer of its own.
 #
 # The only escape hatch is a same-line `// lint:allow <rule>: <reason>` for a verified false positive or benign hit.
 # Every regex ends with a lookahead for it. SwiftLint compiles custom regexes with dotMatchesLineSeparators, so
 # classes use [^\n] explicitly to stay on one line.
 only_rules:
   - custom_rules
-
-excluded:
-  - .build
-  - "**/.build"
 
 custom_rules:
   untyped_json:

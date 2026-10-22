@@ -1,10 +1,12 @@
+# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.
 name: pr-check
 
 on:
   pull_request:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, synchronize]
 
-permissions: {}
+permissions:
+  pull-requests: read
 
 jobs:
   release-info:
@@ -24,9 +26,12 @@ jobs:
     steps:
       - name: Check exactly one Release info box
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
         run: |
-          checked="$(printf '%s\n' "$PR_BODY" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
+          body="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""')"
+          checked="$(printf '%s\n' "$body" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
           if [ "$checked" != "1" ]; then
             echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
             exit 1

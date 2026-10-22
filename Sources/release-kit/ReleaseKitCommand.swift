@@ -9,11 +9,11 @@ struct ReleaseKitCommand: AsyncParsableCommand {
         commandName: "release-kit",
         abstract: "Version, bundle, sign and publish a Sparkle release, and check the release invariants.",
         discussion: """
-            CI runs the steps in order: version, bundle, sign, appcast, check, publish. Each step reads \
+            CI runs the steps in order: version, bundle, sign, appcast, publish. Each step reads \
             what the earlier ones left in build/release/.
             """,
         subcommands: [
-            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self,
+            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self, Library.self,
         ]
     )
 }
@@ -31,33 +31,22 @@ enum BumpChoice: String, ExpressibleByArgument, CaseIterable {
     var bump: AppVersion.Bump? { AppVersion.Bump(rawValue: rawValue) }
 }
 
-/// - Blocking: reads the file.
-private func readBody(_ path: String?) throws -> String? {
-    guard let path else { return nil }
-    do {
-        return try String(contentsOfFile: path, encoding: .utf8)
-    } catch {
-        throw ToolError("can't read \(path): \(error.localizedDescription)")
-    }
-}
-
 extension ReleaseKitCommand {
     struct Version: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Plan the next version and build from the merged PR body, tags and the live feed.")
+            abstract: "Plan the next version and build from the merged PR body, tags and the published feeds.")
 
         @OptionGroup var options: RootOption
         @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
-        @Option(help: "The merged PR's body, fetched by the forge wrapper. Empty or missing means the lookup failed.")
-        var prBodyFile: String?
+        @Option(help: "The merged PR, whose body release-kit reads from GitHub. Without it, the merge commit's.")
+        var pr: Int?
 
         func run() async throws {
-            let pipeline = ReleasePipeline(workspace: try options.workspace())
-            let prBody = prBodyFile.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
-                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-            let state = try await pipeline.version(explicitBump: type.bump, prBody: prBody)
+            let workspace = try options.workspace()
+            let state = try await ReleasePipeline(workspace: workspace).version(explicitBump: type.bump, pullRequest: pr)
             print("version=\(state.version)")
             print("build=\(state.build)")
+            print("site=\(workspace.manifest.release.siteUrl)")
         }
     }
 
@@ -84,7 +73,7 @@ extension ReleaseKitCommand {
 
     struct Appcast: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Write the notes and appcast, verify the EdDSA signature, and install the artifacts.")
+            abstract: "Write the notes, appcast and release.json, verify the EdDSA signature, and check the release.")
 
         @OptionGroup var options: RootOption
         @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, a local key file, or the Keychain.")
@@ -96,27 +85,38 @@ extension ReleaseKitCommand {
         }
     }
 
-    struct Check: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Tier 3 release checks against the repo.")
+    struct Check: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Tier 3 release checks against the repo; --live also compares the staged release with the live one.")
 
         @OptionGroup var options: RootOption
+        @Flag(help: "Compare the staged release (after version, bundle, sign, appcast) with what installs run now.")
+        var live = false
 
-        func run() throws {
-            let report = ReleaseChecks(workspace: try options.workspace()).run()
+        func run() async throws {
+            let workspace = try options.workspace()
+            let report: CheckReport
+            if live {
+                let (liveReport, diff) = try await LiveChecks(workspace: workspace).run()
+                report = liveReport
+                Log.step("Info.plist, live → staged:")
+                for line in diff { FileHandle.standardError.write(Data("  \(line)\n".utf8)) }
+            } else {
+                report = ReleaseChecks(workspace: workspace).run()
+            }
             report.print()
             if !report.passed { throw ExitCode.failure }
         }
     }
 
-    struct Publish: ParsableCommand {
+    struct Publish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Commit the artifacts, tag v<version>, and push both with plain git.")
+            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.")
 
         @OptionGroup var options: RootOption
-        @Flag(help: "Commit and tag without pushing.") var noPush = false
 
-        func run() throws {
-            try ReleasePipeline(workspace: try options.workspace()).publish(push: !noPush)
+        func run() async throws {
+            try await ReleasePipeline(workspace: try options.workspace()).publish()
         }
     }
 
@@ -132,12 +132,54 @@ extension ReleaseKitCommand {
             let workspace = try options.workspace()
             let pipeline = ReleasePipeline(workspace: workspace)
             var state = try? pipeline.state()
-            if let body = try readBody(bodyFile) {
+            if let bodyFile {
+                let body = try String(contentsOfFile: bodyFile, encoding: .utf8)
                 state = ReleasePipeline.State(version: version, build: 0, subject: "Untitled", body: body)
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
-            let live = await ReleaseKit.Appcast.fetch(workspace.manifest.release.feedURL)
-            print(try pipeline.releaseNotes(state: state, history: [live]))
+            print(try pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
+        }
+    }
+
+    struct Library: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Release a package with no app, such as DylKit: version and publish, with no bundle or appcast.",
+            subcommands: [LibraryVersion.self, LibraryPublish.self])
+    }
+}
+
+struct LibraryOptions: ParsableArguments {
+    @Option(help: "The package's checkout.") var root: String = "."
+
+    func repo() -> ReleaseRepo { ReleaseRepo(root: URL(fileURLWithPath: root).standardizedFileURL) }
+}
+
+extension ReleaseKitCommand {
+    struct LibraryVersion: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "version", abstract: "Plan the next version from the merged PR body and the tags.")
+
+        @OptionGroup var options: LibraryOptions
+        @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
+        @Option(help: "The merged PR, whose body release-kit reads from GitHub. Without it, the merge commit's.")
+        var pr: Int?
+
+        func run() async throws {
+            let state = try await options.repo().version(explicitBump: type.bump, pullRequest: pr, published: [])
+            print("version=\(state.version)")
+        }
+    }
+
+    struct LibraryPublish: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "publish",
+            abstract: "Tag v<version>, push the tag, and upload the files to releases/v<version>/ on Vercel Blob.")
+
+        @OptionGroup var options: LibraryOptions
+        @Argument(help: "The files to upload.") var files: [String]
+
+        func run() async throws {
+            for url in try await options.repo().publish(files.map { URL(fileURLWithPath: $0) }) { print(url) }
         }
     }
 }

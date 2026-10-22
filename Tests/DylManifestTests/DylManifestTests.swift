@@ -22,23 +22,18 @@ struct DylAppManifestTests {
         sparkle-public-key = "key.txt"
         site-url = "https://demo.gattey.com"
         artifacts-dir = "server/public"
-        inputs = ["Sources/**"]
         check-interval = 3600
+        assets = "https://store.public.blob.vercel-storage.com"
         """
 
     @Test func decodesKebabKeysAndKeepsUsageKeys() throws {
         let manifest = try DylAppManifest.decode(Self.valid)
         #expect(manifest.app.bundleId == "com.example.Demo")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
+        #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
         #expect(manifest.release.checkInterval == 3600)
-        #expect(manifest.launchPrefix == "DEMO")
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
         #expect(manifest.ios == nil)
-    }
-
-    @Test func launchPrefixKeepsLettersAndDigits() throws {
-        let text = Self.valid.replacingOccurrences(of: "name = \"Demo\"", with: "name = \"Scone OS!\"")
-        #expect(try DylAppManifest.decode(text).launchPrefix == "SCONEOS")
     }
 
     @Test func parsesCommentsTrailingCommasAndInlineTables() throws {
@@ -60,24 +55,22 @@ struct DylAppManifestTests {
             site-url = "https://demo.gattey.com/"
             artifacts-dir = "server/public"
             check-interval = 3600
-            inputs = [
-                "Sources/**",
-                "Package.swift", # trailing comma below
-            ]
+            assets = "https://store.public.blob.vercel-storage.com/"
 
             [site]
             tagline = "Hello"
             accent = { light = "#fff", dark = "#000" }
             screenshots = [
                 { src = "a.png", alt = "A" },
+                { src = "b.png", alt = "B" }, # trailing comma
             ]
             """)
         #expect(manifest.app.name == "Sconeos")
         #expect(manifest.app.platforms.ios == "17.0")
         #expect(manifest.release.checkInterval == 3600)
-        #expect(manifest.release.inputs == ["Sources/**", "Package.swift"])
+        #expect(manifest.release.siteUrl == "https://demo.gattey.com")
         #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
-        #expect(manifest.launchPrefix == "SCONEOS")
+        #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
     }
 
     @Test func reportsTheLineOfAnError() {
@@ -119,7 +112,6 @@ struct DylAppManifestTests {
             .appending(path: "Fixtures/SampleApp")
         let manifest = try DylAppManifest.load(root: root)
         #expect(manifest.app.name == "Sample")
-        #expect(manifest.launchPrefix == "SAMPLE")
         #expect(manifest.ios?.simulator == "iPhone 17 Pro")
     }
 
@@ -130,6 +122,52 @@ struct DylAppManifestTests {
             Issue.record("expected an error")
         } catch {
             #expect(error.line == 16)
+        }
+    }
+
+    @Test func decodesBuildResourcesIconAndLocalValues() throws {
+        let text = Self.valid
+            .replacingOccurrences(
+                of: "entitlements = \"Demo.entitlements\"\n",
+                with: """
+                    entitlements = "Demo.entitlements"
+                    icon = "Resources/AppIcon.icon"
+                    accent-color = "AccentColor"
+                    resources = ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"]
+
+                    """)
+            + """
+
+                [local-values]
+                file = "Config.xcconfig"
+                keys = { ContentfulSpaceID = "CONTENTFUL_SPACE_ID", ContentfulToken = "CONTENTFUL_TOKEN" }
+                defaults = { ContentfulSpaceID = "placeholder" }
+                """
+        let manifest = try DylAppManifest.decode(text)
+        #expect(manifest.build.icon == "Resources/AppIcon.icon")
+        #expect(manifest.build.accentColor == "AccentColor")
+        #expect(manifest.build.resources == ["Sources/Demo/Demo.xcdatamodeld", "Resources/Assets.xcassets"])
+        #expect(manifest.localValues?.file == "Config.xcconfig")
+        #expect(manifest.localValues?.keys["ContentfulToken"] == "CONTENTFUL_TOKEN")
+        #expect(manifest.localValues?.defaults == ["ContentfulSpaceID": "placeholder"])
+    }
+
+    @Test(arguments: [
+        ("product = \"Demo\"\n", "product = \"Demo\"\nicon = \"A.icon\"\nicon-generator = \"g.swift\"\n", "not both"),
+        ("product = \"Demo\"\n", "product = \"Demo\"\nresources = [\"Sources/Demo/Model.momd\"]\n", "isn't a"),
+        ("[release]\n", "[bundle.info]\nCFBundleVersion = \"9\"\n\n[release]\n", "can't set CFBundleVersion"),
+        ("[release]\n", "[local-values]\nkeys = { A = \"A\" }\ndefaults = { B = \"b\" }\n\n[release]\n", "isn't in"),
+        ("assets = \"https://store.public.blob.vercel-storage.com\"", "", "missing required key `release.assets`"),
+        ("store.public.blob", "store.private.blob", "must be a public Blob store's URL"),
+        ("https://store.public", "http://store.public", "must be a public Blob store's URL"),
+        ("[release]\n", "[bundle.info]\n\"a.b\" = true\n\n[release]\n", "can't contain `.`"),
+    ])
+    func rejectsInvalidAdditions(_ find: String, _ replacement: String, _ message: String) {
+        do {
+            _ = try DylAppManifest.decode(Self.valid.replacingOccurrences(of: find, with: replacement))
+            Issue.record("expected an error containing \(message)")
+        } catch {
+            #expect(error.message.contains(message), "\(error.message)")
         }
     }
 }

@@ -22,17 +22,11 @@ simulator = "iPhone 17 Pro"
 
 [release]
 sparkle-public-key = "sparkle-public-key.txt"
-site-url = "https://sample.invalid"
+# Neither the site nor the Blob store exists, so both feeds answer 404 and every release is a first release.
+site-url = "https://dgattey.github.io/dyl-kit-sample"
+assets = "https://dylkitsample.public.blob.vercel-storage.com"
 artifacts-dir = "server/public"
 check-interval = 3600
-inputs = [
-    "Sources/**",
-    "Package.swift",
-    "Package.resolved",
-    "DylApp.toml",
-    "Sample.entitlements",
-    "sparkle-public-key.txt",
-]
 
 [site]
 tagline = "The smallest DylKit app."

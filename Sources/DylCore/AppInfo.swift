@@ -4,10 +4,10 @@ import Foundation
 public struct AppInfo: Equatable, Sendable {
     public var version: String?
     public var build: String?
-    public var sparkleFeedURL: URL?
-    public var sparklePublicEDKey: String?
+    package var sparkleFeedURL: URL?
+    package var sparklePublicEDKey: String?
 
-    public init(lookup: (String) -> String?) {
+    package init(lookup: (String) -> String?) {
         func value(_ key: String) -> String? {
             guard let text = lookup(key)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
                 return nil

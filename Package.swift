@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "DylManifest", targets: ["DylManifest"]),
         .library(name: "DylUpdates", targets: ["DylUpdates"]),
         .library(name: "DylUI", targets: ["DylUI"]),
+        .library(name: "DylTestSupport", targets: ["DylTestSupport"]),
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
@@ -17,6 +18,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+        .package(url: "https://github.com/nalexn/ViewInspector", from: "0.10.0"),
     ],
     targets: [
         // Runtime helpers shared by the app and the tools.
@@ -33,6 +35,12 @@ let package = Package(
         // The palette, main window and Settings shell, shared by every app's SwiftUI.
         .target(name: "DylUI", dependencies: ["DylCore", "DylUpdates"]),
 
+        // For apps' test targets: ViewInspector and a scratch support folder.
+        .target(
+            name: "DylTestSupport",
+            dependencies: ["DylCore", .product(name: "ViewInspector", package: "ViewInspector")]
+        ),
+
         // Host tooling.
         .target(name: "DylManifest"),
         .target(name: "DylToolSupport", dependencies: ["DylManifest"]),
@@ -44,7 +52,9 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "dyl-lint", dependencies: ["DylLintRules"]),
-        .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"]),
+        .target(
+            name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"], resources: [.copy("Shared")]
+        ),
         .executableTarget(
             name: "release-kit",
             dependencies: [
@@ -53,7 +63,9 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .target(name: "DevKitCore", dependencies: ["DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]),
+        .target(
+            name: "DevKitCore", dependencies: ["DylCore", "DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]
+        ),
         .executableTarget(
             name: "devkit",
             dependencies: [
@@ -65,7 +77,8 @@ let package = Package(
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
         .testTarget(name: "DylUpdatesTests", dependencies: ["DylCore", "DylUpdates"]),
-        .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore"]),
+        .testTarget(name: "DylTestSupportTests", dependencies: ["DylCore", "DylTestSupport"]),
+        .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore", "DylManifest"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",

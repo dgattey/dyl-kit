@@ -10,7 +10,7 @@ import Foundation
 /// section as that anchor. An unmatched build sees the full list.
 ///
 /// History comes from earlier appcasts: stamped sections are read back as written; older descriptions are split on
-/// their `<h3>` headings and get builds from the appcast items and `knownBuilds`.
+/// their `<h3>` headings and get builds from the appcast items.
 public enum CumulativeNotes {
     static let topHeadingStyle = "margin: 0 0 6px 0; font-size: 13px;"
     static let previousHeadingStyle = "margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;"
@@ -23,25 +23,20 @@ public enum CumulativeNotes {
         var body: String
     }
 
-    /// Earlier histories win when two describe the same version.
+    /// Earlier items win when two describe the same version.
     public static func html(
-        version: String, build: String, newNotes: String, history: [[AppcastItem]],
-        knownBuilds: [String: String] = [:], maxVersions: Int = 10
+        version: String, build: String, newNotes: String, history: [AppcastItem], maxVersions: Int = 10
     )
         -> String
     {
-        let items = history.joined()
-        let parsed = items.map { sections($0) }
+        let parsed = history.map { sections($0) }
         var builds: [String: String] = [:]
-        for item in items where !normalize(item.displayVersion).isEmpty {
-            if let itemBuild = item.build, !itemBuild.isEmpty, builds[normalize(item.displayVersion)] == nil {
-                builds[normalize(item.displayVersion)] = itemBuild
-            }
+        for item in history where !normalize(item.displayVersion).isEmpty && builds[normalize(item.displayVersion)] == nil {
+            builds[normalize(item.displayVersion)] = String(item.build)
         }
         for entry in parsed.joined() where builds[entry.version] == nil {
             builds[entry.version] = entry.build
         }
-        builds.merge(knownBuilds) { stamped, _ in stamped }
 
         var entries: [String: Entry] = [:]
         for entry in parsed.joined() where !entry.version.isEmpty && entry.version != version {

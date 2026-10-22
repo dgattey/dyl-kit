@@ -3,7 +3,9 @@ name: ci
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'skills/**', '.cursor-plugin/**']
   pull_request:
+    paths-ignore: ['**.md', 'skills/**', '.cursor-plugin/**']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -27,10 +29,19 @@ jobs:
           restore-keys: swiftpm-${{ runner.os }}-
       - name: Build
         run: swift build
+      # Sconeos's mise.toml pin, so the test that lints a scratch app through the shared config runs instead of skipping.
+      - name: Install SwiftLint
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/swiftlint.zip" https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip
+          unzip -q "$RUNNER_TEMP/swiftlint.zip" swiftlint -d "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
       - name: Test
         run: swift test
       - name: dyl-lint DylKit's own sources
         run: swift run dyl-lint Sources
+      # Shares the swift job so a push holds one macOS runner.
+      - name: Release SampleApp with a throwaway key
+        run: scripts/release-e2e.sh "$RUNNER_TEMP/sample"
 
   web:
     runs-on: ubuntu-latest
@@ -47,3 +58,16 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Test @dylkit/web
         run: npm ci --no-audit --no-fund && npm test
+
+  # The shared files apps sync, plus DylKit's own workflows. actionlint runs shellcheck over every `run:` block.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint .github/workflows/*.yml Sources/ReleaseKit/Shared/*.yml
+      - name: shellcheck ./run
+        run: shellcheck Sources/ReleaseKit/Shared/run

@@ -1,14 +1,14 @@
 import openAnyway from "./open-anyway.png";
-import type { Release, Screenshot, Site } from "./site";
+import type { Release } from "./release";
+import type { Screenshot, Site } from "./site";
 import styles from "./DownloadPage.module.css";
 
 /**
  * An app's download page: icon, name, tagline, download button, the Gatekeeper and MDM steps for an ad-hoc signed
- * app, screenshots and cumulative release notes.
+ * app, screenshots and cumulative release notes. `release` comes from `latestRelease(site)`.
  */
-export function DownloadPage({ site }: { site: Site }) {
+export function DownloadPage({ site, release }: { site: Site; release: Release | null }) {
   const [hero, ...gallery] = site.screenshots;
-  const release = site.release;
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
@@ -59,16 +59,13 @@ export function DownloadPage({ site }: { site: Site }) {
 }
 
 function Download({ name, release }: { name: string; release: Release }) {
-  const facts = [`Version ${release.version}`, release.sizeBytes && megabytes(release.sizeBytes), date(release.publishedAt)];
+  const facts = [`Version ${release.version}`, megabytes(release.sizeBytes), date(release.publishedAt)];
   return (
     <div className={styles.download}>
       <a className={styles.button} href="/download/macos">
         Download for macOS
       </a>
       <p className={styles.facts}>{facts.filter(Boolean).join(" · ")}</p>
-      {!release.downloadReady ? (
-        <p className={styles.muted}>That version is still deploying. Refresh in a minute if the download fails.</p>
-      ) : null}
       <details className={styles.gatekeeper}>
         <summary>First time on this Mac? macOS may block the app</summary>
         <div className={styles.gatekeeperBody}>
@@ -127,7 +124,7 @@ function ScreenshotImage({ shot, className, priority }: { shot: Screenshot; clas
 }
 
 function requirements(release: Release): string {
-  const os = release.minimumSystemVersion ? `macOS ${release.minimumSystemVersion.replace(/\.0$/, "")}+` : "macOS";
+  const os = `macOS ${release.minimumSystemVersion.replace(/\.0$/, "")}+`;
   return release.appleSiliconOnly ? `${os} · Apple Silicon` : os;
 }
 
@@ -135,7 +132,7 @@ function megabytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-function date(iso: string | null): string | null {
+function date(iso: string | undefined): string | null {
   return iso
     ? new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
     : null;

@@ -164,7 +164,7 @@ public struct ReleasePipeline: Sendable {
             throw ToolError("no archive at \(archive.path); run `release-kit sign` first")
         }
         let published = try await publishedFeeds()
-        let notes = try releaseNotes(state: state, history: published)
+        let notes = releaseNotes(state: state, history: published)
         try Data((notes + "\n").utf8).write(
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
         let appcast = try generateAppcast(edKeyFile: edKeyFile, downloadPrefix: downloadPrefix(tag: state.tag))
@@ -208,8 +208,8 @@ public struct ReleasePipeline: Sendable {
 
     /// Cumulative HTML notes for the planned version, carrying forward the published feeds.
     ///
-    /// - Blocking: reads the committed appcast's git history and lists `Sources/`.
-    public func releaseNotes(state: State, history: [AppcastItem]) throws -> String {
+    /// - Blocking: lists `Sources/`.
+    public func releaseNotes(state: State, history: [AppcastItem]) -> String {
         let markdown = ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject)
         let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
         let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + modules.sorted())
@@ -217,29 +217,8 @@ public struct ReleasePipeline: Sendable {
             version: state.version,
             build: String(state.build),
             newNotes: formatter.html(markdown, version: state.version),
-            history: [history],
-            knownBuilds: try committedBuilds()
+            history: [history]
         )
-    }
-
-    /// The build each committed revision of the appcast shipped, keyed by version. Notes written before sections
-    /// carried build stamps get theirs from here; once carried forward, the stamps travel with the notes.
-    ///
-    /// - Blocking: runs git.
-    private func committedBuilds() throws -> [String: String] {
-        let path = workspace.appcastPath
-        let revisions = try Shell.capture(
-            ["git", "log", "--format=%H", "--", path], cwd: workspace.root, allowFailure: true)
-        var builds: [String: String] = [:]
-        for revision in revisions.split(separator: "\n") {
-            let xml = try Shell.capture(["git", "show", "\(revision):\(path)"], cwd: workspace.root, allowFailure: true)
-            // History can't be fixed, so a revision that doesn't parse (or the one that deleted the file) adds nothing.
-            let items = (try? Appcast.items(in: Data(xml.utf8), source: "\(revision):\(path)")) ?? []
-            for item in items where builds[item.displayVersion] == nil {
-                builds[item.displayVersion] = String(item.build)
-            }
-        }
-        return builds
     }
 
     private func generateAppcast(edKeyFile: URL?, downloadPrefix: String) throws -> URL {

@@ -240,7 +240,7 @@ private let sconeosModules = [
             + "<h3>1.0.7</h3><p>Release v1.0.7</p><h3>1.0.6</h3><ul><li>Six</li></ul>"
         let first = CumulativeNotes.html(
             version: "1.0.10", build: "27", newNotes: "<ul><li>Ten</li></ul>",
-            history: [try feed([("1.0.9", 24, legacy)])], knownBuilds: ["1.0.8": "22", "1.0.7": "20"])
+            history: [try feed([("1.0.9", 24, legacy), ("1.0.8", 22, ""), ("1.0.7", 20, "")])])
         let top = CumulativeNotes.topHeadingStyle
         let previous = CumulativeNotes.previousHeadingStyle
         #expect(

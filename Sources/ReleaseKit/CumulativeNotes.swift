@@ -10,7 +10,7 @@ import Foundation
 /// section as that anchor. An unmatched build sees the full list.
 ///
 /// History comes from earlier appcasts: stamped sections are read back as written; older descriptions are split on
-/// their `<h3>` headings and get builds from the appcast items and `knownBuilds`.
+/// their `<h3>` headings and get builds from the appcast items.
 public enum CumulativeNotes {
     static let topHeadingStyle = "margin: 0 0 6px 0; font-size: 13px;"
     static let previousHeadingStyle = "margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;"
@@ -26,7 +26,7 @@ public enum CumulativeNotes {
     /// Earlier histories win when two describe the same version.
     public static func html(
         version: String, build: String, newNotes: String, history: [[AppcastItem]],
-        knownBuilds: [String: String] = [:], maxVersions: Int = 10
+        maxVersions: Int = 10
     )
         -> String
     {
@@ -39,7 +39,6 @@ public enum CumulativeNotes {
         for entry in parsed.joined() where builds[entry.version] == nil {
             builds[entry.version] = entry.build
         }
-        builds.merge(knownBuilds) { stamped, _ in stamped }
 
         var entries: [String: Entry] = [:]
         for entry in parsed.joined() where !entry.version.isEmpty && entry.version != version {

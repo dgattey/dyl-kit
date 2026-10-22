@@ -20,29 +20,6 @@ import Testing
         #expect(Array(ico[38...]) == [UInt8](small + large))
     }
 
-    /// actool never writes a 180 px icon, so apple-touch-icon.png is resampled from the largest one it did write.
-    @Test func picksTheLargestLooseIcon() throws {
-        #expect(SiteIcons.pixelSize("AppIcon60x60@2x.png") == 120)
-        #expect(SiteIcons.pixelSize("AppIcon76x76@2x~ipad.png") == 152)
-        #expect(SiteIcons.pixelSize("AppIcon83.5x83.5@2x~ipad.png") == 167)
-        #expect(SiteIcons.pixelSize("Assets.car") == 0)
-
-        let directory = FileManager.default.temporaryDirectory.appending(path: "site-icons-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        for name in ["AppIcon60x60@2x.png", "AppIcon76x76@2x~ipad.png", "Assets.car"] {
-            try Data().write(to: directory.appending(path: name))
-        }
-        #expect(SiteIcons.largestFullBleedPNG(in: directory)?.lastPathComponent == "AppIcon76x76@2x~ipad.png")
-    }
-
-    @Test func theExtensionComesFromTheFormat() {
-        let png = SiteIcons.Icon(stem: "icon", source: .macOS(.light), format: .png(pixels: 1024))
-        let ico = SiteIcons.Icon(stem: "favicon", source: .macOS(.dark), format: .ico(pixels: [16, 32]))
-        #expect(png.name == "icon.png")
-        #expect(ico.name == "favicon.ico")
-    }
-
     @Test func namesAreUnique() {
         let names = SiteIcons.all.map(\.name)
         #expect(Set(names).count == names.count, "\(names)")

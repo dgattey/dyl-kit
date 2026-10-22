@@ -128,7 +128,7 @@ public struct ReleasePipeline: Sendable {
             .bundle(
                 configuration: .release, identity: .release, shortVersion: state.version, build: String(state.build),
                 into: stageDir)
-        _ = try SiteIcons(workspace: workspace).write(into: stagedIcons)
+        try SiteIcons(workspace: workspace).write(into: stagedIcons)
         return app
     }
 

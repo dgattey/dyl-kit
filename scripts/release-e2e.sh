@@ -3,7 +3,7 @@
 # Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: sync, version, bundle, sign,
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
-# services that keep Sparkle's own entitlements. It also checks the seven site icons bundle writes, and that
+# services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, and that
 # recoloring the app icon changes them.
 set -euo pipefail
 
@@ -36,7 +36,7 @@ version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
 
 icons_dir="build/release/icons"
 scratch="$(mktemp -d)"
-for name in icon.png icon-dark.png icon-256.png icon-256-dark.png apple-touch-icon.png favicon.ico favicon-dark.ico; do
+for name in icon.png icon-256.png icon-256-dark.png apple-touch-icon.png favicon.ico favicon-dark.ico; do
   [[ -f "$icons_dir/$name" ]] || fail "missing $icons_dir/$name"
 done
 
@@ -47,7 +47,6 @@ square() {
   [[ "$got" == "${2}x${2}" ]] || fail "$1 is $got, expected ${2} square"
 }
 square "$icons_dir/icon.png" 1024
-square "$icons_dir/icon-dark.png" 1024
 square "$icons_dir/icon-256.png" 256
 square "$icons_dir/icon-256-dark.png" 256
 square "$icons_dir/apple-touch-icon.png" 180
@@ -71,7 +70,7 @@ if stride(from: 3, to: pixels.count, by: 4).contains(where: { pixels[$0] < 255 }
 SWIFT
 swift "$scratch/opaque.swift" "$icons_dir/apple-touch-icon.png" || fail "apple-touch-icon.png isn't opaque"
 
-! cmp -s "$icons_dir/icon.png" "$icons_dir/icon-dark.png" || fail "icon.png and icon-dark.png match"
+! cmp -s "$icons_dir/icon-256.png" "$icons_dir/icon-256-dark.png" || fail "icon-256.png and icon-256-dark.png match"
 
 for name in favicon.ico favicon-dark.ico; do
   [[ "$(head -c 4 "$icons_dir/$name" | xxd -p)" == "00000100" ]] || fail "$name isn't an ICO"
@@ -111,4 +110,4 @@ for service in "${services[@]}"; do
     fail "$name lost Sparkle's entitlements"
 done
 
-echo "release e2e OK: $requirement, ${#services[@]} XPC services, 7 site icons"
+echo "release e2e OK: $requirement, ${#services[@]} XPC services, 6 site icons"

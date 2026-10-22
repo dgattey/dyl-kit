@@ -38,11 +38,15 @@ public struct SettingsSection: Identifiable {
     }
 }
 
-/// Settings as Saga #60 shaped it. On macOS a full-height sidebar of badged pages under the window controls, and a
-/// detail pane with the page's badge and big title in the toolbar over a grouped form. On iOS a pushed list.
+/// Settings as Saga #60 builds it. On macOS a sidebar of badged pages under the window controls, and a detail pane
+/// with the page's badge and big title in the toolbar over a grouped form whose sections are the cards. On iOS a
+/// pushed list.
 public struct SettingsView: View {
     private let sections: [SettingsSection]
     @State private var selection: SettingsPage.ID?
+    #if os(macOS)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #endif
 
     public init(sections: [SettingsSection]) {
         self.sections = sections
@@ -53,10 +57,10 @@ public struct SettingsView: View {
 
     public var body: some View {
         #if os(macOS)
-        NavigationSplitView(columnVisibility: .constant(.all)) {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SettingsSidebar(sections: sections, selection: $selection)
                 .toolbar(removing: .sidebarToggle)
-                .navigationSplitViewColumnWidth(205)
+                .navigationSplitViewColumnWidth(min: 205, ideal: 205, max: 205)
         } detail: {
             if let page = pages.first(where: { $0.id == selection }) ?? pages.first {
                 SettingsForm(page: page)
@@ -83,6 +87,7 @@ public struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .textCase(nil)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -96,6 +101,7 @@ private struct SettingsForm: View {
     var body: some View {
         Form { page.content }
             .formStyle(.grouped)
+            .textCase(nil)
             #if os(macOS)
             .scrollContentBackground(.hidden)
             .softScrollEdge()
@@ -203,6 +209,21 @@ extension View {
         }
     }
 
+    /// A thin material under the palette's surface tint, which the sidebar and the form's cards sit on.
+    @ViewBuilder
+    fileprivate func windowBackground(_ tint: Color) -> some View {
+        if #available(macOS 15, *) {
+            containerBackground(for: .window) {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    tint
+                }
+            }
+        } else {
+            self
+        }
+    }
+
     @ViewBuilder
     fileprivate func softScrollEdge() -> some View {
         if #available(macOS 26, *) {
@@ -234,9 +255,11 @@ public struct SettingsWindow: Scene {
         Window("Settings", id: Self.id) {
             content
                 .palette(palette)
+                .windowBackground(palette.surfaceTint)
                 .background(NonRestorableWindow())
         }
         .windowResizability(.contentSize)
+        .defaultSize(width: 700, height: 540)
         .commands {
             CommandGroup(replacing: .appSettings) { OpenSettingsButton() }
         }

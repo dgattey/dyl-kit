@@ -13,6 +13,12 @@ public protocol ThemePalette: Sendable {
     /// The app's palette, which `@Palette` falls back to outside a DylKit window, as in previews.
     init()
     var accent: Color { get }
+    /// Tints the Settings window's translucent background. Clear unless the app sets it.
+    var surfaceTint: Color { get }
+}
+
+extension ThemePalette {
+    public var surfaceTint: Color { .clear }
 }
 
 /// The installed palette as the app's own type, app-specific colors included: `@Palette var palette: SagaPalette`.

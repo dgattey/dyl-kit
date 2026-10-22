@@ -10,6 +10,10 @@ Closes
 
 -
 
+# Before merging
+
+- [ ] If the icon or UI design changed, I updated the landing page and the app's dylangattey.com Contentful entry
+
 # Release info
 
 - [ ] Major

@@ -40,7 +40,7 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
     }
 
     public var body: some Scene {
-        WindowGroup(title) {
+        let window = WindowGroup(title) {
             MainWindowContent(palette: palette, content: content)
         }
         .windowToolbarStyle(toolbarStyle)
@@ -49,6 +49,12 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
         .commands {
             CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             commands
+        }
+        // Built against the macOS 26 SDK, a plain launch otherwise opens no main window.
+        if #available(macOS 15, *) {
+            return window.defaultLaunchBehavior(.presented)
+        } else {
+            return window
         }
     }
 }

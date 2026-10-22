@@ -19,6 +19,7 @@ struct SampleApp: App {
 /// `[site] accent` in DylApp.toml.
 struct SamplePalette: ThemePalette {
     var accent = Color(light: Color(hex: 0x9a5f12), dark: Color(hex: 0xe2a547))
+    var surfaceTint: Color { accent.opacity(0.08) }
     var wash: Color { accent.opacity(0.12) }
 }
 
@@ -64,7 +65,7 @@ enum SampleSettings {
     static var sections: [SettingsSection] {
         [
             SettingsSection(pages: [
-                SettingsPage("General", systemImage: "gearshape.fill") {
+                SettingsPage("General", systemImage: "gearshape.fill", color: Color(hex: 0x747a7f)) {
                     #if os(macOS)
                     UpdatesSection()
                     #endif
@@ -72,9 +73,23 @@ enum SampleSettings {
                 }
             ]),
             SettingsSection("App", pages: [
-                SettingsPage("About", systemImage: "info.circle.fill", color: .gray) { AboutSection() }
+                SettingsPage("Credits", systemImage: "heart.fill", color: Color(hex: 0xc2883e)) { CreditsSection() },
+                SettingsPage("About", systemImage: "info.circle.fill", color: Color(hex: 0xb4644a)) { AboutSection() },
             ]),
         ]
+    }
+}
+
+private struct CreditsSection: View {
+    var body: some View {
+        Section("Open Source") {
+            SettingsRow(
+                "DylKit", subtitle: "Release pipeline, dev loop and Settings", systemImage: "hammer.fill",
+                tags: ["MIT"], link: URL(string: "https://github.com/dgattey/dyl-kit"))
+            SettingsRow(
+                "Sparkle", subtitle: "Automatic software updates for macOS", systemImage: "sparkles",
+                color: Color(hex: 0x3d8461), tags: ["MIT"], link: URL(string: "https://sparkle-project.org"))
+        }
     }
 }
 

@@ -30,12 +30,11 @@ Then, in the app repo:
 - `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches: `./run format` runs `scripts/run format`. Saga keeps `format`, `ui` and `bootstrap` there.
 - `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
 - `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
-- The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store, and refuses any feed older than the one live when the site was built:
+- The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store:
 
 ```ts
 // next.config.ts
-import { withDylKit } from "@dylkit/web/config";
-export default withDylKit({ transpilePackages: ["@dylkit/web"] });
+export default { transpilePackages: ["@dylkit/web"] };
 
 // app/appcast.xml/route.ts, and app/download/macos/route.ts with downloadResponse
 import { appcastResponse, loadSite } from "@dylkit/web";

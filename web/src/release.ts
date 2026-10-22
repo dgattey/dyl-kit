@@ -17,13 +17,13 @@ export type Release = {
   notes: ReleaseNotes[];
 };
 
-/** The newest release, or null when it can't be read or is older than the build this deploy replaced. */
+/** The newest release, or null when it can't be read. */
 export async function latestRelease(site: Site): Promise<Release | null> {
   try {
     const response = await fetch(`${site.assets}/release.json`, { next: { revalidate: 60 } });
     if (!response.ok) return null;
     const release: Release = await response.json();
-    return Number.isInteger(release.build) && release.build >= liveBuildFloor() ? release : null;
+    return Number.isInteger(release.build) ? release : null;
   } catch {
     return null;
   }
@@ -34,8 +34,7 @@ export async function appcastResponse(site: Site): Promise<Response> {
   const feed = await fetch(`${site.assets}/appcast.xml`, { next: { revalidate: 60 } })
     .then((response) => (response.ok ? response.text() : null))
     .catch(() => null);
-  const build = feed === null ? null : newestBuild(feed);
-  if (build === null || build < liveBuildFloor()) return unavailable("The update feed");
+  if (feed === null || !isCompleteFeed(feed)) return unavailable("The update feed");
   return new Response(feed, {
     headers: { "Content-Type": "application/xml", "Cache-Control": "public, max-age=60" },
   });
@@ -48,34 +47,12 @@ export async function downloadResponse(site: Site): Promise<Response> {
   return new Response(null, { status: 302, headers: { Location: release.download } });
 }
 
-/**
- * The newest build in the deployed site's `appcast.xml`, or 0 when the site has none yet. Anything else throws, so a
- * build never deploys without knowing what it replaces.
- */
-export async function liveBuild(siteUrl: string): Promise<number> {
-  const url = `${siteUrl.replace(/\/$/, "")}/appcast.xml`;
-  const response = await fetch(url).catch((error: Error) => {
-    throw new Error(`${url}: ${error.message}`, { cause: error });
-  });
-  if (response.status === 404) return 0;
-  const build = response.ok ? newestBuild(await response.text()) : null;
-  if (build === null) throw new Error(`${url}: HTTP ${response.status} isn't an appcast`);
-  return build;
-}
-
-/** Set by `withDylKit` during `next build`. */
-function liveBuildFloor(): number {
-  return Number(process.env.DYLKIT_LIVE_BUILD ?? 0);
-}
-
-/** Null unless the feed is complete and every item has an integer build: a truncated feed must not read as a short one. */
-function newestBuild(feed: string): number | null {
-  if (!/<\/rss>\s*$/.test(feed)) return null;
+/** A truncated feed must not read as a short one, so every item needs an integer build and the feed must end. */
+function isCompleteFeed(feed: string): boolean {
+  if (!/<\/rss>\s*$/.test(feed)) return false;
   const items = [...feed.matchAll(/<item\b[\s\S]*?<\/item>/g)];
-  if (items.length === 0 || items.length !== feed.match(/<item\b/g)?.length) return null;
-  const builds = items.map(([item]) => item.match(/<sparkle:version>\s*(\d+)\s*<\/sparkle:version>/)?.[1]);
-  if (builds.some((build) => build === undefined)) return null;
-  return Math.max(...builds.map(Number));
+  if (items.length === 0 || items.length !== feed.match(/<item\b/g)?.length) return false;
+  return items.every(([item]) => /<sparkle:version>\s*\d+\s*<\/sparkle:version>/.test(item));
 }
 
 function unavailable(what: string): Response {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { appcastResponse, downloadResponse, latestRelease, liveBuild } from "../src/release.ts";
+import { afterEach, describe, it, mock } from "node:test";
+import { appcastResponse, downloadResponse, latestRelease } from "../src/release.ts";
 import type { Release } from "../src/release.ts";
 import type { Site } from "../src/site.ts";
 
@@ -14,7 +14,6 @@ const site: Site = {
   assets: "https://demo.public.blob.vercel-storage.com",
 };
 const latest = (name: string) => `https://demo.public.blob.vercel-storage.com/${name}`;
-const live = "https://demo.gattey.com/appcast.xml";
 
 const release: Release = {
   version: "1.2.0",
@@ -41,7 +40,6 @@ function serve(routes: Record<string, () => Response>) {
   });
 }
 
-beforeEach(() => delete process.env.DYLKIT_LIVE_BUILD);
 afterEach(() => mock.restoreAll());
 
 describe("latestRelease", () => {
@@ -57,14 +55,6 @@ describe("latestRelease", () => {
     assert.equal(await latestRelease(site), null);
   });
 
-  it("is null when the release is older than the build this deploy replaced", async () => {
-    serve({ [latest("release.json")]: () => Response.json(release) });
-    process.env.DYLKIT_LIVE_BUILD = "32";
-    assert.equal(await latestRelease(site), null);
-    process.env.DYLKIT_LIVE_BUILD = "31";
-    assert.deepEqual(await latestRelease(site), release);
-  });
-
   it("is null when the build isn't an integer", async () => {
     serve({ [latest("release.json")]: () => Response.json({ ...release, build: "31b" }) });
     assert.equal(await latestRelease(site), null);
@@ -74,20 +64,11 @@ describe("latestRelease", () => {
 describe("appcastResponse", () => {
   it("serves the Blob store's newest feed for a minute", async () => {
     serve({ [latest("appcast.xml")]: () => new Response(feed(29, 31, 30)) });
-    process.env.DYLKIT_LIVE_BUILD = "31";
     const response = await appcastResponse(site);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("Content-Type"), "application/xml");
     assert.equal(response.headers.get("Cache-Control"), "public, max-age=60");
     assert.equal(await response.text(), feed(29, 31, 30));
-  });
-
-  it("is unavailable when the feed's newest build is older than the build this deploy replaced", async () => {
-    serve({ [latest("appcast.xml")]: () => new Response(feed(29, 31, 30)) });
-    process.env.DYLKIT_LIVE_BUILD = "32";
-    const response = await appcastResponse(site);
-    assert.equal(response.status, 503);
-    assert.equal(response.headers.get("Retry-After"), "60");
   });
 
   it("is unavailable when the feed can't be read or fully parsed", async () => {
@@ -118,26 +99,5 @@ describe("downloadResponse", () => {
     const response = await downloadResponse(site);
     assert.equal(response.status, 503);
     assert.equal(response.headers.get("Retry-After"), "60");
-  });
-});
-
-describe("liveBuild", () => {
-  it("is the deployed feed's newest build", async () => {
-    serve({ [live]: () => new Response(feed(29, 31, 30)) });
-    assert.equal(await liveBuild("https://demo.gattey.com/"), 31);
-  });
-
-  it("is 0 on a site's first deploy", async () => {
-    serve({ [live]: () => new Response("Not Found", { status: 404 }) });
-    assert.equal(await liveBuild("https://demo.gattey.com"), 0);
-  });
-
-  it("throws when the deployed feed can't be read", async () => {
-    serve({ [live]: () => new Response("oops", { status: 500 }) });
-    await assert.rejects(liveBuild("https://demo.gattey.com"), /HTTP 500/);
-    serve({ [live]: () => new Response("<html>Vercel login</html>") });
-    await assert.rejects(liveBuild("https://demo.gattey.com"), /HTTP 200 isn't an appcast/);
-    serve({});
-    await assert.rejects(liveBuild("https://demo.gattey.com"), /demo\.gattey\.com\/appcast\.xml: fetch failed/);
   });
 });

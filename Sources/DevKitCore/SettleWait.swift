@@ -10,20 +10,10 @@ import ImageIO
 /// once it has changed at least once or `minimum` has passed.
 public struct SettleWait: Sendable {
     public var timeout: Duration
-    public var minimum: Duration
-    public var interval: Duration
+    var minimum: Duration = .seconds(4)
+    var interval: Duration = .milliseconds(500)
     /// Identical frames in a row that count as settled.
-    public var stableFrames: Int
-
-    public init(
-        timeout: Duration = .seconds(20), minimum: Duration = .seconds(4), interval: Duration = .milliseconds(500),
-        stableFrames: Int = 3
-    ) {
-        self.timeout = timeout
-        self.minimum = minimum
-        self.interval = interval
-        self.stableFrames = stableFrames
-    }
+    var stableFrames = 3
 
     /// Calls `frame` with a scratch path to write a PNG to until the last `stableFrames` match, then moves the last
     /// frame to `output`. Past `timeout` it keeps the last frame and warns.
@@ -79,4 +69,8 @@ public struct SettleWait: Sendable {
         return try? Data(contentsOf: url)
         #endif
     }
+}
+
+extension SettleWait {
+    public init(timeout: Duration = .seconds(20)) { self.timeout = timeout }
 }

@@ -169,8 +169,7 @@ public enum InfoPlist {
         plist["UILaunchScreen"] = .dictionary([:])
         plist["UISupportedInterfaceOrientations"] = .array(
             ["Portrait", "LandscapeLeft", "LandscapeRight"].map { .string("UIInterfaceOrientation\($0)") })
-        for (key, value) in manifest.bundle.info { plist[key] = Self.value(value) }
-        return merging(manifest.ios?.info ?? [:], into: plist)
+        return merging(manifest.bundle.info.merging(manifest.ios?.info ?? [:]) { $1 }, into: plist)
     }
 
     /// Keys the manifest sets raw, which win over what `actool` generates.

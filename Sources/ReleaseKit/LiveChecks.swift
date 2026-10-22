@@ -77,8 +77,8 @@ public struct LiveComparison: Sendable {
                     + "(live app: \(show(live.string("SUFeedURL"))))")
         }
         let (oldOS, newOS) = (live.string("LSMinimumSystemVersion"), staged.string("LSMinimumSystemVersion"))
-        if let oldOS, let newOS, Self.compareVersions(newOS, oldOS) != .orderedSame {
-            if Self.compareVersions(newOS, oldOS) == .orderedAscending {
+        if let oldOS, let newOS, let old = AppVersion(oldOS), let new = AppVersion(newOS), old != new {
+            if new < old {
                 fail("live_min_os", "staged LSMinimumSystemVersion \(newOS) is lower than live \(oldOS)")
             } else {
                 fail(
@@ -162,15 +162,6 @@ public struct LiveComparison: Sendable {
         case .dictionary(let entries):
             "{" + entries.keys.sorted().map { "\($0): \(render(entries[$0]!))" }.joined(separator: ", ") + "}"
         }
-    }
-
-    static func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        let (left, right) = (lhs.split(separator: ".").map { Int($0) ?? 0 }, rhs.split(separator: ".").map { Int($0) ?? 0 })
-        for index in 0..<max(left.count, right.count) {
-            let (a, b) = (index < left.count ? left[index] : 0, index < right.count ? right[index] : 0)
-            if a != b { return a < b ? .orderedAscending : .orderedDescending }
-        }
-        return .orderedSame
     }
 }
 

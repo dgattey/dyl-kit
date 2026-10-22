@@ -426,7 +426,7 @@ public struct ReleaseChecks: Sendable {
                 block.1.matches(of: /"([^"]+)"/).map { String($0.1) }
             })
         let targetRoots = ["Sources/", "Tests/"]
-            + package.matches(of: /path\s*:\s*"([^"]+)"/).map { String($0.1).trimmingSuffix("/") + "/" }
+            + package.matches(of: /path\s*:\s*"([^"]+)"/).map { $0.1.hasSuffix("/") ? String($0.1) : "\($0.1)/" }
         for resource in manifest.build.resources where targetRoots.contains(where: resource.hasPrefix) {
             let components = resource.split(separator: "/")
             let candidates = (0..<components.count).map { components[$0...].joined(separator: "/") }
@@ -478,11 +478,5 @@ public struct ReleaseChecks: Sendable {
                 error("staged_release", file, "enclosure is \(item.enclosureURL ?? "missing"), expected \(expectedURL)")
             )
         }
-    }
-}
-
-extension String {
-    func trimmingSuffix(_ suffix: String) -> String {
-        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
     }
 }

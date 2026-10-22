@@ -1,4 +1,3 @@
-import DylManifest
 import Foundation
 import Testing
 
@@ -6,6 +5,7 @@ import Testing
 import CryptoKit
 #endif
 
+@testable import DylManifest
 @testable import ReleaseKit
 
 @Suite struct LocalValuesTests {
@@ -189,12 +189,6 @@ import CryptoKit
         #expect(!diff.contains { $0.hasPrefix("DT") || $0.contains("s3cret") })
     }
     #endif
-
-    @Test func comparesDottedVersions() {
-        #expect(LiveComparison.compareVersions("14.0", "14") == .orderedSame)
-        #expect(LiveComparison.compareVersions("15.0", "14.6") == .orderedDescending)
-        #expect(LiveComparison.compareVersions("13.5", "14.0") == .orderedAscending)
-    }
 }
 
 /// Saga #57's manifest, which v0.1.0 rejected with `DylApp.toml:25: expected ]` at `[ios.info]`.

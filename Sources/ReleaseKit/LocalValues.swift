@@ -8,9 +8,6 @@ public struct ResolvedLocalValues: Equatable, Sendable {
     /// Where each key's value came from: `env`, the file's name, or `defaults`.
     public var sources: [String: String] = [:]
 
-    /// The Info.plist keys these values set, which `check --live` redacts.
-    public var keys: Set<String> { Set(values.keys) }
-
     /// "3 local values from Config.xcconfig, env", never the values.
     public var summary: String {
         let origins = Set(sources.values).sorted().joined(separator: ", ")

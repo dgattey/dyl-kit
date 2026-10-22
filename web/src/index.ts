@@ -1,4 +1,5 @@
 export { DownloadPage } from "./DownloadPage";
+export { iconResponse } from "./icons";
 export { siteMetadata } from "./next";
 export { appcastResponse, downloadResponse, latestRelease } from "./release";
 export type { Release, ReleaseNotes } from "./release";

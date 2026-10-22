@@ -38,7 +38,7 @@ public struct DylAppManifest: Equatable, Sendable {
         /// `apple-icon.png`.
         public var siteIcons: String?
 
-        public static let resourceExtensions: Set<String> = ["xcdatamodeld", "xcdatamodel", "xcmappingmodel", "xcassets"]
+        fileprivate static let resourceExtensions: Set<String> = ["xcdatamodeld", "xcdatamodel", "xcmappingmodel", "xcassets"]
     }
 
     /// Info.plist content beyond what the bundler derives from `[app]` and `[release]`.
@@ -65,12 +65,6 @@ public struct DylAppManifest: Equatable, Sendable {
         /// Info.plist key to variable name.
         public var keys: [String: String]
         public var defaults: [String: String]
-
-        public init(file: String?, keys: [String: String], defaults: [String: String]) {
-            self.file = file
-            self.keys = keys
-            self.defaults = defaults
-        }
     }
 
     public struct Release: Equatable, Sendable {
@@ -87,7 +81,7 @@ public struct DylAppManifest: Equatable, Sendable {
     }
 
     /// Info.plist keys DylKit derives itself, which `[bundle.info]` and `[ios.info]` can't override.
-    public static let derivedInfoKeys: Set<String> = [
+    fileprivate static let derivedInfoKeys: Set<String> = [
         "CFBundleIdentifier", "CFBundleVersion", "CFBundleShortVersionString", "SUFeedURL", "SUPublicEDKey",
         "LSMinimumSystemVersion", "MinimumOSVersion", "CFBundleExecutable",
     ]

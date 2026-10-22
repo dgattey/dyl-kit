@@ -26,7 +26,6 @@ struct TOMLDocument: Sendable {
 
     /// The direct children of the table at `key`, whether it's a `[header]` or an inline table.
     func children(of key: String) -> [String: TOMLValue] {
-        if case .table(let entries) = values[key] { return entries }
         let prefix = key + "."
         var result: [String: TOMLValue] = [:]
         for (name, value) in values where name.hasPrefix(prefix) {

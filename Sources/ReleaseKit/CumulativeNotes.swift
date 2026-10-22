@@ -23,17 +23,15 @@ public enum CumulativeNotes {
         var body: String
     }
 
-    /// Earlier histories win when two describe the same version.
+    /// Earlier items win when two describe the same version.
     public static func html(
-        version: String, build: String, newNotes: String, history: [[AppcastItem]],
-        maxVersions: Int = 10
+        version: String, build: String, newNotes: String, history: [AppcastItem], maxVersions: Int = 10
     )
         -> String
     {
-        let items = history.joined()
-        let parsed = items.map { sections($0) }
+        let parsed = history.map { sections($0) }
         var builds: [String: String] = [:]
-        for item in items where !normalize(item.displayVersion).isEmpty && builds[normalize(item.displayVersion)] == nil {
+        for item in history where !normalize(item.displayVersion).isEmpty && builds[normalize(item.displayVersion)] == nil {
             builds[normalize(item.displayVersion)] = String(item.build)
         }
         for entry in parsed.joined() where builds[entry.version] == nil {

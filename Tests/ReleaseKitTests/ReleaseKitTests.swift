@@ -211,7 +211,7 @@ private let sconeosModules = [
         return try Appcast.items(in: Data(sparkleFeed(body.joined()).utf8), source: "feed")
     }
 
-    /// The committed feed wins over a stale live one, placeholder notes drop out, and `Version`/`v` prefixes on
+    /// The first feed wins over a stale later one, placeholder notes drop out, and `Version`/`v` prefixes on
     /// legacy headings are normalized.
     @Test func mergesFeedsNewestFirstDedupedAndCapped() throws {
         let committed = try feed([
@@ -225,12 +225,12 @@ private let sconeosModules = [
         func versions(_ html: String) -> [String] { html.matches(of: /<h3[^>]*>([^<]+)<\/h3>/).map { String($0.1) } }
 
         let new = "<ul><li>New</li></ul>"
-        let all = CumulativeNotes.html(version: "1.0.13", build: "30", newNotes: new, history: [committed, live])
+        let all = CumulativeNotes.html(version: "1.0.13", build: "30", newNotes: new, history: committed + live)
         #expect(versions(all) == ["1.0.13", "1.0.12", "1.0.11", "1.0.6", "1.0.5"])
         #expect(all.contains("Eleven") && !all.contains("Stale") && !all.contains("Release v1.0.7"))
         #expect(all.contains("Older &amp; wiser."))
         let capped = CumulativeNotes.html(
-            version: "1.0.13", build: "30", newNotes: new, history: [committed, live], maxVersions: 3)
+            version: "1.0.13", build: "30", newNotes: new, history: committed + live, maxVersions: 3)
         #expect(versions(capped) == ["1.0.13", "1.0.12", "1.0.11"])
     }
 
@@ -240,7 +240,7 @@ private let sconeosModules = [
             + "<h3>1.0.7</h3><p>Release v1.0.7</p><h3>1.0.6</h3><ul><li>Six</li></ul>"
         let first = CumulativeNotes.html(
             version: "1.0.10", build: "27", newNotes: "<ul><li>Ten</li></ul>",
-            history: [try feed([("1.0.9", 24, legacy), ("1.0.8", 22, ""), ("1.0.7", 20, "")])])
+            history: try feed([("1.0.9", 24, legacy), ("1.0.8", 22, ""), ("1.0.7", 20, "")]))
         let top = CumulativeNotes.topHeadingStyle
         let previous = CumulativeNotes.previousHeadingStyle
         #expect(
@@ -267,7 +267,7 @@ private let sconeosModules = [
 
         let second = CumulativeNotes.html(
             version: "1.0.11", build: "30", newNotes: "<ul><li>Eleven</li></ul>",
-            history: [try feed([("1.0.10", 27, first)])], maxVersions: 5)
+            history: try feed([("1.0.10", 27, first)]), maxVersions: 5)
         #expect(second.components(separatedBy: "<style>").count == 2)
         let stamps = second.matches(of: /<section( data-sparkle-version="(\d+)")?/).map { $0.2.map(String.init) ?? "-" }
         #expect(stamps == ["30", "27", "24", "22", "20"])

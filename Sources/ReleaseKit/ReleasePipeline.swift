@@ -217,7 +217,7 @@ public struct ReleasePipeline: Sendable {
             version: state.version,
             build: String(state.build),
             newNotes: formatter.html(markdown, version: state.version),
-            history: [history]
+            history: history
         )
     }
 

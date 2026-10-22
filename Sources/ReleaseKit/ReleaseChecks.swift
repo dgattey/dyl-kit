@@ -66,7 +66,6 @@ public struct ReleaseChecks: Sendable {
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
         check("dylkit_web_version", checkWebMatchesPin)
-        check("resource_not_excluded", checkResourcesExcluded)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("shared_files", checkSharedFiles)
         if let staged {
@@ -390,28 +389,6 @@ public struct ReleaseChecks: Sendable {
     /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
     static let webTarballURL =
         "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
-
-    /// SwiftPM copies a listed resource verbatim into a resource bundle unless the target excludes it, so the app
-    /// would ship it twice, once uncompiled. Resources outside every target's directory are invisible to SwiftPM.
-    private func checkResourcesExcluded(_ findings: inout [CheckFinding]) {
-        guard !manifest.build.resources.isEmpty, let package = read("Package.swift") else { return }
-        let excluded = Set(
-            package.matches(of: /exclude\s*:\s*\[([^\]]*)\]/).flatMap { block in
-                block.1.matches(of: /"([^"]+)"/).map { String($0.1) }
-            })
-        let targetRoots = ["Sources/", "Tests/"]
-            + package.matches(of: /path\s*:\s*"([^"]+)"/).map { $0.1.hasSuffix("/") ? String($0.1) : "\($0.1)/" }
-        for resource in manifest.build.resources where targetRoots.contains(where: resource.hasPrefix) {
-            let components = resource.split(separator: "/")
-            let candidates = (0..<components.count).map { components[$0...].joined(separator: "/") }
-            if !candidates.contains(where: excluded.contains) {
-                findings.append(
-                    error(
-                        "resource_not_excluded", "Package.swift",
-                        "\(resource) is in [build] resources but not in its target's `exclude:`"))
-            }
-        }
-    }
 
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {

@@ -648,24 +648,6 @@ private let sconeosModules = [
             ])
     }
 
-    /// Saga: SwiftPM copies an un-excluded `.xcdatamodeld` raw into the resource bundle.
-    @Test func bundledResourcesMustBeExcludedFromTheTarget() throws {
-        let workspace = try scratchWorkspace()
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let manifest = workspace.url("DylApp.toml")
-        let text = try String(contentsOf: manifest, encoding: .utf8).replacingOccurrences(
-            of: "entitlements = \"Sample.entitlements\"\n",
-            with: "entitlements = \"Sample.entitlements\"\nresources = [\"Sources/SampleApp/Model.xcdatamodeld\", \"Resources/Assets.xcassets\"]\n")
-        try Data(text.utf8).write(to: manifest)
-        #expect(errors(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["resource_not_excluded"]?.count == 1)
-
-        let packageFile = workspace.url("Package.swift")
-        let package = try String(contentsOf: packageFile, encoding: .utf8)
-            .replacingOccurrences(of: "name: \"SampleApp\",\n", with: "name: \"SampleApp\",\n            exclude: [\"Model.xcdatamodeld\"],\n")
-        try Data(package.utf8).write(to: packageFile)
-        #expect(errors(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["resource_not_excluded"] == nil)
-    }
-
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }

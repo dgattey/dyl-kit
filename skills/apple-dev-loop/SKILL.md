@@ -10,7 +10,7 @@ Every DylKit app builds the same way. READMEs and other skills link here instead
 ## Shape
 
 - SwiftPM only: the app is an executable target in the repo's `Package.swift`, and `DylApp.toml` holds the bundle, signing and release settings. There's no `.xcodeproj` or `.xcworkspace`, and `swiftpm_only` fails if one appears. Xcode is only the toolchain (`actool`, `simctl`, the SDKs); nobody opens a project in it.
-- Asset catalogs, Core Data models and mapping models go in `[build] resources`, and the bundler compiles them into the main bundle with `actool`, `momc` and `mapc`. The app's target must `exclude:` them, or SwiftPM also copies them raw (`resource_not_excluded`). Other SwiftPM resources ship as resource `.bundle`s, each with an `Info.plist`.
+- Asset catalogs, Core Data models and mapping models go in `[build] resources`, and the bundler compiles them into the main bundle with `actool`, `momc` and `mapc`. The app's target must `exclude:` them, or SwiftPM also copies them raw. Other SwiftPM resources ship as resource `.bundle`s, each with an `Info.plist`.
 - The icon is a committed Icon Composer `.icon` in `[build] icon`, or `[build] icon-generator`, a script that writes one into `build/`.
 - Info.plist keys DylKit doesn't derive go in `[bundle.info]` (macOS and iOS) or `[ios.info]` (iOS only). `[local-values]` fills Info.plist strings such as API credentials in every build, from the environment variable, then the gitignored xcconfig it names, then its `defaults`. CI has no xcconfig, so a release ships the defaults unless the workflow sets the variable.
 - Swift 6 language mode, and state is `@Observable @MainActor` only, never `ObservableObject` (see `swiftui-viewmodels`).

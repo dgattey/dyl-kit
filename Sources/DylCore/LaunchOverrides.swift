@@ -19,7 +19,7 @@ public struct LaunchOverrides: Sendable {
         self.arguments = arguments
     }
 
-    public enum Appearance: String, Sendable {
+    public enum Appearance: String, Sendable, CaseIterable {
         case light, dark
     }
 
@@ -48,11 +48,6 @@ public struct LaunchOverrides: Sendable {
     public var appearance: Appearance? { value("appearance").flatMap(Appearance.init(rawValue:)) }
 
     public var initialView: String? { value("initial-view") }
-
-    /// `--initial-view` as one of the app's screens, or nil when unset or not one of them.
-    public func initialView<Screen: RawRepresentable>(as _: Screen.Type) -> Screen? where Screen.RawValue == String {
-        initialView.flatMap(Screen.init(rawValue:))
-    }
 
     /// Set by every devkit launch: the app must never take focus (no `NSApp.activate`, no raised windows).
     public var staysInBackground: Bool { flag("background") }

@@ -25,15 +25,14 @@ import Testing
     }
 
     @Test func overridesReadDevkitVariablesThenArguments() {
-        enum Screen: String { case group, living }
         let devkit = LaunchOverrides(environment: ["DYLKIT_INITIAL_VIEW": "Living"], arguments: [])
-        #expect(devkit.initialView(as: Screen.self) == .living)
+        #expect(devkit.initialView == "living")
         let appPrefixed = LaunchOverrides(environment: ["SCONEOS_INITIAL_VIEW": "group"], arguments: [])
         #expect(appPrefixed.initialView == nil)
         let both = LaunchOverrides(environment: ["DYLKIT_APPEARANCE": "dark"], arguments: ["--appearance=light"])
         #expect(both.appearance == .dark)
         let flags = LaunchOverrides(environment: [:], arguments: ["--initial-view", "nowhere", "--window-size=10x20"])
-        #expect(flags.initialView(as: Screen.self) == nil)
+        #expect(flags.initialView == "nowhere")
         #expect(flags.windowSize == CGSize(width: 10, height: 20))
     }
 }

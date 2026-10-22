@@ -20,13 +20,9 @@ extension URLSession {
         cache: URLCache? = nil
     ) -> URLSession {
         let configuration = URLSessionConfiguration.default
-        #if !canImport(FoundationNetworking)
-        configuration.waitsForConnectivity = false
-        #endif
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
         configuration.urlCache = cache
-        configuration.requestCachePolicy = cache == nil ? .reloadIgnoringLocalCacheData : .useProtocolCachePolicy
         return URLSession(configuration: configuration)
     }
 }

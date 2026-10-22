@@ -61,7 +61,9 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .target(name: "DevKitCore", dependencies: ["DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]),
+        .target(
+            name: "DevKitCore", dependencies: ["DylCore", "DylLintRules", "DylManifest", "DylToolSupport", "ReleaseKit"]
+        ),
         .executableTarget(
             name: "devkit",
             dependencies: [

@@ -1,3 +1,4 @@
+import DylCore
 import DylToolSupport
 import Foundation
 import ReleaseKit
@@ -44,9 +45,7 @@ public struct DevBuild: Sendable {
 /// and `AppWindow` read without any app code. Every launch also sets `DYLKIT_BACKGROUND=1`, so the app never
 /// activates itself on top of whatever Dylan is doing.
 public struct LaunchOptions: Sendable {
-    public enum Appearance: String, Sendable, CaseIterable {
-        case light, dark
-    }
+    public typealias Appearance = LaunchOverrides.Appearance
 
     public var appearance: Appearance?
     public var initialView: String?

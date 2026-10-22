@@ -13,10 +13,4 @@ extension AppDirectories {
         defer { try? FileManager.default.removeItem(at: folder) }
         return try await $scopedOverride.withValue(folder) { try await body(folder) }
     }
-
-    /// Points `AppDirectories.support` at `url` for the whole process until it's reset with nil, for XCTest
-    /// `setUp`/`tearDown`. Prefer `withTemporarySupportFolder` in Swift Testing, which runs tests in parallel.
-    public static func setSupportFolderForTesting(_ url: URL?) {
-        globalOverride = url
-    }
 }

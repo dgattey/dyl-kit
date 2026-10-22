@@ -15,7 +15,7 @@ The shared framework for Dylan's Mac and iOS apps (Sconeos, Saga, Gattey Photos)
 
 ## Using it in an app
 
-To adopt DylKit or upgrade an app to 0.2, follow the `adopt-dylkit` skill (`skills/adopt-dylkit/SKILL.md`): the Blob store and secrets, the pins, sync, the first release and the site switch, in order. The rest of this section is reference.
+To adopt DylKit, follow the `adopt-dylkit` skill (`skills/adopt-dylkit/SKILL.md`). The rest of this section is reference.
 
 Add the package and depend on the runtime products:
 
@@ -27,7 +27,7 @@ Then, in the app repo:
 
 - `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys, and [Release setup](#release-setup) explains `[release] assets`.
 - `./run dev sync` writes the files every app shares as DylKit ships them: the `./run` shim, `.github/workflows/pr-check.yml`, `.github/workflows/release.yml` and `.github/pull_request_template.md`. DylKit's copies live in `Sources/ReleaseKit/Shared/`. `shared_files` fails when one drifts, so run it after bumping DylKit. In a fresh repo, `swift run devkit sync` writes the first `./run`.
-- `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches: `./run format` runs `scripts/run format`. Saga keeps `format`, `ui` and `bootstrap` there.
+- `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches. `./run format` runs `scripts/run format`.
 - `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
 - `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
 - The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store:

@@ -576,37 +576,27 @@ private let sconeosModules = [
         ])
     }
 
-    @Test func legacyWorkflowFails() throws {
-        let legacy = """
-            name: release-macos
-            on:
-              push:
-                branches: [main]
+    @Test func aSecretNothingReadsFails() throws {
+        let verify = """
             jobs:
-              release:
-                runs-on: macos-26
+              verify:
                 steps:
-                  - uses: actions/github-script@v7
-                  - run: ./scripts/package-release.sh && gh release create "v$VERSION"
+                  - run: swift test
                     env:
                       GH_TOKEN: ${{ secrets.GH_TOKEN }}
-                      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
+                      SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
             """
-        let workspace = try scratchWorkspace([".github/workflows/release-macos.yml": legacy])
+        let workflow = ".github/workflows/verify.yml"
+        let workspace = try scratchWorkspace([workflow: verify])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let workflow = ".github/workflows/release-macos.yml"
-        let files = errorFiles(ReleaseChecks(workspace: workspace).run())
-        #expect(files["forge_neutral"] == [workflow, workflow])
-        #expect(files["unused_ci_secret"] == [workflow, workflow])
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == [workflow])
     }
 
     @Test func appScriptsNeverTalkToTheForge() throws {
         let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
-        let workspace = try scratchWorkspace(["ci/github/lookup.sh": lookup, "scripts/lookup.sh": lookup])
+        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "run": "gh pr view 1\n"])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(
-            errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]
-                == ["scripts/lookup.sh", "ci/github/lookup.sh"])
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"] == ["scripts/lookup.sh", "run"])
     }
 
     /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.

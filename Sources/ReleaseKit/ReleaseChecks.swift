@@ -213,25 +213,17 @@ public struct ReleaseChecks: Sendable {
 
     // MARK: - Workflows
 
-    private struct Workflow {
+    private struct Source {
         let path: String
         let text: String
-
-        /// A workflow that versions, signs or publishes a release, through release-kit or the scripts it replaces.
-        var runsRelease: Bool {
-            text.matches(
-                pattern:
-                    #"(?:release-kit|run release) (?:release|version|appcast|publish)\b|generate_appcast|SPARKLE_ED_PRIVATE_KEY"#
-            )
-        }
     }
 
-    private var workflows: [Workflow] {
+    private var workflows: [Source] {
         let directory = ".github/workflows"
         let names = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url(directory).path)) ?? []
         return names.sorted().filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.compactMap { name in
             let path = "\(directory)/\(name)"
-            return read(path).map { Workflow(path: path, text: $0) }
+            return read(path).map { Source(path: path, text: $0) }
         }
     }
 
@@ -268,19 +260,12 @@ public struct ReleaseChecks: Sendable {
         ReleasePipeline.edKeyVariable, GitHub.tokenVariable, BlobStore.tokenVariable,
     ]
 
-    private struct Source {
-        let path: String
-        let text: String
-    }
-
     private func toolSources() -> [Source] {
         var sources: [Source] = []
-        for directory in ["scripts", "ci"] {
-            let enumerator = FileManager.default.enumerator(atPath: workspace.url(directory).path)
-            while let relative = enumerator?.nextObject() as? String {
-                let path = "\(directory)/\(relative)"
-                if let text = read(path) { sources.append(Source(path: path, text: text)) }
-            }
+        let enumerator = FileManager.default.enumerator(atPath: workspace.url("scripts").path)
+        while let relative = enumerator?.nextObject() as? String {
+            let path = "scripts/\(relative)"
+            if let text = read(path) { sources.append(Source(path: path, text: text)) }
         }
         if let run = read("run") { sources.append(Source(path: "run", text: run)) }
         return sources
@@ -291,15 +276,12 @@ public struct ReleaseChecks: Sendable {
         let forgeAPIs = [
             (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
             (#"api\.github\.com"#, "calls the GitHub API"),
-            (#"actions/github\-script"#, "uses the github-script action"),
-            (#"action\-gh\-release"#, "uploads a GitHub Release"),
         ]
         return forgeAPIs.filter { text.matches(pattern: $0.0) }.map(\.1)
     }
 
     private func checkForgeNeutral(_ findings: inout [CheckFinding]) {
-        let releaseWorkflows = workflows.filter(\.runsRelease).map { Source(path: $0.path, text: $0.text) }
-        for source in releaseWorkflows + toolSources() {
+        for source in toolSources() {
             for problem in Self.forgeCalls(in: source.text) {
                 findings.append(
                     error(

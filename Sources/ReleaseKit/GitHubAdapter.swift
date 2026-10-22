@@ -62,7 +62,7 @@ struct GitHubAdapter: ForgeAdapter {
     /// Finds the tag's release (drafts included) or drafts one, replaces its assets of the same names with the staged
     /// ones, then publishes it as the latest. A re-run rebuilds the zip with new bytes and a new edSignature, and an
     /// interrupted upload leaves a broken asset under its name, so nothing already there is kept.
-    func publish(tag: String, title: String, notes: String, assets: ReleaseAssets) async throws {
+    func publish(tag: String, title: String, notes: String, files: [URL]) async throws {
         let releases: [Release] = try await call("GET", "/repos/\(repo)/releases?per_page=100")
         let release: Release
         if let existing = releases.first(where: { $0.tagName == tag }) {
@@ -71,7 +71,7 @@ struct GitHubAdapter: ForgeAdapter {
             release = try await call("POST", "/repos/\(repo)/releases", json: Draft(tagName: tag, name: title, body: notes))
         }
         let uploads = release.uploadUrl.replacing(pattern: #"\{[^}]*\}$"#, with: "")
-        for file in assets.all {
+        for file in files {
             let name = file.lastPathComponent
             for asset in release.assets where asset.name == name {
                 _ = try await send(try request("DELETE", "\(api)/repos/\(repo)/releases/assets/\(asset.id)"))

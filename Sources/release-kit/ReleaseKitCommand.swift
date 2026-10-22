@@ -13,7 +13,7 @@ struct ReleaseKitCommand: AsyncParsableCommand {
             what the earlier ones left in build/release/.
             """,
         subcommands: [
-            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self,
+            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self, Library.self,
         ]
     )
 }
@@ -147,6 +147,51 @@ extension ReleaseKitCommand {
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
             print(try pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
+        }
+    }
+
+    struct Library: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Release a package with no app, such as DylKit: version and publish, with no bundle or appcast.",
+            subcommands: [LibraryVersion.self, LibraryPublish.self])
+    }
+}
+
+struct LibraryOptions: ParsableArguments {
+    @Option(help: "The GitHub repo the release publishes to, as owner/name.") var github: String
+    @Option(help: "The package's checkout.") var root: String = "."
+
+    func repo() -> ReleaseRepo {
+        ReleaseRepo.github(root: URL(fileURLWithPath: root).standardizedFileURL, repo: github)
+    }
+}
+
+extension ReleaseKitCommand {
+    struct LibraryVersion: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "version", abstract: "Plan the next version from the merged PR body and the tags.")
+
+        @OptionGroup var options: LibraryOptions
+        @Option(help: "The bump; auto reads the `# Release info` checkbox.") var type: BumpChoice = .auto
+        @Option(help: "The merged PR, whose body release-kit reads from GitHub. Without it, the merge commit's.")
+        var pr: Int?
+
+        func run() async throws {
+            let state = try await options.repo().version(explicitBump: type.bump, pullRequest: pr, published: [])
+            print("version=\(state.version)")
+        }
+    }
+
+    struct LibraryPublish: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "publish", abstract: "Tag v<version>, push the tag, and attach the files to its GitHub release.")
+
+        @OptionGroup var options: LibraryOptions
+        @Argument(help: "The files to attach.") var files: [String]
+
+        func run() async throws {
+            let repo = options.repo()
+            try await repo.publish(title: "v\(try repo.state().version)", files: files.map { URL(fileURLWithPath: $0) })
         }
     }
 }

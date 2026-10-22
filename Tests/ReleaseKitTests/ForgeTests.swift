@@ -141,14 +141,12 @@ private func item(_ version: String, build: Int) -> String {
         #expect(request.value(forHTTPHeaderField: "X-GitHub-Api-Version") == "2022-11-28")
     }
 
-    private func stagedAssets() throws -> ReleaseAssets {
+    private func stagedFiles() throws -> [URL] {
         let directory = FileManager.default.temporaryDirectory.appending(path: "dylkit-assets-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let assets = ReleaseAssets(
-            zip: directory.appending(path: "App-1.2.0.zip"), appcast: directory.appending(path: "appcast.xml"),
-            releaseJSON: directory.appending(path: "release.json"))
-        for file in assets.all { try Data("contents of \(file.lastPathComponent)".utf8).write(to: file) }
-        return assets
+        let files = ["App-1.2.0.zip", "appcast.xml", "release.json"].map { directory.appending(path: $0) }
+        for file in files { try Data("contents of \(file.lastPathComponent)".utf8).write(to: file) }
+        return files
     }
 
     /// Asset `n` of release `id` has id `id * 100 + n`.
@@ -190,10 +188,10 @@ private func item(_ version: String, build: Int) -> String {
 
     @Test func draftsUploadsThenPublishesANewRelease() async throws {
         let transport = forge(existing: [Self.release(id: 1, tag: "v1.1.0", assets: ["App-1.1.0.zip"])])
-        let assets = try stagedAssets()
-        defer { try? FileManager.default.removeItem(at: assets.zip.deletingLastPathComponent()) }
+        let files = try stagedFiles()
+        defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
 
-        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", assets: assets)
+        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", files: files)
 
         let uploads = "https://uploads.github.com/repos/o/app/releases/9/assets"
         #expect(
@@ -210,7 +208,7 @@ private func item(_ version: String, build: Int) -> String {
         #expect(requests[2...4].map { $0.value(forHTTPHeaderField: "Content-Type") } == [
             "application/zip", "application/xml", "application/json",
         ])
-        #expect(requests[2].httpBody == (try Data(contentsOf: assets.zip)))
+        #expect(requests[2].httpBody == (try Data(contentsOf: files[0])))
         #expect(try sent(requests[5]) == Sent(draft: false, makeLatest: "true"))
     }
 
@@ -219,10 +217,10 @@ private func item(_ version: String, build: Int) -> String {
     @Test func aRerunReplacesTheStagedAssetsAndKeepsTheRest() async throws {
         let existing = Self.release(id: 9, tag: "v1.2.0", assets: ["App-1.2.0.zip", "dSYMs.zip", "appcast.xml"])
         let transport = forge(existing: [existing])
-        let assets = try stagedAssets()
-        defer { try? FileManager.default.removeItem(at: assets.zip.deletingLastPathComponent()) }
+        let files = try stagedFiles()
+        defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }
 
-        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", assets: assets)
+        try await github(transport).publish(tag: "v1.2.0", title: "App 1.2.0", notes: "- New", files: files)
 
         let uploads = "https://uploads.github.com/repos/o/app/releases/9/assets"
         #expect(
@@ -236,7 +234,7 @@ private func item(_ version: String, build: Int) -> String {
                 "PATCH https://api.github.com/repos/o/app/releases/9",
             ])
         let requests = await transport.requests
-        #expect(requests[2].httpBody == (try Data(contentsOf: assets.zip)))
+        #expect(requests[2].httpBody == (try Data(contentsOf: files[0])))
         #expect(try sent(requests[6]) == Sent(draft: false, makeLatest: "true"))
     }
 

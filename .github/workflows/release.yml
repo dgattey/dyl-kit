@@ -1,36 +1,67 @@
 name: release
 
-# Apps' download sites install @dylkit/web from the tarball attached to the release for their DylKit tag.
+# DylKit releases like its apps, minus the app: a merged PR's Release info box picks the bump, release-kit tags it, and
+# the GitHub release carries the @dylkit/web tarball apps' download sites install. The tag is the only version; nothing
+# is committed.
 on:
-  push:
-    tags: ['v*']
-
-concurrency:
-  group: release
-  cancel-in-progress: false
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths-ignore: ['**.md', '.github/**', 'Tests/**']
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Bump type; auto reads the Release info checkbox in the merge commit'
+        required: false
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Check the tag matches the package versions
-        run: |
-          for manifest in web/package.json .cursor-plugin/plugin.json; do
-            version="$(jq -r .version "$manifest")"
-            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-              echo "::error::$manifest is $version, but the tag is $GITHUB_REF_NAME"
-              exit 1
-            fi
-          done
-      - name: Pack @dylkit/web
-        working-directory: web
-        run: npm pack
-      - name: Publish the release
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-release-kit-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-release-kit-${{ runner.os }}-
+      - name: Build release-kit
+        run: swift build -c release --product release-kit -q
+      - name: Plan the version
+        id: version
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" web/dylkit-web-*.tgz --title "$GITHUB_REF_NAME" --generate-notes
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TYPE: ${{ inputs.release_type || 'auto' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          .build/release/release-kit library version --github "$GITHUB_REPOSITORY" --type "$RELEASE_TYPE" \
+            ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
+      - name: Pack @dylkit/web at the planned version
+        working-directory: web
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npm pack
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: .build/release/release-kit library publish --github "$GITHUB_REPOSITORY" "web/dylkit-web-$VERSION.tgz"

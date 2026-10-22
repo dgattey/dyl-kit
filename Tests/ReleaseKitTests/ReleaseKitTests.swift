@@ -550,6 +550,12 @@ private let sconeosModules = [
         #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
     }
 
+    /// DylKit's own release reads the same Release info box, so its PRs run the apps' check.
+    @Test func dylKitChecksItsOwnReleaseInfo() throws {
+        let own = packageRoot.appending(path: SharedFiles.prCheck.path)
+        #expect(try String(contentsOf: own, encoding: .utf8) == SharedFiles.prCheck.contents)
+    }
+
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace(workflows: try committed())
@@ -713,5 +719,40 @@ private let sconeosModules = [
 
         #expect(process.terminationStatus == 0)
         #expect(output == "version=1.1.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n")
+    }
+
+    /// DylKit has no app or feed: the latest tag and the merged PR's box plan its version, and a rerun resumes it.
+    @Test func aLibraryPlansFromTagsAlone() throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-library-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let origin = scratch.appending(path: "origin.git")
+        let library = scratch.appending(path: "library")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        try git(["init", "--quiet", "--bare", origin.path], in: scratch)
+        try git(["init", "--quiet", "-b", "main"], in: library)
+        let commit = ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--quiet", "--allow-empty"]
+        try git(commit + ["-m", "First"], in: library)
+        try git(["tag", "v0.1.0"], in: library)
+        try git(commit + ["-m", "Release flow (#2)\n\n# Release info\n\n- [ ] Major\n- [x] Minor\n- [ ] Patch\n"], in: library)
+        try git(["remote", "add", "origin", origin.path], in: library)
+        try git(["push", "--quiet", "--tags", "origin", "main"], in: library)
+
+        func version() throws -> String {
+            let process = Process()
+            process.executableURL = releaseKit
+            process.arguments = ["library", "version", "--github", "o/library", "--root", library.path]
+            let stdout = Pipe()
+            process.standardOutput = stdout
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            let output = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
+            #expect(process.terminationStatus == 0)
+            return output
+        }
+
+        #expect(try version() == "version=0.2.0\n")
+        try git(["tag", "v0.2.0"], in: library)
+        #expect(try version() == "version=0.2.0\n")
     }
 }

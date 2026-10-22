@@ -43,14 +43,22 @@ struct OriginAdapter: ForgeAdapter {
         return try JSONDecoder().decode(Pull.self, from: data).body ?? ""
     }
 
-    /// The zip first, under its tag, so the feed and `release.json` at the store root never name a missing archive.
-    /// The `vercel` CLI reads `BLOB_READ_WRITE_TOKEN` itself; it's checked here so a missing one fails before any upload.
-    func publish(tag: String, title: String, notes: String, assets: ReleaseAssets) async throws {
+    /// The latest feed and `release.json` live at the store root; everything else goes under its tag, first, so the
+    /// root files never name a missing archive. The `vercel` CLI reads `BLOB_READ_WRITE_TOKEN` itself; it's checked
+    /// here so a missing one fails before any upload.
+    func publish(tag: String, title: String, notes: String, files: [URL]) async throws {
         _ = try token(Self.blobTokenVariable)
-        try put(assets.zip, at: "releases/\(tag)/\(assets.zip.lastPathComponent)", maxAge: 31_536_000)
-        try put(assets.appcast, at: "appcast.xml", maxAge: 60)
-        try put(assets.releaseJSON, at: "release.json", maxAge: 60)
-        Log.step("published \(tag) to \(self.assets)")
+        let latest: Set = ["appcast.xml", "release.json"]
+        let isLatest = { (file: URL) in latest.contains(file.lastPathComponent) }
+        for file in files.filter({ !isLatest($0) }) + files.filter(isLatest) {
+            let name = file.lastPathComponent
+            if latest.contains(name) {
+                try put(file, at: name, maxAge: 60)
+            } else {
+                try put(file, at: "releases/\(tag)/\(name)", maxAge: 31_536_000)
+            }
+        }
+        Log.step("published \(tag) to \(assets)")
     }
 
     /// - Blocking: runs the `vercel` CLI.

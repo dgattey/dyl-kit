@@ -79,4 +79,4 @@ CI runs the same on every PR, with the Swift steps and `release-e2e.sh` sharing 
 
 ## Releasing DylKit
 
-Bump `version` in `web/package.json` and `.cursor-plugin/plugin.json`, merge, then push a `v<version>` tag. The `release` workflow checks that the versions match the tag, packs `@dylkit/web`, and attaches the tarball to a GitHub release. Apps pick up the new version by bumping their package dependency and the tarball URL together.
+Merging a PR to `main` releases DylKit the way its apps release, minus the app. The PR's `# Release info` box picks the bump from the latest tag, and the `pr-check` workflow requires exactly one box. `release-kit library version` plans the version, the `release` workflow stamps it into `@dylkit/web` and packs it, and `release-kit library publish` tags the merge commit and attaches the tarball to the GitHub release. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps pick up a release by bumping their package dependency and the tarball URL together.

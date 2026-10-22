@@ -7,21 +7,23 @@ import Foundation
 /// committed.
 public struct ReleasePipeline: Sendable {
     public let workspace: Workspace
-    let forge: any ForgeAdapter
+    let repo: ReleaseRepo
     private let transport: any HTTPTransport
 
     public init(workspace: Workspace, transport: any HTTPTransport = URLSessionTransport()) {
         self.workspace = workspace
         self.transport = transport
-        forge = forgeAdapter(
-            for: workspace.manifest.release.forge, environment: ProcessInfo.processInfo.environment,
-            transport: transport)
+        repo = ReleaseRepo(
+            root: workspace.root,
+            forge: forgeAdapter(
+                for: workspace.manifest.release.forge, environment: ProcessInfo.processInfo.environment,
+                transport: transport))
     }
 
-    public var stagingDir: URL { workspace.buildDir.appending(path: "release") }
+    var forge: any ForgeAdapter { repo.forge }
+    public var stagingDir: URL { repo.stagingDir }
     var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
     var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
-    private var planFile: URL { stagingDir.appending(path: "plan.json") }
     private var stageDir: URL { stagingDir.appending(path: "stage") }
 
     /// What `version` decided, shared with every later step.
@@ -51,46 +53,12 @@ public struct ReleasePipeline: Sendable {
 
     // MARK: Steps
 
-    /// Plans the release from the merged PR's body (the merge commit message when there's no PR or the forge can't
-    /// return it), tags and the published feeds, then resets `build/release/` around the new plan. A release tag
-    /// already at HEAD is resumed instead (see `plan`).
+    /// Plans the release against the published feeds (see `ReleaseRepo.version`).
     ///
     /// - Blocking: runs git and writes the plan.
     public func version(explicitBump: AppVersion.Bump?, pullRequest: Int?) async throws -> State {
-        let published = try await publishedFeeds()
-        let prBody = await pullRequestBody(pullRequest)
-        try Shell.run(["git", "fetch", "--quiet", "--tags", "origin"], cwd: workspace.root, allowFailure: true)
-        let head = CommitMessage(try Shell.capture(["git", "log", "-1", "--format=%B"], cwd: workspace.root))
-        let body: String
-        let bump: AppVersion.Bump
-        if let explicitBump {
-            body = prBody ?? head.body
-            bump = explicitBump
-        } else {
-            let source = try ReleaseInfo.source(prBody: prBody, commitBody: head.body)
-            body = source.body
-            bump = source.bump
-        }
-        let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? 1
-        let plan = Self.plan(
-            headTags: try tags("--points-at", "HEAD"), tags: try tags("--list"), published: published,
-            commitCount: commitCount, bump: bump)
-        let state: State
-        switch plan {
-        case .next(let version, let build, let current):
-            state = State(version: version.description, build: build, subject: head.subject, body: body)
-            Log.step("releasing \(version) (build \(build), \(bump.rawValue) bump from \(current))")
-        case .resumed(let version, let build):
-            state = State(version: version.description, build: build, subject: head.subject, body: body)
-            Log.step("HEAD is already tagged \(state.tag); resuming that release (build \(build))")
-        }
-        let fileManager = FileManager.default
-        try? fileManager.removeItem(at: stagingDir)
-        try fileManager.createDirectory(at: stagingDir, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(state).write(to: planFile)
-        return state
+        try await repo.version(
+            explicitBump: explicitBump, pullRequest: pullRequest, published: try await publishedFeeds())
     }
 
     /// What `version` decides.
@@ -116,26 +84,11 @@ public struct ReleasePipeline: Sendable {
         return .next(current.bumped(bump), build: build, bumpedFrom: current)
     }
 
-    private func pullRequestBody(_ number: Int?) async -> String? {
-        let fallback = "reading `# Release info` from the merge commit"
-        guard let number else {
-            Log.warn("no --pr; \(fallback)")
-            return nil
-        }
-        do {
-            let body = try await forge.pullRequestBody(number: number)
-            return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : body
-        } catch {
-            Log.warn("couldn't read PR #\(number) from the forge (\(error)); \(fallback)")
-            return nil
-        }
-    }
-
     /// The version the last release shipped, which dev builds carry until the next one.
     ///
     /// - Blocking: runs git.
     public func shippedVersion() throws -> AppVersion {
-        Self.currentVersion(published: [], tags: try tags("--list"))
+        Self.currentVersion(published: [], tags: try repo.tags("--list"))
     }
 
     /// The highest of every published version and tag, or 1.0.0 for a first release.
@@ -161,19 +114,8 @@ public struct ReleasePipeline: Sendable {
         }
     }
 
-    /// - Blocking: runs git.
-    private func tags(_ selection: String...) throws -> [String] {
-        try Shell.capture(["git", "tag"] + selection, cwd: workspace.root, allowFailure: true)
-            .split(separator: "\n").map(String.init)
-    }
-
     /// - Blocking: reads the plan.
-    public func state() throws -> State {
-        guard let data = try? Data(contentsOf: planFile) else {
-            throw ToolError("no release plan at \(planFile.path); run `release-kit version` first")
-        }
-        return try JSONDecoder().decode(State.self, from: data)
-    }
+    public func state() throws -> State { try repo.state() }
 
     /// - Blocking: builds the release bundle.
     @discardableResult
@@ -243,31 +185,18 @@ public struct ReleasePipeline: Sendable {
             published: published)
     }
 
-    /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and publishes the
-    /// staged zip, appcast and `release.json` through the forge. Re-running after a partial publish finishes it.
+    /// Publishes the staged zip, appcast and `release.json` (see `ReleaseRepo.publish`) unless that would offer an older
+    /// build than the published feeds.
     ///
     /// - Blocking: runs git.
     public func publish() async throws {
         let state = try state()
-        let assets = ReleaseAssets(zip: archiveURL(state), appcast: stagedAppcast, releaseJSON: stagedReleaseJSON)
-        for file in assets.all where !FileManager.default.fileExists(atPath: file.path) {
+        let files = [archiveURL(state), stagedAppcast, stagedReleaseJSON]
+        for file in files where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path); run `release-kit appcast` first")
         }
         try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
-        let root = workspace.root
-        let head = try Shell.capture(["git", "rev-parse", "HEAD"], cwd: root)
-        let tagged = try Shell.capture(
-            ["git", "rev-parse", "--quiet", "--verify", "refs/tags/\(state.tag)^{commit}"], cwd: root,
-            allowFailure: true)
-        if tagged.isEmpty {
-            try Shell.run(["git", "tag", state.tag], cwd: root)
-        } else if tagged != head {
-            throw ToolError("\(state.tag) already tags \(tagged), not HEAD (\(head))")
-        }
-        try Shell.run(["git", "push", "origin", "refs/tags/\(state.tag)"], cwd: root)
-        try await forge.publish(
-            tag: state.tag, title: "\(workspace.manifest.app.name) \(state.version)",
-            notes: ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject), assets: assets)
+        try await repo.publish(title: "\(workspace.manifest.app.name) \(state.version)", files: files)
     }
 
     // MARK: Helpers

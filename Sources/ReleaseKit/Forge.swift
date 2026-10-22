@@ -15,22 +15,8 @@ public protocol ForgeAdapter: Sendable {
     /// The newest published release's `appcast.xml`, which moves to each release as it publishes.
     var latestAppcastURL: String { get }
     func pullRequestBody(number: Int) async throws -> String
-    /// Hosts `assets` as the release `tag`, which `publish` has already pushed. Safe to repeat.
-    func publish(tag: String, title: String, notes: String, assets: ReleaseAssets) async throws
-}
-
-public struct ReleaseAssets: Sendable {
-    public var zip: URL
-    public var appcast: URL
-    public var releaseJSON: URL
-
-    public init(zip: URL, appcast: URL, releaseJSON: URL) {
-        self.zip = zip
-        self.appcast = appcast
-        self.releaseJSON = releaseJSON
-    }
-
-    var all: [URL] { [zip, appcast, releaseJSON] }
+    /// Hosts `files` as the release `tag`, which `publish` has already pushed. Safe to repeat.
+    func publish(tag: String, title: String, notes: String, files: [URL]) async throws
 }
 
 public protocol HTTPTransport: Sendable {

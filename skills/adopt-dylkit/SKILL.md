@@ -65,6 +65,7 @@ Start once the store holds the seeded feed.
 8. Switch the site to Blob in the same PR.
    1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved`, `https://<DylKit's store>.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz`, and run `npm install`. Every app pins 0.1.0 today, and `dylkit_web_version` fails until the versions match.
    2. Set `transpilePackages: ["@dylkit/web"]` in `next.config.ts`, add `app/appcast.xml/route.ts` and `app/download/macos/route.ts`, and render `DownloadPage` with `latestRelease`. DylKit's README has the code. Saga and Gattey Photos drop their `/appcast.xml` redirect to the latest GitHub release.
+   3. In `server/vercel.json`, set `"ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- . ../DylApp.toml"`. Sconeos and Saga diff from `HEAD^`, which never deploys a site change in a commit Vercel skipped, and `site_deploy` rejects it.
    - Check: `npm run build` in `server/` succeeds, and `npm run dev` serves `/appcast.xml` with the seeded feed. The download page and `/download/macos` stay unavailable until the first release writes `release.json`.
 9. List tags that never shipped. `version` plans from the highest tag, so one with no shipped zip skews it. Put the list in the PR for Dylan to confirm, and delete nothing yourself:
 

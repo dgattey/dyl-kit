@@ -555,11 +555,24 @@ private let sconeosModules = [
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let config = #"{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- app" }"#
+        let config = #"{ "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- app" }"#
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
             "server/vercel.json", "server/vercel.json",
+        ])
+    }
+
+    /// Gattey Photos: diffing from HEAD^ never deploys a site change in a commit Vercel skipped.
+    @Test func siteDeployDiffsFromTheLastDeploy() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let config = #"{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../DylApp.toml" }"#
+        try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
+
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
+            #"diffs from HEAD^, so a site change in a commit Vercel skipped never deploys; use "#
+                + #"`"ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- <paths>"`"#
         ])
     }
 

@@ -324,7 +324,8 @@ public struct ReleaseChecks: Sendable {
 
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
-    /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45).
+    /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45). It diffs from the last deployed commit, so a
+    /// site change in a skipped commit still deploys with the next one.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
@@ -351,10 +352,15 @@ public struct ReleaseChecks: Sendable {
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
-        let prefix = "git diff --quiet HEAD^ HEAD -- "
+        let prefix = #"git diff --quiet "${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}" HEAD -- "#
         guard command.hasPrefix(prefix) else {
+            let json = prefix.replacingOccurrences(of: "\"", with: #"\""#)
+            let reason =
+                command.hasPrefix("git diff --quiet HEAD^ HEAD -- ")
+                ? "diffs from HEAD^, so a site change in a commit Vercel skipped never deploys; use"
+                : "needs"
             findings.append(
-                error("site_deploy", file, "needs `\"ignoreCommand\": \"\(prefix)<paths>\"` so app-only commits don't deploy"))
+                error("site_deploy", file, "\(reason) `\"ignoreCommand\": \"\(json)<paths>\"`"))
             return
         }
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in

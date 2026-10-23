@@ -25,7 +25,7 @@ Add the package and depend on the runtime products:
 
 Then, in the app repo:
 
-- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys, and [Release setup](#release-setup) explains `[release] assets`.
+- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys. [Release setup](#release-setup) explains `[release] assets`, and [Dock tile plug-in](#dock-tile-plug-in) explains `[build] dock-tile-plugin`.
 - `./run dev sync` writes the files every app shares as DylKit ships them: the `./run` shim, `.github/workflows/pr-check.yml`, `.github/workflows/release.yml` and `.github/pull_request_template.md`. DylKit's copies live in `Sources/ReleaseKit/Shared/`. `shared_files` fails when one drifts, so run it after bumping DylKit. In a fresh repo, `swift run devkit sync` writes the first `./run`.
 - `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches. `./run format` runs `scripts/run format`.
 - `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
@@ -65,6 +65,23 @@ The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skill
 ### Release setup
 
 Each app releases to its own public Vercel Blob store, `[release] assets` in `DylApp.toml`. The repo's `BLOB_READ_WRITE_TOKEN` secret lets release-kit upload, and the site reads the public URLs with no token. The store holds each release's zip under `releases/v<version>/`, and the newest release's `appcast.xml` and `release.json` at its root. The forge only gets the pushed tag. `adopt-dylkit` has the setup steps.
+
+### Dock tile plug-in
+
+An `NSDockTilePlugIn` draws the app's Dock icon while the app is quit. Put its principal class in a target of its own, give the class an Objective-C name with `@objc(SampleDockTilePlugIn)`, and ship the target as a dynamic library product:
+
+```swift
+.library(name: "SampleDockTile", type: .dynamic, targets: ["SampleDockTile"]),
+```
+
+```toml
+[build]
+dock-tile-plugin = { product = "SampleDockTile", principal-class = "SampleDockTilePlugIn" }
+```
+
+Release and dev builds both build the library and wrap it as `Contents/PlugIns/SampleDockTile.docktileplugin`. They sign it before the app and set the app's `NSDockTilePlugIn`. `Tests/Fixtures/SampleApp/Sources/SampleDockTile` is a working example.
+
+The Dock loads the plug-in into its own process, so `UserDefaults.standard` there is the Dock's. The plug-in's bundle identifier is the app's plus `.docktile`. Read the app's preferences from that identifier minus `.docktile`, for example with `CFPreferencesCopyAppValue`. Never hardcode the app's bundle ID or a suite name. A dev build is `<bundle-id>.dev`, and a hardcoded domain would draw the installed release's settings on the dev build's icon.
 
 ## Cursor plugin
 

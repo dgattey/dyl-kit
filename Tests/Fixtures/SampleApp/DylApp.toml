@@ -10,6 +10,7 @@ category = "public.app-category.utilities"
 product = "Sample"
 entitlements = "Sample.entitlements"
 icon = "AppIcon.icon"
+dock-tile-plugin = { product = "SampleDockTile", principal-class = "SampleDockTilePlugIn" }
 
 [bundle]
 url-schemes = ["sample"]

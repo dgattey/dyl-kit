@@ -34,6 +34,12 @@ public struct Signer: Sendable {
             try signFramework(framework)
         }
 
+        let plugInsDir = app.appending(path: "Contents/PlugIns")
+        let plugIns = (try? fileManager.contentsOfDirectory(at: plugInsDir, includingPropertiesForKeys: nil)) ?? []
+        for plugIn in plugIns.sorted(by: { $0.path < $1.path }) {
+            try codesign([plugIn.path])
+        }
+
         let outer = ["--entitlements", entitlements.path, "-r=\(designatedRequirement)"]
         try codesign(outer + [app.path])
     }

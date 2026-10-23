@@ -3,8 +3,8 @@
 # Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: sync, version, bundle, sign,
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
-# services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, and that
-# recoloring the app icon changes them.
+# services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
+# app icon changes them, and that release and dev builds both carry a signed dock tile plug-in that loads.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")/.." && pwd)"
@@ -110,4 +110,26 @@ for service in "${services[@]}"; do
     fail "$name lost Sparkle's entitlements"
 done
 
-echo "release e2e OK: $requirement, ${#services[@]} XPC services, 6 site icons"
+plugin_name="$(plutil -extract NSDockTilePlugIn raw -o - "$app/Contents/Info.plist")" ||
+  fail "$app sets no NSDockTilePlugIn"
+cat >"$scratch/load.swift" <<'SWIFT'
+import AppKit
+guard let bundle = Bundle(path: CommandLine.arguments[1]), bundle.load(),
+    let plugIn = (bundle.principalClass as? NSObject.Type)?.init() as? NSDockTilePlugIn else { exit(1) }
+plugIn.setDockTile(nil)
+SWIFT
+swiftc -o "$scratch/load" "$scratch/load.swift"
+dock_tile() {
+  local plugin="$1/Contents/PlugIns/$plugin_name"
+  [[ "$(plutil -extract CFBundleIdentifier raw -o - "$plugin/Contents/Info.plist")" == "$2.docktile" ]] ||
+    fail "$plugin isn't $2.docktile"
+  codesign --verify --strict "$plugin" || fail "$plugin doesn't verify"
+  "$scratch/load" "$plugin" || fail "$plugin's principal class isn't an NSDockTilePlugIn"
+}
+dock_tile "$app" "$bundle_id"
+
+dev_app="$("$kit/.build/debug/devkit" build | tail -1)"
+codesign --verify --strict --deep "$dev_app" || fail "$dev_app doesn't verify"
+dock_tile "$dev_app" "$bundle_id.dev"
+
+echo "release e2e OK: $requirement, ${#services[@]} XPC services, 6 site icons, $plugin_name in release and dev"

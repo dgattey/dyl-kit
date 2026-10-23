@@ -99,6 +99,7 @@ public enum InfoPlist {
             "NSHighResolutionCapable": .boolean(true),
             "NSPrincipalClass": .string("NSApplication"),
         ]
+        if let plugin = manifest.build.dockTilePlugin { plist["NSDockTilePlugIn"] = .string(plugin.bundleName) }
         for (key, text) in manifest.bundle.usage ?? [:] { plist[key] = .string(text) }
         if let services = manifest.bundle.bonjourServices, !services.isEmpty {
             plist["NSBonjourServices"] = .array(services.map(PlistValue.string))
@@ -157,7 +158,7 @@ public enum InfoPlist {
             manifest: manifest, identity: .release, shortVersion: "1.0", build: "1", sparklePublicKey: nil)
         for key in [
             "CFBundleIconFile", "LSMinimumSystemVersion", "LSApplicationCategoryType", "NSHighResolutionCapable",
-            "NSPrincipalClass", "SUFeedURL", "SUEnableAutomaticChecks", "SUScheduledCheckInterval",
+            "NSPrincipalClass", "SUFeedURL", "SUEnableAutomaticChecks", "SUScheduledCheckInterval", "NSDockTilePlugIn",
         ] {
             plist[key] = nil
         }
@@ -185,6 +186,24 @@ public enum InfoPlist {
             "CFBundleIdentifier": .string(identifier),
             "CFBundlePackageType": .string("BNDL"),
             "CFBundleVersion": .string("1"),
+        ]
+    }
+
+    /// The dock tile plug-in's `Info.plist`. Its identifier is the app's plus `.docktile`, so a plug-in finds the
+    /// app's preferences domain by dropping that suffix from its own, `<bundle-id>.dev` in dev builds.
+    public static func dockTilePlugin(
+        _ plugin: DylAppManifest.DockTilePlugin, manifest: DylAppManifest, identity: AppIdentity,
+        shortVersion: String, build: String
+    ) -> Plist {
+        [
+            "CFBundleExecutable": .string(plugin.product),
+            "CFBundleIdentifier": .string("\(identity.bundleId(manifest)).docktile"),
+            "CFBundleInfoDictionaryVersion": .string("6.0"),
+            "CFBundleName": .string(plugin.product),
+            "CFBundlePackageType": .string("BNDL"),
+            "CFBundleShortVersionString": .string(shortVersion),
+            "CFBundleVersion": .string(build),
+            "NSPrincipalClass": .string(plugin.principalClass),
         ]
     }
 

@@ -34,8 +34,18 @@ public struct DylAppManifest: Equatable, Sendable {
         /// Committed `.xcdatamodeld`, `.xcmappingmodel` and `.xcassets` the bundler compiles into the main bundle.
         /// SwiftPM's command-line build copies them verbatim, so the app's target must `exclude:` them.
         public var resources: [String]
+        public var dockTilePlugin: DockTilePlugin?
 
         fileprivate static let resourceExtensions: Set<String> = ["xcdatamodeld", "xcdatamodel", "xcmappingmodel", "xcassets"]
+    }
+
+    /// `[build] dock-tile-plugin`: a SwiftPM dynamic-library product the bundler wraps as the app's `NSDockTilePlugIn`,
+    /// which draws its Dock icon while it isn't running.
+    public struct DockTilePlugin: Equatable, Sendable {
+        public var product: String
+        public var principalClass: String
+
+        public var bundleName: String { "\(product).docktileplugin" }
     }
 
     /// Info.plist content beyond what the bundler derives from `[app]` and `[release]`.
@@ -80,7 +90,7 @@ public struct DylAppManifest: Equatable, Sendable {
     /// Info.plist keys DylKit derives itself, which `[bundle.info]` and `[ios.info]` can't override.
     fileprivate static let derivedInfoKeys: Set<String> = [
         "CFBundleIdentifier", "CFBundleVersion", "CFBundleShortVersionString", "SUFeedURL", "SUPublicEDKey",
-        "LSMinimumSystemVersion", "MinimumOSVersion", "CFBundleExecutable",
+        "LSMinimumSystemVersion", "MinimumOSVersion", "CFBundleExecutable", "NSDockTilePlugIn",
     ]
 }
 
@@ -134,7 +144,8 @@ extension DylAppManifest {
                 iconGenerator: try toml.string("build.icon-generator"),
                 icon: try toml.string("build.icon"),
                 accentColor: try toml.string("build.accent-color"),
-                resources: try toml.strings("build.resources") ?? []
+                resources: try toml.strings("build.resources") ?? [],
+                dockTilePlugin: try toml.dockTilePlugin()
             ),
             bundle: Bundle(
                 urlSchemes: try toml.strings("bundle.url-schemes"),
@@ -258,6 +269,15 @@ private struct Reader {
             result.append(string)
         }
         return result
+    }
+
+    func dockTilePlugin() throws(ManifestError) -> DylAppManifest.DockTilePlugin? {
+        let key = "build.dock-tile-plugin"
+        guard let entries = try stringMap(key) else { return nil }
+        guard let product = entries["product"], let principalClass = entries["principal-class"] else {
+            throw fail(key, "`\(key)` needs `product` and `principal-class`")
+        }
+        return DylAppManifest.DockTilePlugin(product: product, principalClass: principalClass)
     }
 
     func stringMap(_ key: String) throws(ManifestError) -> [String: String]? {

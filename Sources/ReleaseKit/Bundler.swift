@@ -2,7 +2,8 @@ import DylToolSupport
 import Foundation
 
 /// Builds the SwiftPM product and assembles `<App>.app`: binary with bundle-relative rpaths only, SwiftPM resource
-/// bundles, embedded frameworks, icons and the manifest-derived `Info.plist`. Signing is a separate step.
+/// bundles, embedded frameworks, the dock tile plug-in, icons and the manifest-derived `Info.plist`. Signing is a
+/// separate step.
 public struct Bundler: Sendable {
     public enum Configuration: String, Sendable, CaseIterable {
         case debug, release
@@ -25,11 +26,13 @@ public struct Bundler: Sendable {
 
         let platform = ResourceCompiler.Platform.macOS
         let sdkVersion = try platform.sdkVersion()
-        Log.step("swift build -c \(configuration.rawValue) --product \(product) (SDK \(sdkVersion))")
-        try Shell.run(
-            ["swift", "build", "-c", configuration.rawValue, "--product", product]
-                + platform.platformVersionFlags(minimumOS: manifest.app.platforms.macos, sdkVersion: sdkVersion),
-            cwd: workspace.root)
+        for name in [product] + [manifest.build.dockTilePlugin?.product].compactMap({ $0 }) {
+            Log.step("swift build -c \(configuration.rawValue) --product \(name) (SDK \(sdkVersion))")
+            try Shell.run(
+                ["swift", "build", "-c", configuration.rawValue, "--product", name]
+                    + platform.platformVersionFlags(minimumOS: manifest.app.platforms.macos, sdkVersion: sdkVersion),
+                cwd: workspace.root)
+        }
         let binDir = URL(
             fileURLWithPath: try Shell.capture(
                 ["swift", "build", "-c", configuration.rawValue, "--product", product, "--show-bin-path"],
@@ -70,6 +73,23 @@ public struct Bundler: Sendable {
         let sparkle = try locateFramework("Sparkle", binDir: binDir)
         try Shell.run(["ditto", sparkle.path, frameworks.appending(path: "Sparkle.framework").path])
 
+        if let plugin = manifest.build.dockTilePlugin {
+            let library = binDir.appending(path: "lib\(plugin.product).dylib")
+            guard fileManager.fileExists(atPath: library.path) else {
+                throw ToolError("`\(plugin.product)` built no \(library.lastPathComponent); make it a `.dynamic` library product")
+            }
+            try ResourceCompiler.Platform.verifySDK(of: library, sdkVersion: sdkVersion)
+            let pluginContents = contents.appending(path: "PlugIns/\(plugin.bundleName)/Contents")
+            try fileManager.createDirectory(
+                at: pluginContents.appending(path: "MacOS"), withIntermediateDirectories: true)
+            let pluginBinary = pluginContents.appending(path: "MacOS/\(plugin.product)")
+            try fileManager.copyItem(at: library, to: pluginBinary)
+            try fixRpaths(pluginBinary, addingFrameworks: false)
+            let pluginPlist = InfoPlist.dockTilePlugin(
+                plugin, manifest: manifest, identity: identity, shortVersion: shortVersion, build: build)
+            try InfoPlist.data(pluginPlist).write(to: pluginContents.appending(path: "Info.plist"))
+        }
+
         try copyGeneratedIcns(into: resources)
         let generated = try ResourceCompiler(workspace: workspace)
             .compile(into: resources, platform: .macOS, minimumOS: manifest.app.platforms.macos)
@@ -92,15 +112,15 @@ public struct Bundler: Sendable {
     }
 
     /// Drops absolute build-machine rpaths SwiftPM embeds (an Xcode path that doesn't exist on users' Macs makes
-    /// XProtect log rPathCmd failures) and makes sure `@executable_path/../Frameworks` is present.
+    /// XProtect log rPathCmd failures) and, unless told not to, makes sure `@executable_path/../Frameworks` is present.
     ///
     /// - Blocking: runs `otool` and `install_name_tool`.
-    func fixRpaths(_ executable: URL) throws {
+    func fixRpaths(_ executable: URL, addingFrameworks: Bool = true) throws {
         let rpaths = try Self.rpaths(of: executable)
         for rpath in rpaths where !Self.isBundleRelative(rpath) {
             try Shell.run(["install_name_tool", "-delete_rpath", rpath, executable.path], allowFailure: true)
         }
-        if !rpaths.contains("@executable_path/../Frameworks") {
+        if addingFrameworks, !rpaths.contains("@executable_path/../Frameworks") {
             try Shell.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", executable.path])
         }
     }

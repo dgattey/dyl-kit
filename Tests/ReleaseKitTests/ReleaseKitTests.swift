@@ -553,7 +553,7 @@ private let sconeosModules = [
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == [workflow])
     }
 
-    /// dylkit.yml passes app.yml the release secrets by name, so a script that uploads one is fine.
+    /// dylkit.yml hands app.yml the release secrets with `secrets: inherit`, so a script that uploads one is fine.
     @Test func secretsPassedToAppWorkflowCountAsUsed() throws {
         let upload = "gh secret set BLOB_READ_WRITE_TOKEN < token.txt\n"
         let workspace = try scratchWorkspace(["scripts/secrets.sh": upload])

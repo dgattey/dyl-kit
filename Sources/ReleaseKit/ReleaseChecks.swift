@@ -235,6 +235,9 @@ public struct ReleaseChecks: Sendable {
                 }
             }
             for match in workflow.text.matches(of: /secrets\.(\w+)/) { referenced.insert(String(match.1)) }
+            if workflow.text.contains(/secrets:\s*inherit/) {
+                referenced.formUnion([ReleasePipeline.edKeyVariable, BlobStore.tokenVariable])
+            }
         }
         for source in readers where source.path.hasPrefix("scripts/") {
             for match in source.text.matches(of: /(?:gh\s+secret\s+set|push_\w*secret)\s+"?([A-Z][A-Z0-9_]+)/)

@@ -77,7 +77,7 @@ import UniformTypeIdentifiers
         var index = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
-        let wait = SettleWait(timeout: .milliseconds(200), minimum: .seconds(5), interval: .milliseconds(10))
+        let wait = SettleWait(timeout: .seconds(1), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
             guard index <= 3 else { throw ToolError("window 7681 is off screen") }

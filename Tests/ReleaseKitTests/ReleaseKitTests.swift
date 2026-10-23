@@ -406,13 +406,14 @@ private let sconeosModules = [
     }
 }
 
-/// Runs the tier 3 checks over a scratch copy of the SampleApp, synced as `devkit sync` leaves it, plus `extra` files.
+/// Runs the tier 3 checks over a scratch copy of the SampleApp, plus `extra` files.
 @Suite struct ReleaseChecksTests {
     private func scratchWorkspace(_ extra: [String: String] = [:]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/vercel.json", ".github/workflows/verify.yml",
+            "server/vercel.json", ".github/pull_request_template.md", ".github/workflows/dylkit.yml",
+            ".github/workflows/verify.yml",
         ]
         for path in appFiles {
             let destination = root.appending(path: path)
@@ -420,7 +421,6 @@ private let sconeosModules = [
                 at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: appRoot.appending(path: path), to: destination)
         }
-        _ = try SharedFiles.sync(root: root)
         for (path, text) in extra {
             let destination = root.appending(path: path)
             try FileManager.default.createDirectory(
@@ -508,54 +508,11 @@ private let sconeosModules = [
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
-    /// A fix to a shared file reaches every app only if none keeps its own copy.
-    @Test func sharedFilesMatchDylKit() throws {
-        let workspace = try scratchWorkspace()
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let check = workspace.url(".github/workflows/pr-check.yml")
-        let stale = try String(contentsOf: check, encoding: .utf8).replacing(", synchronize]", with: "]")
-        try Data(stale.utf8).write(to: check)
-        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: workspace.url("run").path)
-        try FileManager.default.removeItem(at: workspace.url(".github/workflows/release.yml"))
-
-        let report = ReleaseChecks(workspace: workspace).run()
-        #expect(errors(report)["shared_files"] == [
-            "isn't executable; run `./run dev sync`",
-            "differs from DylKit's copy; run `./run dev sync`",
-            "missing; run `./run dev sync`",
-        ])
-
-        #expect(
-            try SharedFiles.sync(root: workspace.root)
-                == ["run", ".github/workflows/pr-check.yml", ".github/workflows/release.yml"])
-        #expect(errors(ReleaseChecks(workspace: workspace).run())["shared_files"] == nil)
-        #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
-    }
-
-    /// Sync never touches `scripts/run`, so an app keeps its own modes behind DylKit's `./run`.
-    @Test func runHandsOtherModesToTheAppsScript() throws {
-        let workspace = try scratchWorkspace(["scripts/run": "#!/bin/sh\necho \"app: $*\"\n"])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755], ofItemAtPath: workspace.url("scripts/run").path)
-        #expect(try Shell.capture([workspace.url("run").path, "format", "--check"]) == "app: format --check")
-        #expect(try SharedFiles.sync(root: workspace.root).isEmpty)
-    }
-
-    /// DylKit's own release reads the same Release info box, so its PRs start from the apps' template and run their
-    /// check.
-    @Test func dylKitChecksItsOwnReleaseInfo() throws {
-        for file in [SharedFiles.prCheck, SharedFiles.prTemplate] {
-            let own = packageRoot.appending(path: file.path)
-            #expect(try String(contentsOf: own, encoding: .utf8) == file.contents, "\(file.path)")
-        }
-    }
-
-    /// Saga #45: Vercel's ignoreCommand must still deploy release commits and the shared web package.
+    /// Saga #45: Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let config = #"{ "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- app" }"#
+        let config = #"{ "ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- app" }"#
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
@@ -563,16 +520,20 @@ private let sconeosModules = [
         ])
     }
 
-    /// Gattey Photos: diffing from HEAD^ never deploys a site change in a commit Vercel skipped.
-    @Test func siteDeployDiffsFromTheLastDeploy() throws {
-        let workspace = try scratchWorkspace()
+    /// Gattey Photos: diffing from HEAD^ can skip a site change Vercel never deployed, including on a branch's first
+    /// deploy, when VERCEL_GIT_PREVIOUS_SHA is empty.
+    @Test(arguments: [
+        #"git diff --quiet HEAD^ HEAD -- . ../DylApp.toml"#,
+        #"git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- . ../DylApp.toml"#,
+    ])
+    func siteDeployDiffsFromTheLastDeploy(command: String) throws {
+        let workspace = try scratchWorkspace(["server/vercel.json": #"{ "ignoreCommand": "\#(command)" }"#])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let config = #"{ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../DylApp.toml" }"#
-        try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            #"diffs from HEAD^, so a site change in a commit Vercel skipped never deploys; use "#
-                + #"`"ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- <paths>"`"#
+            #"diffs from HEAD^, which can skip a site change Vercel never deployed; use `"ignoreCommand": "#
+                + #""[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- "#
+                + #"<paths>"`"#
         ])
     }
 
@@ -592,11 +553,20 @@ private let sconeosModules = [
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == [workflow])
     }
 
+    /// dylkit.yml hands app.yml the release secrets with `secrets: inherit`, so a script that uploads one is fine.
+    @Test func secretsPassedToAppWorkflowCountAsUsed() throws {
+        let upload = "gh secret set BLOB_READ_WRITE_TOKEN < token.txt\n"
+        let workspace = try scratchWorkspace(["scripts/secrets.sh": upload])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == nil)
+    }
+
     @Test func appScriptsNeverTalkToTheForge() throws {
         let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
-        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "run": "gh pr view 1\n"])
+        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "scripts/run": "gh pr view 1\n"])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"] == ["scripts/lookup.sh", "run"])
+        let flagged = errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]?.sorted()
+        #expect(flagged == ["scripts/lookup.sh", "scripts/run"])
     }
 
     /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.
@@ -629,23 +599,33 @@ private let sconeosModules = [
         #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
     }
 
-    /// The fixture's site depends on DylKit 0.2.0's tarball.
-    @Test func webPackageMatchesTheResolvedDylKit() throws {
-        func resolved(_ state: String) -> [String: String] {
-            ["Package.resolved": #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#]
-        }
-        func messages(_ state: String) throws -> [String]? {
-            let workspace = try scratchWorkspace(resolved(state))
+    /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside
+    /// dylkit.yml, which would release twice.
+    @Test func everyPinMatchesTheResolvedDylKit() throws {
+        func messages(_ state: String, _ extra: [String: String] = [:]) throws -> [String]? {
+            let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#
+            let workspace = try scratchWorkspace(extra.merging(["Package.resolved": resolved]) { $1 })
             defer { try? FileManager.default.removeItem(at: workspace.root) }
-            return errors(ReleaseChecks(workspace: workspace).run())["dylkit_web_version"]
+            return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
         }
-        #expect(try messages(#"{ "version": "0.2.0" }"#) == nil)
+        #expect(try messages(#"{ "version": "0.3.0" }"#) == nil)
         #expect(try messages(#"{ "branch": "main" }"#) == nil)
         #expect(
             try messages(#"{ "version": "0.3.1" }"#) == [
-                "@dylkit/web is 0.2.0 but Package.resolved pins DylKit 0.3.1; depend on "
-                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\""
+                "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0 but Package.resolved pins DylKit 0.3.1; "
+                    + "use @v0.3.1",
+                "@dylkit/web is 0.3.0 but Package.resolved pins DylKit 0.3.1; depend on "
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\"",
             ])
+        let synced = "# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.\nname: release\n"
+        #expect(
+            try messages(
+                #"{ "version": "0.3.0" }"#,
+                [".github/workflows/dylkit.yml": "name: dylkit\n", ".github/workflows/release.yml": synced]) == [
+                    "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
+                        + "DylKit's SampleApp",
+                    "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it",
+                ])
     }
 
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {

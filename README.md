@@ -17,46 +17,56 @@ The shared framework for Dylan's Mac and iOS apps (Sconeos, Saga, Gattey Photos)
 
 To adopt DylKit, follow the `adopt-dylkit` skill (`skills/adopt-dylkit/SKILL.md`). The rest of this section is reference.
 
-Add the package and depend on the runtime products:
+An app depends on DylKit twice, and pins it three times to the same version:
 
 ```swift
-.package(url: "https://github.com/dgattey/dyl-kit", from: "0.2.0"),
+// Package.swift
+.package(url: "https://github.com/dgattey/dyl-kit", from: "0.3.0"),
 ```
+
+```json
+// server/package.json, the tarball DylKit's release uploads
+"@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz"
+```
+
+```yaml
+# .github/workflows/dylkit.yml
+uses: dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0
+```
+
+`dylkit_version` fails when the tarball or the workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those three lines and the lockfiles; nothing is generated or synced.
 
 Then, in the app repo:
 
-- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys. [Release setup](#release-setup) explains `[release] assets`, and [Dock tile plug-in](#dock-tile-plug-in) explains `[build] dock-tile-plugin`.
-- `./run dev sync` writes the files every app shares as DylKit ships them: the `./run` shim, `.github/workflows/pr-check.yml`, `.github/workflows/release.yml` and `.github/pull_request_template.md`. DylKit's copies live in `Sources/ReleaseKit/Shared/`. `shared_files` fails when one drifts, so run it after bumping DylKit. In a fresh repo, `swift run devkit sync` writes the first `./run`.
-- `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included, which sync never touches. `./run format` runs `scripts/run format`.
-- `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
-- `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
-- The download site depends on the `@dylkit/web` tarball the matching DylKit release uploaded: `"@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.2.0/dylkit-web-0.2.0.tgz"`, the URL DylKit's release log prints. `dylkit_web_version` fails when its version isn't the DylKit version in `Package.resolved`. It serves the latest release from the app's Blob store:
+- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `swift run devkit checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys. [Release setup](#release-setup) explains `[release] assets`, and [Dock tile plug-in](#dock-tile-plug-in) explains `[build] dock-tile-plugin`.
+- Two files are copied once from `Tests/Fixtures/SampleApp/` at adoption and then belong to the app: `.github/workflows/dylkit.yml`, which runs DylKit's PR check and release and passes the app's secrets with `secrets: inherit`; and `.github/pull_request_template.md`, whose Release info box that check reads.
+- `swift run devkit <command>`, `swift run release-kit <step>` and `swift run dyl-lint` run DylKit's tools from the app repo. SwiftPM builds them from the resolved dependency, so the app holds no copy of them. The site's commands are the app's own npm scripts in `server/`.
+- `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `swift run devkit checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
+- `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `swift run devkit checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
+- The download site is `@dylkit/web`. `withDylKit` reads `DylApp.toml` and the screenshots' sizes when Next loads its config, and Next inlines them into the build, so nothing reads them at request time. Its pages and routes are one-line re-exports, and it serves the latest release from the app's Blob store:
 
 ```ts
 // next.config.ts
-export default { transpilePackages: ["@dylkit/web"] };
+import { withDylKit } from "@dylkit/web/config";
+export default withDylKit({});
 
-// app/appcast.xml/route.ts, and app/download/macos/route.ts with downloadResponse
-import { appcastResponse, loadSite } from "@dylkit/web";
-const site = loadSite();
-export function GET() {
-  return appcastResponse(site);
-}
-
-// app/icons/[name]/route.ts, and the same in app/icon.png/, app/apple-touch-icon.png/ and app/favicon.ico/
-import { iconResponse, loadSite } from "@dylkit/web";
-const site = loadSite();
-export function GET(request: Request) {
-  return iconResponse(site, request);
-}
+// app/layout.tsx
+export { Layout as default, metadata } from "@dylkit/web/app";
 
 // app/page.tsx
-import { DownloadPage, latestRelease, loadSite } from "@dylkit/web";
-const site = loadSite();
-export default async function Home() {
-  return <DownloadPage site={site} release={await latestRelease(site)} />;
-}
+export { Page as default } from "@dylkit/web/app";
+
+// app/appcast.xml/route.ts
+export { appcast as GET } from "@dylkit/web/routes";
+
+// app/download/macos/route.ts
+export { download as GET } from "@dylkit/web/routes";
+
+// app/icons/[name]/route.ts, and the same in app/icon.png/, app/apple-touch-icon.png/ and app/favicon.ico/
+export { icon as GET } from "@dylkit/web/routes";
 ```
+
+`server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
 
 Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. dylangattey.com reads `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.
 
@@ -85,7 +95,7 @@ The Dock loads the plug-in into its own process, so `UserDefaults.standard` ther
 
 ## Cursor plugin
 
-This repo is a Cursor plugin (`.cursor-plugin/plugin.json`). It ships the skills and the always-applied `dylkit` rule, so every app gets one canonical copy without a sync step. To use it locally, link the checkout into Cursor's local plugins:
+This repo is a Cursor plugin (`.cursor-plugin/plugin.json`). It ships the skills and the always-applied `dylkit` rule, so every app gets one canonical copy without copying them. To use it locally, link the checkout into Cursor's local plugins:
 
 ```sh
 ln -s ~/repos/dyl-kit ~/.cursor/plugins/local/dylkit
@@ -106,4 +116,4 @@ CI runs the same on every PR. Docs-only changes skip CI.
 
 ## Releasing DylKit
 
-Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump their package dependency and the tarball URL together.
+Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and the workflow ref together. DylKit's own PRs run the same `app.yml` Release info check apps call.

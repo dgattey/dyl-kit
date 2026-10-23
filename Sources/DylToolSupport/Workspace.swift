@@ -11,13 +11,12 @@ public struct Workspace: Sendable {
         self.manifest = manifest
     }
 
-    /// Loads the manifest from `explicitRoot`, then `DYLKIT_ROOT` (set by `./run`), then the
-    /// nearest ancestor of the current directory that has one.
+    /// Loads the manifest from `explicitRoot`, else the nearest ancestor of the current directory that has one.
     ///
     /// - Blocking: reads the file system.
     public static func locate(_ explicitRoot: String? = nil) throws -> Workspace {
         let root: URL
-        if let explicitRoot = explicitRoot ?? ProcessInfo.processInfo.environment["DYLKIT_ROOT"] {
+        if let explicitRoot {
             root = URL(fileURLWithPath: explicitRoot).standardizedFileURL
         } else {
             var candidate = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).standardizedFileURL

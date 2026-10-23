@@ -5,7 +5,10 @@
   "description": "Each DylKit app's <app>.gattey.com download site, built from its DylApp.toml and its latest release on Vercel Blob.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./app": "./src/app.tsx",
+    "./config": "./src/config.mjs",
+    "./routes": "./src/routes.ts"
   },
   "files": [
     "src"

@@ -4,9 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it, mock } from "node:test";
 import { iconResponse } from "../src/icons.ts";
-import { loadSite, type Site } from "../src/site.ts";
+import type { NextConfig } from "next";
+import { withDylKit } from "../src/config.mjs";
+import type { Site } from "../src/site.ts";
 
-describe("loadSite", () => {
+describe("withDylKit", () => {
   const app = (manifest: string) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "dylkit-web-"));
     const publicDir = path.join(root, "server", "public");
@@ -17,9 +19,19 @@ describe("loadSite", () => {
     png.writeUInt32BE(1200, 16);
     png.writeUInt32BE(800, 20);
     fs.writeFileSync(path.join(publicDir, "shot.png"), png);
-    fs.mkdirSync(path.join(root, "server", "app"));
     return root;
   };
+  /** Loads the config from `server/` under `root`, the way Next does for a site in `server/`. */
+  const configIn = (root: string, config?: NextConfig) => {
+    const cwd = process.cwd();
+    process.chdir(path.join(root, "server"));
+    try {
+      return withDylKit(config);
+    } finally {
+      process.chdir(cwd);
+    }
+  };
+  const siteIn = (root: string): Site => JSON.parse(configIn(root).env?.DYLKIT_SITE ?? "");
   const manifest = `[app]
 name = "Demo"
 [release]
@@ -32,9 +44,8 @@ accent = { light = "#123456", dark = "#abcdef" }
 screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dark.png" }]
 `;
 
-  it("reads DylApp.toml from the nearest ancestor", () => {
-    const root = app(manifest);
-    const site = loadSite(root);
+  it("inlines the nearest DylApp.toml and the screenshots' sizes", () => {
+    const site = siteIn(app(manifest));
     assert.equal(site.name, "Demo");
     assert.equal(site.tagline, "A demo app.");
     assert.deepEqual(site.accent, { light: "#123456", dark: "#abcdef" });
@@ -43,24 +54,23 @@ screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dar
     ]);
     assert.equal(site.assets, "https://demo.public.blob.vercel-storage.com");
     assert.equal(site.favicon, "light");
+  });
 
-    const cwd = process.cwd();
-    process.chdir(path.join(root, "server", "app"));
-    try {
-      assert.equal(loadSite().name, "Demo");
-    } finally {
-      process.chdir(cwd);
-    }
+  it("keeps the app's own config and transpiles @dylkit/web", () => {
+    const config = configIn(app(manifest), { transpilePackages: ["other"], env: { KEEP: "1" }, poweredByHeader: false });
+    assert.deepEqual(config.transpilePackages, ["other", "@dylkit/web"]);
+    assert.equal(config.env?.KEEP, "1");
+    assert.equal(config.poweredByHeader, false);
   });
 
   it("names the missing key", () => {
-    assert.throws(() => loadSite(app(manifest.replace(/tagline = .*\n/, ""))), /`site\.tagline`/);
+    assert.throws(() => siteIn(app(manifest.replace(/tagline = .*\n/, ""))), /`site\.tagline`/);
     assert.throws(
-      () => loadSite(app(manifest.replace('light = "#123456", ', ""))),
+      () => siteIn(app(manifest.replace('light = "#123456", ', ""))),
       /`site\.accent\.light`/,
     );
-    assert.throws(() => loadSite(app(manifest.replace(/assets = .*\n/, ""))), /`release\.assets`/);
-    assert.throws(() => loadSite(app(`${manifest}favicon = "blue"\n`)), /`site\.favicon`/);
+    assert.throws(() => siteIn(app(manifest.replace(/assets = .*\n/, ""))), /`release\.assets`/);
+    assert.throws(() => siteIn(app(`${manifest}favicon = "blue"\n`)), /`site\.favicon`/);
   });
 });
 

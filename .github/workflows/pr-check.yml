@@ -1,4 +1,4 @@
-# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.
+# DylKit's own PRs run the apps' Release info check, through the same reusable workflow apps call.
 name: pr-check
 
 on:
@@ -10,30 +10,4 @@ permissions:
 
 jobs:
   release-info:
-    # Edits only matter when they change a Release info checkbox; contains() is case-insensitive.
-    if: >-
-      github.event.action != 'edited' || (github.event.changes.body && (
-        contains(github.event.changes.body.from, '- [x] Major') != contains(github.event.pull_request.body, '- [x] Major') ||
-        contains(github.event.changes.body.from, '- [x] Minor') != contains(github.event.pull_request.body, '- [x] Minor') ||
-        contains(github.event.changes.body.from, '- [x] Patch') != contains(github.event.pull_request.body, '- [x] Patch')
-      ))
-    # Job-level so skipped edit runs don't cancel an in-flight check.
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Check exactly one Release info box
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
-        run: |
-          body="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""')"
-          checked="$(printf '%s\n' "$body" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
-          if [ "$checked" != "1" ]; then
-            echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
-            exit 1
-          fi
-          echo "Release info OK"
+    uses: ./.github/workflows/app.yml

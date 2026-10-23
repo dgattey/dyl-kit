@@ -1,0 +1,150 @@
+# Each DylKit app's PR check and release. Apps call it from .github/workflows/dylkit.yml at the DylKit version they pin,
+# on pull_request (opened, edited, reopened, synchronize, closed) and workflow_dispatch, with contents: write and
+# pull-requests: read, and `secrets: inherit`, which carries the app's SPARKLE_ED_PRIVATE_KEY_BASE64 and
+# BLOB_READ_WRITE_TOKEN across repos. Tests/Fixtures/SampleApp/.github/workflows/dylkit.yml is that caller.
+name: app
+
+on:
+  workflow_call:
+    inputs:
+      release_type:
+        description: 'Bump type; auto reads the Release info checkbox in the merge commit'
+        required: false
+        default: auto
+        type: string
+    secrets:
+      SPARKLE_ED_PRIVATE_KEY_BASE64:
+        required: false
+      BLOB_READ_WRITE_TOKEN:
+        required: false
+
+jobs:
+  release-info:
+    # Edits only matter when they change a Release info checkbox; contains() is case-insensitive.
+    if: >-
+      github.event_name == 'pull_request' && github.event.action != 'closed' && (
+        github.event.action != 'edited' || (github.event.changes.body && (
+          contains(github.event.changes.body.from, '- [x] Major') != contains(github.event.pull_request.body, '- [x] Major') ||
+          contains(github.event.changes.body.from, '- [x] Minor') != contains(github.event.pull_request.body, '- [x] Minor') ||
+          contains(github.event.changes.body.from, '- [x] Patch') != contains(github.event.pull_request.body, '- [x] Patch')
+        ))
+      )
+    # Job-level so skipped edit runs don't cancel an in-flight check.
+    concurrency:
+      group: release-info-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check exactly one Release info box
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
+        run: |
+          body="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""')"
+          checked="$(printf '%s\n' "$body" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
+          if [ "$checked" != "1" ]; then
+            echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
+            exit 1
+          fi
+          echo "Release info OK"
+
+  # A merge to the default branch that only touches docs, the site, tests or CI ships no new app, so it doesn't release.
+  changes:
+    if: >-
+      github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      release: ${{ steps.files.outputs.release }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR_NUMBER" ]; then echo release=true >>"$GITHUB_OUTPUT"; exit 0; fi
+          files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
+          if grep -qvE '(\.md$|^docs/|^server/|^Tests/|^\.github/|^\.cursor/)' <<<"$files"; then
+            echo release=true >>"$GITHUB_OUTPUT"
+          else
+            echo "Only docs, the site, tests or CI changed; nothing to release."
+            echo release=false >>"$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    # Job-level, so a PR closed without merging never queues behind a release.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      site: ${{ steps.version.outputs.site }}
+      assets: ${{ steps.version.outputs.assets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          # Every tag plans the version, and build numbers count commits.
+          fetch-depth: 0
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+      - name: Plan the version
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TYPE: ${{ inputs.release_type || 'auto' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          swift run release-kit version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
+      - name: Bundle
+        run: swift run release-kit bundle
+      - name: Sign
+        run: swift run release-kit sign
+      - name: Appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
+        run: swift run release-kit appcast
+      - name: Publish
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: swift run release-kit publish
+
+  # Waiting for the deploy is plain polling, so it runs on ubuntu instead of billing macOS minutes.
+  live-site:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    permissions: {}
+    steps:
+      - name: Wait for the site to serve the release and its icons
+        env:
+          SITE: ${{ needs.release.outputs.site }}
+          ASSETS: ${{ needs.release.outputs.assets }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          same() { cmp -s <(curl -fsSL "$SITE/$1" || true) <(curl -fsSL "$ASSETS/icons/$2" || echo missing); }
+          for _ in $(seq 60); do
+            feed="$(curl -fsSL "$SITE/appcast.xml" || true)"
+            page="$(curl -fsSL "$SITE" || true)"
+            if grep -qF "<sparkle:shortVersionString>$VERSION<" <<<"$feed" && grep -qF "Version $VERSION" <<<"$page" &&
+              same icon.png icon.png && same apple-touch-icon.png apple-touch-icon.png; then
+              echo "$SITE serves $VERSION and its icons"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::$SITE didn't serve $VERSION, or the icons it uploaded, within 15 minutes"
+          exit 1

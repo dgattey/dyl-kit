@@ -52,9 +52,7 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "dyl-lint", dependencies: ["DylLintRules"]),
-        .target(
-            name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"], resources: [.copy("Shared")]
-        ),
+        .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"]),
         .executableTarget(
             name: "release-kit",
             dependencies: [

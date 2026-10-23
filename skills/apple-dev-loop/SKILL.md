@@ -19,22 +19,22 @@ Every DylKit app builds the same way. READMEs and other skills link here instead
 ## Setup
 
 1. Select the Xcode 26.5 toolchain: `sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer`.
-2. Run `mise install` in the repo. It installs the SwiftLint version pinned in `mise.toml` (and Node for the site). `./run dev checks` fails if SwiftLint is missing, doesn't run, or isn't the pinned version. It never skips SwiftLint.
+2. Run `mise install` in the repo. It installs the SwiftLint version pinned in `mise.toml` (and Node for the site). `swift run devkit checks` fails if SwiftLint is missing, doesn't run, or isn't the pinned version. It never skips SwiftLint.
 
 ## Commands
 
-Run everything from the app repo through `./run dev …`, which builds `devkit` and finds `DylApp.toml`.
+Run everything from the app repo through `swift run devkit …`, which builds `devkit` and finds `DylApp.toml`.
 
 | Task | Command |
 |---|---|
-| Build `build/<App> Dev.app`, ad-hoc signed, with the commit count as its build number | `./run dev build` (or `./run dev build release`) |
-| Rebuild and reopen behind the frontmost app | `./run dev relaunch` (add `--configuration release` for a Release build) |
-| Screenshot the main window into `build/captures/` | `./run dev capture --appearance dark` |
-| iOS Simulator, headless, with a screenshot | `./run dev ios --run --capture` (add `--simulator "<iPad name>"` for an iPad) |
+| Build `build/<App> Dev.app`, ad-hoc signed, with the commit count as its build number | `swift run devkit build` (or `swift run devkit build release`) |
+| Rebuild and reopen behind the frontmost app | `swift run devkit relaunch` (add `--configuration release` for a Release build) |
+| Screenshot the main window into `build/captures/` | `swift run devkit capture --appearance dark` |
+| iOS Simulator, headless, with a screenshot | `swift run devkit ios --run --capture` (add `--simulator "<iPad name>"` for an iPad) |
 | Unit tests | `swift test`. Test targets depend on `DylTestSupport` for ViewInspector and `AppDirectories.withTemporarySupportFolder`, so tests never read or write the real support folder |
-| Lint tiers 1–3 | `./run dev checks` |
-| What macOS CI runs: checks, build, then all tests | `./run dev verify` |
-| Refresh `./run`, the PR check, the release workflow and the PR template after bumping DylKit | `./run dev sync` |
+| Lint tiers 1–3 | `swift run devkit checks` |
+| What macOS CI runs: checks, build, then all tests | `swift run devkit verify` |
+| Bump DylKit | The three pins in `adopt-dylkit`'s Later upgrades, then `swift run devkit checks` |
 | Download site | `npm run dev` or `npm run build` in `server/` |
 
 ## Hard rules
@@ -50,7 +50,7 @@ Run everything from the app repo through `./run dev …`, which builds `devkit` 
 
 ## Verify a release build without launching it
 
-After `./run release bundle`, `sign` and `appcast`, run `./run release check --live`. It compares the staged app with the live release's signature, entitlements, Info.plist and feed. Expect only the version, build number and code hashes to differ. Never open either app to check.
+After `swift run release-kit bundle`, `sign` and `appcast`, run `swift run release-kit check --live`. It compares the staged app with the live release's signature, entitlements, Info.plist and feed. Expect only the version, build number and code hashes to differ. Never open either app to check.
 
 ## When a capture comes back wrong
 

@@ -20,6 +20,4 @@ jobs:
     uses: dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0
     with:
       release_type: ${{ inputs.release_type || 'auto' }}
-    secrets:
-      SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
-      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+    secrets: inherit

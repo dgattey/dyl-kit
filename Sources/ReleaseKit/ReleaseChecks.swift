@@ -257,7 +257,6 @@ public struct ReleaseChecks: Sendable {
             let path = "scripts/\(relative)"
             if let text = read(path) { sources.append(Source(path: path, text: text)) }
         }
-        if let run = read("run") { sources.append(Source(path: "run", text: run)) }
         return sources
     }
 

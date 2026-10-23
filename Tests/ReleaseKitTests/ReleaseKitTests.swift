@@ -412,7 +412,7 @@ private let sconeosModules = [
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/vercel.json", "run", ".github/pull_request_template.md", ".github/workflows/dylkit.yml",
+            "server/vercel.json", ".github/pull_request_template.md", ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml",
         ]
         for path in appFiles {
@@ -508,15 +508,6 @@ private let sconeosModules = [
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
     }
 
-    /// `./run` hands every other mode to `scripts/run`, so an app keeps its own modes behind it.
-    @Test func runHandsOtherModesToTheAppsScript() throws {
-        let workspace = try scratchWorkspace(["scripts/run": "#!/bin/sh\necho \"app: $*\"\n"])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755], ofItemAtPath: workspace.url("scripts/run").path)
-        #expect(try Shell.capture([workspace.url("run").path, "format", "--check"]) == "app: format --check")
-    }
-
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
@@ -572,9 +563,10 @@ private let sconeosModules = [
 
     @Test func appScriptsNeverTalkToTheForge() throws {
         let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
-        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "run": "gh pr view 1\n"])
+        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "scripts/run": "gh pr view 1\n"])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"] == ["scripts/lookup.sh", "run"])
+        let flagged = errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]?.sorted()
+        #expect(flagged == ["scripts/lookup.sh", "scripts/run"])
     }
 
     /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.

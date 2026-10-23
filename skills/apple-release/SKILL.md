@@ -5,7 +5,7 @@ description: Cut, check or debug a Sparkle release of a DylKit macOS app — ver
 
 # Apple release
 
-The release is `release-kit`, run in steps by DylKit's reusable `app` workflow, which the app's `.github/workflows/dylkit.yml` calls, when a PR merges, or locally with `./run release <step>`:
+The release is `release-kit`, run in steps by DylKit's reusable `app` workflow, which the app's `.github/workflows/dylkit.yml` calls, when a PR merges, or locally with `swift run release-kit <step>`:
 
 1. `version --pr <n>` reads the merged PR's `# Release info` checkbox from GitHub (the merge commit message if that lookup fails), the tags and the published feeds, and writes `build/release/plan.json`. If HEAD already carries a release tag, it resumes that release, so rerunning a failed job finishes it.
 2. `bundle` builds the release app into `build/release/stage` with bundle-relative rpaths only.
@@ -14,22 +14,22 @@ The release is `release-kit`, run in steps by DylKit's reusable `app` workflow, 
 5. `publish` tags `v<version>`, pushes the tag with plain git, and uploads the zip to `releases/v<version>/` in the Blob store at `[release] assets`, then the appcast and `release.json` to its root. Nothing is committed, and there's no GitHub release.
 6. CI's `live-site` job then waits on ubuntu until the site serves the new version's appcast and download page.
 
-`./run release check` runs the same tier 3 checks on any branch, and `check --live` also compares the staged app with the live release (see `apple-dev-loop`). Its rule IDs explain themselves; read the finding instead of restating it here.
+`swift run release-kit check` runs the same tier 3 checks on any branch, and `check --live` also compares the staged app with the live release (see `apple-dev-loop`). Its rule IDs explain themselves; read the finding instead of restating it here.
 
 ## By hand on the Mac
 
 Use this when CI can't run, for example when Actions minutes run out. Run it on an up-to-date `main` with a clean tree, and never while the release workflow is running:
 
 ```sh
-./run release version --type minor     # or --pr <n> to read the merged PR's checkbox
-./run release bundle
-./run release sign
-./run release appcast                  # key: --ed-key-file, .cert/sparkle_ed.key, else the login Keychain
-./run release check --live
-./run release publish                  # needs BLOB_READ_WRITE_TOKEN
+swift run release-kit version --type minor     # or --pr <n> to read the merged PR's checkbox
+swift run release-kit bundle
+swift run release-kit sign
+swift run release-kit appcast                  # key: --ed-key-file, .cert/sparkle_ed.key, else the login Keychain
+swift run release-kit check --live
+swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN
 ```
 
-`./run release notes --body-file <pr-body.md>` previews the cumulative notes without releasing. Don't open the staged app to check it: it has the installed app's bundle ID. Run `./run release check --live` instead.
+`swift run release-kit notes --body-file <pr-body.md>` previews the cumulative notes without releasing. Don't open the staged app to check it: it has the installed app's bundle ID. Run `swift run release-kit check --live` instead.
 
 ## Invariants
 
@@ -44,7 +44,7 @@ Use this when CI can't run, for example when Actions minutes run out. Run it on 
 
 ## Symptoms
 
-- `-67050` or "the update is improperly signed": the new build's designated requirement doesn't match the installed one. `./run release check --live` reports it before release.
+- `-67050` or "the update is improperly signed": the new build's designated requirement doesn't match the installed one. `swift run release-kit check --live` reports it before release.
 - The update alert hides behind other windows after a launch check: Sparkle doesn't activate the app for background checks. Use `DylUpdates`' `AppUpdater`, which brings found updates forward in focus, instead of an app-local Sparkle controller. It activates only an installed release: release-configured, in an Applications folder, and not launched with `DYLKIT_BACKGROUND`. Dev builds, tests and agent launches never take focus.
 - Sparkle says "up to date" after a release: the build number didn't increase, or the CDN still serves the old appcast. Compare `<sparkle:version>` in `curl -fsSL <site>/appcast.xml` with `<assets>/appcast.xml`.
 - `/appcast.xml` or `/download/macos` answers 503: the Blob store's latest `appcast.xml` or `release.json` is unreachable or incomplete. Compare it with `curl -fsSL <assets>/appcast.xml`, and publish again if it's broken.

@@ -38,11 +38,11 @@ uses: dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0
 
 Then, in the app repo:
 
-- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `./run dev checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys. [Release setup](#release-setup) explains `[release] assets`, and [Dock tile plug-in](#dock-tile-plug-in) explains `[build] dock-tile-plugin`.
-- Three files are copied once from `Tests/Fixtures/SampleApp/` at adoption and then belong to the app: `.github/workflows/dylkit.yml`, which runs DylKit's PR check and release; `.github/pull_request_template.md`, whose Release info box that check reads; and `./run`.
-- `./run dev <command>`, `./run release <step>` and `./run lint` build `devkit`, `release-kit` and `dyl-lint` once and run them. Every other mode goes to the app's own executable `scripts/run`, mode included. `./run format` runs `scripts/run format`.
-- `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `./run dev checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
-- `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `./run dev checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
+- `DylApp.toml` describes the app. `Sources/DylManifest/DylAppManifest.swift` is the schema, and `swift run devkit checks` validates it. `apple-dev-loop` explains the `[build]`, `[bundle.info]`, `[ios.info]` and `[local-values]` keys. [Release setup](#release-setup) explains `[release] assets`, and [Dock tile plug-in](#dock-tile-plug-in) explains `[build] dock-tile-plugin`.
+- Two files are copied once from `Tests/Fixtures/SampleApp/` at adoption and then belong to the app: `.github/workflows/dylkit.yml`, which runs DylKit's PR check and release and passes the app's secrets with `secrets: inherit`; and `.github/pull_request_template.md`, whose Release info box that check reads.
+- `swift run devkit <command>`, `swift run release-kit <step>` and `swift run dyl-lint` run DylKit's tools from the app repo. SwiftPM builds them from the resolved dependency, so the app holds no copy of them. The site's commands are the app's own npm scripts in `server/`.
+- `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `swift run devkit checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
+- `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `swift run devkit checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
 - The download site is `@dylkit/web`. `withDylKit` reads `DylApp.toml` and the screenshots' sizes when Next loads its config, and Next inlines them into the build, so nothing reads them at request time. Its pages and routes are one-line re-exports, and it serves the latest release from the app's Blob store:
 
 ```ts

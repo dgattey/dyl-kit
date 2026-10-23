@@ -9,9 +9,9 @@ description: Verify UI changes with background screenshots of the real app in bo
 2. Capture both appearances:
 
 ```bash
-./run dev capture --appearance light
-./run dev capture --appearance dark --no-build
-./run dev ios --run --capture --appearance dark
+swift run devkit capture --appearance light
+swift run devkit capture --appearance dark --no-build
+swift run devkit ios --run --capture --appearance dark
 ```
 
 3. Open each PNG and check it against the request: layout, truncation, highlight color, empty states, and both appearances. A capture you didn't look at isn't verification.

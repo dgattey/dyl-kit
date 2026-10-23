@@ -1,6 +1,7 @@
 # Each DylKit app's PR check and release. Apps call it from .github/workflows/dylkit.yml at the DylKit version they pin,
 # on pull_request (opened, edited, reopened, synchronize, closed) and workflow_dispatch, with contents: write and
-# pull-requests: read, passing the two release secrets. Tests/Fixtures/SampleApp/.github/workflows/dylkit.yml is that caller.
+# pull-requests: read, and `secrets: inherit`, which carries the app's SPARKLE_ED_PRIVATE_KEY_BASE64 and
+# BLOB_READ_WRITE_TOKEN across repos. Tests/Fixtures/SampleApp/.github/workflows/dylkit.yml is that caller.
 name: app
 
 on:
@@ -99,8 +100,6 @@ jobs:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: swiftpm-${{ runner.os }}-
-      - name: Build release-kit
-        run: swift build -c release --product release-kit -q
       - name: Plan the version
         id: version
         env:
@@ -109,19 +108,19 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -o pipefail
-          .build/release/release-kit version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
+          swift run release-kit version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} | tee -a "$GITHUB_OUTPUT"
       - name: Bundle
-        run: .build/release/release-kit bundle
+        run: swift run release-kit bundle
       - name: Sign
-        run: .build/release/release-kit sign
+        run: swift run release-kit sign
       - name: Appcast
         env:
           SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
-        run: .build/release/release-kit appcast
+        run: swift run release-kit appcast
       - name: Publish
         env:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-        run: .build/release/release-kit publish
+        run: swift run release-kit publish
 
   # Waiting for the deploy is plain polling, so it runs on ubuntu instead of billing macOS minutes.
   live-site:

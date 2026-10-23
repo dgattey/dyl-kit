@@ -46,7 +46,7 @@ public struct WindowCapture: Sendable {
     }
 
     /// The largest normal-layer window `pid` owns.
-    private static func mainWindow(of pid: Int32) -> UInt32? {
+    static func mainWindow(of pid: Int32) -> UInt32? {
         #if canImport(CoreGraphics)
         guard
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)

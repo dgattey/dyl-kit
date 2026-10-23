@@ -107,9 +107,9 @@ public struct Launcher: Sendable {
     }
 
     /// Always `open -g`, never a foreground launch: focus stays where it is. Returns the new process id once it's
-    /// running.
+    /// running, after `reopenIfWindowless`.
     ///
-    /// - Blocking: runs `open` and polls `pgrep`.
+    /// - Blocking: runs `open` and polls `pgrep` and the window list.
     @discardableResult
     public func launch(_ app: URL, options: LaunchOptions) async throws -> Int32 {
         try await stop(app)
@@ -117,6 +117,7 @@ public struct Launcher: Sendable {
         for _ in 0..<100 {
             if let pid = pid(of: app) {
                 Log.step("launched \(app.lastPathComponent) in the background (pid \(pid))")
+                try await reopenIfWindowless(app, pid: pid)
                 return pid
             }
             try await Task.sleep(for: .milliseconds(100))
@@ -124,9 +125,28 @@ public struct Launcher: Sendable {
         throw ToolError("\(app.lastPathComponent) didn't start")
     }
 
+    /// Linked against the macOS 27 SDK, a SwiftUI app launched without activating can open no window until it gets a
+    /// reopen event. A second `open -g` sends one without activating it. It waits `grace` first, because a reopen while
+    /// no window is visible opens a new one, and a slow first window would end up with a twin.
+    ///
+    /// - Blocking: polls the window list and runs `open`.
+    private func reopenIfWindowless(_ app: URL, pid: Int32, grace: Duration = .seconds(5)) async throws {
+        #if canImport(CoreGraphics)
+        let deadline = ContinuousClock.now + grace
+        while ContinuousClock.now < deadline {
+            if WindowCapture.mainWindow(of: pid) != nil { return }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        Log.step("no window after \(grace); reopening \(app.lastPathComponent) in the background")
+        try Shell.run(Self.reopenArguments(app))
+        #endif
+    }
+
     static func openArguments(_ app: URL, options: LaunchOptions) -> [String] {
         let environment = options.environment.sorted { $0.key < $1.key }.flatMap { ["--env", "\($0.key)=\($0.value)"] }
         let arguments = options.arguments.isEmpty ? [] : ["--args"] + options.arguments
         return ["open", "-g"] + environment + [app.path] + arguments
     }
+
+    static func reopenArguments(_ app: URL) -> [String] { ["open", "-g", app.path] }
 }

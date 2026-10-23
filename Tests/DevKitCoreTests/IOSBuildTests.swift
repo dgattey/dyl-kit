@@ -20,4 +20,12 @@ import Testing
         let withoutIOSId = text.replacingOccurrences(of: #"bundle-id = "com.dylkit.Sample.ios""#, with: "")
         #expect(IOSBuild.devBundleId(try DylAppManifest.decode(withoutIOSId)) == "com.dylkit.Sample.dev")
     }
+
+    /// Sudylko at v0.3.0: under `swift run`, Xcode 27 linked the simulator product against the macOS SDK.
+    @Test func theSimulatorBuildNeverInheritsTheMacOSSDKRoot() {
+        let arguments = IOSBuild.xcodebuildArguments(
+            scheme: "SampleApp", derivedData: URL(fileURLWithPath: "/tmp/dd"), linkerFlags: ["-Xlinker", "x"])
+        #expect(arguments.prefix(3) == ["-u", "SDKROOT", "xcodebuild"])
+        #expect(arguments.last == "OTHER_LDFLAGS=$(inherited) -Xlinker x")
+    }
 }

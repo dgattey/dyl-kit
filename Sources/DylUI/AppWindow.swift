@@ -40,8 +40,8 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
     }
 
     public var body: some Scene {
-        // Linked against the macOS 27 SDK, a WindowGroup without an id opens no window when the app launches without
-        // activating, as every devkit launch does.
+        // Linked against the macOS 27 SDK, this can open no window when the app launches without activating, id or
+        // not, until a reopen event arrives; devkit's launcher sends one.
         WindowGroup(title, id: "main") {
             MainWindowContent(palette: palette, content: content)
         }

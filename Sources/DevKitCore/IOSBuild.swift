@@ -33,13 +33,8 @@ public struct IOSBuild: Sendable {
         let linkerFlags = platform.platformVersionFlags(minimumOS: minimumOS, sdkVersion: sdkVersion)
         Log.step("xcodebuild \(scheme) for the iOS Simulator (SDK \(sdkVersion))")
         try Shell.run(
-            [
-                "xcodebuild", "build", "-quiet", "-scheme", scheme, "-destination", "generic/platform=iOS Simulator",
-                "-derivedDataPath", derivedData.path, "-skipPackagePluginValidation", "-skipMacroValidation",
-                "OTHER_LDFLAGS=$(inherited) \(linkerFlags.joined(separator: " "))",
-            ],
-            cwd: workspace.root
-        )
+            Self.xcodebuildArguments(scheme: scheme, derivedData: derivedData, linkerFlags: linkerFlags),
+            cwd: workspace.root)
         let products = derivedData.appending(path: "Build/Products/Debug-iphonesimulator")
         try ResourceCompiler.Platform.verifySDK(of: products.appending(path: product), sdkVersion: sdkVersion)
         let fileManager = FileManager.default
@@ -61,6 +56,18 @@ public struct IOSBuild: Sendable {
         try Shell.run(["codesign", "--force", "--sign", "-", appURL.path])
         Log.step("built \(appURL.path)")
         return appURL
+    }
+
+    /// `swift run` exports the macOS SDK as `SDKROOT`, and under it Xcode 27's clang warns that it links the simulator
+    /// product against the macOS sysroot (`-Wincompatible-sysroot`, once per arch), so `env`, which `Shell` runs
+    /// everything through, drops it.
+    static func xcodebuildArguments(scheme: String, derivedData: URL, linkerFlags: [String]) -> [String] {
+        [
+            "-u", "SDKROOT",
+            "xcodebuild", "build", "-quiet", "-scheme", scheme, "-destination", "generic/platform=iOS Simulator",
+            "-derivedDataPath", derivedData.path, "-skipPackagePluginValidation", "-skipMacroValidation",
+            "OTHER_LDFLAGS=$(inherited) \(linkerFlags.joined(separator: " "))",
+        ]
     }
 
     private struct SchemeList: Decodable {

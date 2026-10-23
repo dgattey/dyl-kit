@@ -1,8 +1,7 @@
 #!/bin/sh
-# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.
 # ./run dev <devkit args> | ./run release <release-kit args> | ./run lint [dyl-lint args]
 # Builds DylKit's tools once (cached in .build/release) and runs them directly. Any other mode goes to the app's own
-# executable scripts/run, mode included, which sync never touches.
+# executable scripts/run, mode included.
 set -eu
 root=$(cd "$(dirname "$0")" && pwd)
 case "${1:-}" in

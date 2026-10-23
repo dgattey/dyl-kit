@@ -65,9 +65,8 @@ public struct ReleaseChecks: Sendable {
         check("forge_neutral", checkForgeNeutral)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
-        check("dylkit_web_version", checkWebMatchesPin)
+        check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
-        check("shared_files", checkSharedFiles)
         if let staged {
             check("staged_release") { checkStaged(staged, into: &$0) }
         }
@@ -82,14 +81,6 @@ public struct ReleaseChecks: Sendable {
 
     private func error(_ rule: String, _ file: String?, _ message: String) -> CheckFinding {
         CheckFinding(rule: rule, severity: .error, file: file, message: message)
-    }
-
-    private func checkSharedFiles(_ findings: inout [CheckFinding]) {
-        // Without `./run` there's no `./run dev`; SwiftPM runs a dependency's executables directly.
-        let fix = read("run") == nil ? "`swift run devkit sync`" : "`./run dev sync`"
-        for (file, drift) in SharedFiles.drift(root: workspace.root) {
-            findings.append(error("shared_files", file.path, "\(drift.rawValue); run \(fix)"))
-        }
     }
 
     private var publicKey: String? {
@@ -306,7 +297,8 @@ public struct ReleaseChecks: Sendable {
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
     /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45). It diffs from the last deployed commit, so a
-    /// site change in a skipped commit still deploys with the next one.
+    /// site change in a skipped commit still deploys with the next one, and a branch's first deploy, which has no last
+    /// commit, always builds.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
@@ -333,13 +325,12 @@ public struct ReleaseChecks: Sendable {
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
-        let prefix = #"git diff --quiet "${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}" HEAD -- "#
+        let prefix = #"[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
         guard command.hasPrefix(prefix) else {
             let json = prefix.replacingOccurrences(of: "\"", with: #"\""#)
             let reason =
-                command.hasPrefix("git diff --quiet HEAD^ HEAD -- ")
-                ? "diffs from HEAD^, so a site change in a commit Vercel skipped never deploys; use"
-                : "needs"
+                command.contains("HEAD^")
+                ? "diffs from HEAD^, which can skip a site change Vercel never deployed; use" : "needs"
             findings.append(
                 error("site_deploy", file, "\(reason) `\"ignoreCommand\": \"\(json)<paths>\"`"))
             return
@@ -369,22 +360,47 @@ public struct ReleaseChecks: Sendable {
         var pins: [Pin]
     }
 
-    /// SwiftPM and npm pin DylKit separately, so the app and its site can drift onto different releases. A DylKit
+    /// SwiftPM, npm and the app's workflow each pin DylKit, so they can drift onto different releases. A DylKit
     /// pinned to a branch or revision has no version to compare.
-    private func checkWebMatchesPin(_ findings: inout [CheckFinding]) {
+    private func checkPinsMatch(_ findings: inout [CheckFinding]) {
+        let callers = workflows.compactMap { workflow in
+            workflow.text.firstMatch(of: /uses:\s*dgattey\/dyl-kit\/\.github\/workflows\/app\.yml@([^\s#]+)/)
+                .map { (path: workflow.path, ref: String($0.1)) }
+        }
+        if callers.isEmpty {
+            findings.append(
+                error(
+                    "dylkit_version", ".github/workflows",
+                    "nothing calls \(Self.appWorkflow); copy .github/workflows/dylkit.yml from DylKit's SampleApp"))
+        }
+        for workflow in workflows where workflow.text.contains("Written by `devkit sync`") {
+            findings.append(
+                error("dylkit_version", workflow.path, "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it"))
+        }
+        guard
+            let pinned = read("Package.resolved")
+                .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) })?
+                .pins.first(where: { $0.identity == "dyl-kit" })?.state.version
+        else { return }
+        for caller in callers where caller.ref != "v\(pinned)" {
+            findings.append(
+                error(
+                    "dylkit_version", caller.path,
+                    "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); use @v\(pinned)"))
+        }
         guard let (siteRoot, package) = site,
             let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
-            let resolved = read("Package.resolved")
-                .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) }),
-            let pinned = resolved.pins.first(where: { $0.identity == "dyl-kit" })?.state.version,
             match.2 != pinned
         else { return }
         let url = match.1.replacingOccurrences(of: match.2, with: pinned)
         findings.append(
             error(
-                "dylkit_web_version", "\(siteRoot)/package.json",
+                "dylkit_version", "\(siteRoot)/package.json",
                 "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
+
+    /// The reusable workflow that checks each app's PRs and releases its merges.
+    static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
 
     /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
     static let webTarballURL =

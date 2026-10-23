@@ -5,7 +5,7 @@ description: Cut, check or debug a Sparkle release of a DylKit macOS app — ver
 
 # Apple release
 
-The release is `release-kit`, run in steps by the shared `release` workflow (`./run dev sync` writes it) when a PR merges, or locally with `./run release <step>`:
+The release is `release-kit`, run in steps by DylKit's reusable `app` workflow, which the app's `.github/workflows/dylkit.yml` calls, when a PR merges, or locally with `./run release <step>`:
 
 1. `version --pr <n>` reads the merged PR's `# Release info` checkbox from GitHub (the merge commit message if that lookup fails), the tags and the published feeds, and writes `build/release/plan.json`. If HEAD already carries a release tag, it resumes that release, so rerunning a failed job finishes it.
 2. `bundle` builds the release app into `build/release/stage` with bundle-relative rpaths only.

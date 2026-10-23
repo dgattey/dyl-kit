@@ -59,7 +59,8 @@ jobs:
       - name: Test @dylkit/web
         run: npm ci --no-audit --no-fund && npm test
 
-  # The shared files apps sync, plus DylKit's own workflows. actionlint runs shellcheck over every `run:` block.
+  # DylKit's workflows, the reusable one apps call included, and SampleApp's copies of the files apps adopt once.
+  # actionlint runs shellcheck over every `run:` block.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -68,6 +69,6 @@ jobs:
       - name: actionlint
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint .github/workflows/*.yml Sources/ReleaseKit/Shared/*.yml
+          ./actionlint .github/workflows/*.yml Tests/Fixtures/SampleApp/.github/workflows/*.yml
       - name: shellcheck ./run
-        run: shellcheck Sources/ReleaseKit/Shared/run
+        run: shellcheck Tests/Fixtures/SampleApp/run

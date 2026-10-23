@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
-# Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: sync, version, bundle, sign,
+# Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: version, bundle, sign,
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
@@ -12,14 +12,12 @@ work="${1:-$(mktemp -d)}"
 fail() { echo "::error::$*" >&2; exit 1; }
 
 swift build --package-path "$kit" --product release-kit -q
-swift build --package-path "$kit" --product devkit -q
 release_kit="$kit/.build/debug/release-kit"
 
 rm -rf "$work"
 cp -R "$kit/Tests/Fixtures/SampleApp" "$work"
 cd "$work"
 sed -i '' "s|.package(path: \"../../..\")|.package(path: \"$kit\")|" Package.swift
-"$kit/.build/debug/devkit" sync
 
 # Sparkle's private key file is the base64 Ed25519 seed; SUPublicEDKey is the base64 public key.
 openssl genpkey -algorithm ed25519 -out key.pem

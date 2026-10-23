@@ -30,6 +30,13 @@ import Testing
         #expect(Launcher.reopenArguments(app) == ["open", "-g", app.path])
     }
 
+    /// Sconeos: `relaunch` left no window. An old copy that outlives the stop must not stand in for the new launch.
+    @Test func aLaunchNeverTakesTheOldCopysPid() {
+        #expect(Launcher.newPid([25600, 25673], excluding: [25600]) == 25673)
+        #expect(Launcher.newPid([25600], excluding: [25600]) == nil)
+        #expect(Launcher.newPid([], excluding: []) == nil)
+    }
+
     @Test func overridesReadDevkitVariablesThenArguments() {
         let devkit = LaunchOverrides(environment: ["DYLKIT_INITIAL_VIEW": "Living"], arguments: [])
         #expect(devkit.initialView == "living")

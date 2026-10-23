@@ -24,8 +24,8 @@ public struct WindowCapture: Sendable {
         return capturesDir.appending(path: "\(name).png")
     }
 
-    /// Waits up to `timeout` for `pid` to show a normal window, then captures it without its shadow once it stops
-    /// changing.
+    /// Waits up to `timeout` for `pid` to show a normal window on screen, then captures it without its shadow once it
+    /// stops changing.
     ///
     /// - Blocking: polls the window list and runs `screencapture`.
     public func capture(pid: Int32, to output: URL, timeout: Duration = .seconds(15), settle: SettleWait = .init())
@@ -34,34 +34,72 @@ public struct WindowCapture: Sendable {
         let deadline = ContinuousClock.now + timeout
         var window: UInt32?
         while window == nil, ContinuousClock.now < deadline {
-            window = Self.mainWindow(of: pid)
+            window = Self.mainWindow(of: pid, onScreenOnly: true)
             if window == nil { try await Task.sleep(for: .milliseconds(250)) }
         }
-        guard let window else { throw ToolError("pid \(pid) showed no window within \(timeout)") }
+        guard let window else {
+            if let hidden = Self.mainWindow(of: pid) { throw Self.offScreen(hidden) }
+            throw ToolError("pid \(pid) showed no window within \(timeout)")
+        }
         try await settle.capture(to: output) { frame in
-            try Shell.run(["screencapture", "-l", String(window), "-o", "-x", frame.path])
+            let arguments = ["screencapture", "-l", String(window), "-o", "-x", frame.path]
+            guard try Shell.run(arguments, quiet: true, allowFailure: true) == 0 else {
+                throw Self.unreadable(window)
+            }
         }
         Log.step("captured window \(window) to \(output.path)")
         return output
     }
 
-    /// The largest normal-layer window `pid` owns.
-    static func mainWindow(of pid: Int32) -> UInt32? {
+    enum Visibility: Equatable { case onScreen, offScreen, gone }
+
+    /// Why `screencapture` couldn't read `window`, in words rather than its "could not create image from window".
+    static func unreadable(_ window: UInt32) -> ToolError {
+        switch visibility(of: window) {
+        case .offScreen: offScreen(window)
+        case .gone: ToolError("window \(window) closed before it could be captured")
+        case .onScreen: ToolError("screencapture couldn't read window \(window)")
+        }
+    }
+
+    static func offScreen(_ window: UInt32) -> ToolError {
+        ToolError(
+            "window \(window) is off screen (on another Space, minimized or hidden), so it can't be captured; "
+                + "switch back to the Space it opened on")
+    }
+
+    /// The window server only draws a window for `screencapture -l` while it's on screen in the current Space.
+    static func visibility(of window: UInt32) -> Visibility {
+        #if canImport(CoreGraphics)
+        guard
+            let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(window))
+                as? [[CFString: AnyObject]])?.first
+        else { return .gone }
+        return (info[kCGWindowIsOnscreen] as? Bool) == true ? .onScreen : .offScreen
+        #else
+        return .gone
+        #endif
+    }
+
+    /// The largest normal-layer window `pid` owns, preferring one on screen. The list also holds windows that were
+    /// created but never ordered in, or that sit on another Space, so `onScreenOnly` is what "has a window" means.
+    static func mainWindow(of pid: Int32, onScreenOnly: Bool = false) -> UInt32? {
         #if canImport(CoreGraphics)
         guard
             let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)
                 as? [[CFString: AnyObject]]
         else { return nil }
-        let candidates = windows.compactMap { info -> (id: UInt32, area: Double)? in
+        let candidates = windows.compactMap { info -> (id: UInt32, onScreen: Bool, area: Double)? in
             guard (info[kCGWindowOwnerPID] as? Int32) == pid, (info[kCGWindowLayer] as? Int) == 0,
                 let id = info[kCGWindowNumber] as? UInt32,
                 let boundsInfo = info[kCGWindowBounds] as? NSDictionary,
                 let bounds = CGRect(dictionaryRepresentation: boundsInfo),
                 bounds.width > 200, bounds.height > 200
             else { return nil }
-            return (id, Double(bounds.width * bounds.height))
+            let onScreen = (info[kCGWindowIsOnscreen] as? Bool) == true
+            return onScreenOnly && !onScreen ? nil : (id, onScreen, Double(bounds.width * bounds.height))
         }
-        return candidates.max { $0.area < $1.area }?.id
+        return candidates.max { ($0.onScreen ? 1 : 0, $0.area) < ($1.onScreen ? 1 : 0, $1.area) }?.id
         #else
         return nil
         #endif

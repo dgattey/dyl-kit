@@ -70,4 +70,42 @@ import UniformTypeIdentifiers
         }
         #expect(FileManager.default.fileExists(atPath: output.path))
     }
+
+    /// Sconeos: frames 0 to 18 captured, then the window went to another Space and frame 19 failed, failing the run.
+    @Test func keepsTheLastGoodFrameWhenTheWindowGoesAway() async throws {
+        var index = 0
+        let output = Self.output()
+        defer { try? FileManager.default.removeItem(at: output) }
+        let wait = SettleWait(timeout: .milliseconds(200), minimum: .seconds(5), interval: .milliseconds(10))
+        try await wait.capture(to: output) { frame in
+            index += 1
+            guard index <= 3 else { throw ToolError("window 7681 is off screen") }
+            try Self.writePNG(gray: CGFloat(index) / 4, to: frame)
+        }
+        #expect(index > 4)
+        let third = Self.output()
+        defer { try? FileManager.default.removeItem(at: third) }
+        try Self.writePNG(gray: 0.75, to: third)
+        #expect(SettleWait.pixels(at: output) == SettleWait.pixels(at: third))
+    }
+
+    @Test func retriesAFailedFrameAndThrowsItIfNoneWorks() async throws {
+        var attempts = 0
+        let output = Self.output()
+        let wait = SettleWait(timeout: .milliseconds(100), minimum: .zero, interval: .milliseconds(10))
+        await #expect(throws: ToolError.self) {
+            try await wait.capture(to: output) { _ in
+                attempts += 1
+                throw ToolError("window 7681 is off screen")
+            }
+        }
+        #expect(attempts > 1)
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
+    @Test func aWindowThatsGoneIsSaidPlainly() {
+        #expect(WindowCapture.visibility(of: .max) == .gone)
+        #expect(WindowCapture.unreadable(.max).message.contains("closed"))
+        #expect(WindowCapture.offScreen(7681).message.contains("another Space"))
+    }
 }

@@ -1,4 +1,5 @@
 import CoreGraphics
+import DylToolSupport
 import Foundation
 import ImageIO
 import Testing

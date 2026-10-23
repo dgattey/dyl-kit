@@ -74,20 +74,20 @@ import UniformTypeIdentifiers
 
     /// Sconeos: frames 0 to 18 captured, then the window went to another Space and frame 19 failed, failing the run.
     @Test func keepsTheLastGoodFrameWhenTheWindowGoesAway() async throws {
+        let good = (1...3).map { _ in Self.output() }
+        defer { good.forEach { try? FileManager.default.removeItem(at: $0) } }
+        for (index, url) in good.enumerated() { try Self.writePNG(gray: CGFloat(index + 1) / 4, to: url) }
         var index = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
         let wait = SettleWait(timeout: .seconds(1), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
-            guard index <= 3 else { throw ToolError("window 7681 is off screen") }
-            try Self.writePNG(gray: CGFloat(index) / 4, to: frame)
+            guard index <= good.count else { throw ToolError("window 7681 is off screen") }
+            try FileManager.default.copyItem(at: good[index - 1], to: frame)
         }
-        #expect(index > 4)
-        let third = Self.output()
-        defer { try? FileManager.default.removeItem(at: third) }
-        try Self.writePNG(gray: 0.75, to: third)
-        #expect(SettleWait.pixels(at: output) == SettleWait.pixels(at: third))
+        #expect(index > good.count + 1)
+        #expect(SettleWait.pixels(at: output) == SettleWait.pixels(at: good[2]))
     }
 
     @Test func retriesAFailedFrameAndThrowsItIfNoneWorks() async throws {

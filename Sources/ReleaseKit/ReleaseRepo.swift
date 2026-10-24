@@ -50,6 +50,9 @@ public struct ReleaseRepo: Sendable {
             commitCount: commitCount, bump: bump)
         let state: ReleasePipeline.State
         switch plan {
+        case .first(let version, let build):
+            state = .init(version: version.description, build: build, subject: head.subject, body: body)
+            Log.step("releasing \(version) (build \(build)), the first; the \(bump.rawValue) bump applies from the next")
         case .next(let version, let build, let current):
             state = .init(version: version.description, build: build, subject: head.subject, body: body)
             Log.step("releasing \(version) (build \(build), \(bump.rawValue) bump from \(current))")

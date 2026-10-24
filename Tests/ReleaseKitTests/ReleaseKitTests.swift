@@ -387,6 +387,35 @@ private let sconeosModules = [
         #expect(plan(["nightly"]) == .next(v110, build: 25, bumpedFrom: v109))
     }
 
+    /// Sudylko #5 was labeled Minor and would have shipped 1.1.0. A rerun after `publish` tagged HEAD resumes 1.0.0.
+    @Test(arguments: AppVersion.Bump.allCases)
+    func aFirstReleaseIsOneZeroZeroWhateverTheBump(_ bump: AppVersion.Bump) throws {
+        let v100 = try #require(AppVersion("1.0.0"))
+        #expect(
+            ReleasePipeline.plan(headTags: [], tags: ["nightly"], published: [], commitCount: 4, bump: bump)
+                == .first(v100, build: 4))
+        #expect(
+            ReleasePipeline.plan(headTags: ["v1.0.0"], tags: ["v1.0.0"], published: [], commitCount: 4, bump: bump)
+                == .resumed(v100, build: 4))
+    }
+
+    /// One release out, by its tag or only by the feed a checkout without tags still reads, and the bump applies.
+    @Test(arguments: [
+        (AppVersion.Bump.patch, "1.0.1"), (AppVersion.Bump.minor, "1.1.0"), (AppVersion.Bump.major, "2.0.0"),
+    ])
+    func aLaterReleaseAppliesTheBump(_ bump: AppVersion.Bump, _ expected: String) throws {
+        let v100 = try #require(AppVersion("1.0.0"))
+        let next = try #require(AppVersion(expected))
+        var shipped = AppcastItem(build: 4)
+        shipped.shortVersion = "1.0.0"
+        #expect(
+            ReleasePipeline.plan(headTags: [], tags: ["v1.0.0"], published: [], commitCount: 6, bump: bump)
+                == .next(next, build: 6, bumpedFrom: v100))
+        #expect(
+            ReleasePipeline.plan(headTags: [], tags: [], published: [shipped], commitCount: 3, bump: bump)
+                == .next(next, build: 5, bumpedFrom: v100))
+    }
+
     /// A release that shipped after this one was planned would be undercut; an equal build is a publish re-run.
     @Test func publishRefusesABuildBelowThePublishedOne() throws {
         let published = [AppcastItem(build: 30), AppcastItem(build: 31)]
@@ -801,9 +830,15 @@ private let sconeosModules = [
         _ = try Shell.capture(["git"] + arguments, cwd: directory)
     }
 
-    @Test func stdoutIsOnlyTheOutputs() throws {
+    private let minorMerge = [
+        "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--quiet", "--allow-empty", "-m",
+        "Add a thing (#2)\n\n# Release notes\n\n- A thing.\n\n# Release info\n\n- [ ] Major\n- [x] Minor\n",
+    ]
+
+    /// SampleApp, whose feeds answer 404, committed as a Minor merge with nothing tagged. Returns the scratch folder,
+    /// to delete, and the app's checkout.
+    private func scratchApp() throws -> (scratch: URL, app: URL) {
         let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-version-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: scratch) }
         let origin = scratch.appending(path: "origin.git")
         let app = scratch.appending(path: "app")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -811,13 +846,14 @@ private let sconeosModules = [
         try git(["init", "--quiet", "--bare", origin.path], in: scratch)
         try git(["init", "--quiet", "-b", "main"], in: app)
         try git(["add", "."], in: app)
-        let message = "Add a thing (#2)\n\n# Release notes\n\n- A thing.\n\n# Release info\n\n- [ ] Major\n- [x] Minor\n"
-        try git(
-            ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--quiet", "-m", message],
-            in: app)
+        try git(minorMerge, in: app)
         try git(["remote", "add", "origin", origin.path], in: app)
         try git(["push", "--quiet", "origin", "main"], in: app)
+        return (scratch, app)
+    }
 
+    /// `release-kit version`'s stdout, failing the test unless it exits 0.
+    private func version(_ app: URL) throws -> String {
         let process = Process()
         process.executableURL = releaseKit
         process.arguments = ["version", "--root", app.path]
@@ -827,12 +863,38 @@ private let sconeosModules = [
         try process.run()
         let output = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         process.waitUntilExit()
-
         #expect(process.terminationStatus == 0)
+        return output
+    }
+
+    @Test func stdoutIsOnlyTheOutputs() throws {
+        let (scratch, app) = try scratchApp()
+        defer { try? FileManager.default.removeItem(at: scratch) }
         #expect(
-            output
-                == "version=1.1.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n"
+            try version(app)
+                == "version=1.0.0\nbuild=1\nsite=https://dgattey.github.io/dyl-kit-sample\n"
                 + "assets=https://dylkitsample.public.blob.vercel-storage.com\n")
+    }
+
+    /// Sudylko #5, labeled Minor, would have shipped 1.1.0. The plan, a rerun, and the notes and files every later
+    /// step names all read 1.0.0, a rerun after `publish` tagged HEAD resumes it, and the next merge bumps from it.
+    @Test func aFirstReleaseIsOneZeroZeroThroughEveryStep() throws {
+        let (scratch, app) = try scratchApp()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        #expect(try version(app).hasPrefix("version=1.0.0\n"))
+        #expect(try version(app).hasPrefix("version=1.0.0\n"))
+
+        let pipeline = ReleasePipeline(workspace: try Workspace.locate(app.path))
+        let state = try pipeline.state()
+        #expect(state.version == "1.0.0")
+        #expect(pipeline.releaseNotes(state: state, history: []).contains(">1.0.0</h3>"))
+        #expect(pipeline.archiveURL(state).lastPathComponent == "Sample-1.0.0.zip")
+        #expect(pipeline.downloadPrefix(tag: state.tag).hasSuffix("/releases/v1.0.0/"))
+
+        try git(["tag", "v1.0.0"], in: app)
+        #expect(try version(app).hasPrefix("version=1.0.0\n"))
+        try git(minorMerge, in: app)
+        #expect(try version(app).hasPrefix("version=1.1.0\n"))
     }
 
     /// DylKit has no app or feed: the latest tag and the merged PR's box plan its version, and a rerun resumes it.

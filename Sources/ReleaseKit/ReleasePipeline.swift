@@ -64,6 +64,8 @@ public struct ReleasePipeline: Sendable {
 
     /// What `version` decides.
     enum Plan: Equatable {
+        /// No release or tag yet: 1.0.0 whatever the bump, which only applies from the next release.
+        case first(AppVersion, build: Int)
         /// The current version bumped, at the next build.
         case next(AppVersion, build: Int, bumpedFrom: AppVersion)
         /// The version a release tag at HEAD names. Only `publish` tags, so an earlier run of this release got that far;
@@ -81,8 +83,8 @@ public struct ReleasePipeline: Sendable {
             let shipped = published.filter { AppVersion($0.displayVersion) == version }.newest
             return .resumed(version, build: shipped?.build ?? build)
         }
-        let current = currentVersion(published: published, tags: tags)
-        return .next(current.bumped(bump), build: build, bumpedFrom: current)
+        guard let last = lastVersion(published: published, tags: tags) else { return .first(firstVersion, build: build) }
+        return .next(last.bumped(bump), build: build, bumpedFrom: last)
     }
 
     /// The version the last release shipped, which dev builds carry until the next one: the highest of the published
@@ -101,11 +103,18 @@ public struct ReleasePipeline: Sendable {
         return Self.currentVersion(published: published, tags: try repo.tags("--list"))
     }
 
+    static let firstVersion = AppVersion(major: 1, minor: 0, patch: 0)
+
     /// The highest of every published version and tag, or 1.0.0 for a first release.
     static func currentVersion(published: [AppcastItem], tags: [String]) -> AppVersion {
+        lastVersion(published: published, tags: tags) ?? firstVersion
+    }
+
+    /// The highest of every published version and tag, or nil when nothing has shipped.
+    static func lastVersion(published: [AppcastItem], tags: [String]) -> AppVersion? {
         let shipped = published.compactMap { AppVersion($0.displayVersion) }
         let tagged = tags.filter { $0.matches(pattern: #"^v?\d+\.\d+\.\d+$"#) }.compactMap { AppVersion($0) }
-        return (shipped + tagged).max() ?? AppVersion(major: 1, minor: 0, patch: 0)
+        return (shipped + tagged).max()
     }
 
     /// The commit count, raised above every build number already published so Sparkle always sees an upgrade.

@@ -34,6 +34,7 @@ swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN
 ## Invariants
 
 - The bump and notes come from the PR body, which needs exactly one checked box. No repo merge setting is involved. If neither the PR body nor the merge commit message checks exactly one box, `version` fails; rerun the workflow by hand with an explicit `release_type`.
+- A first release, with no tag and no published feed, ships as 1.0.0 whatever the box says. Every later release bumps the highest tag or published version.
 - Only release-kit calls a forge (`forge_neutral` enforces it), and only to read the PR body.
 - The published feeds are the site's feed and the Blob store's latest. Only a 404 counts as no feed (a first release). Any other error, or a feed without an integer `sparkle:version` on every item, fails the step.
 - Build numbers only go up: the commit count, raised above every published `sparkle:version`. `publish` and `check --live` refuse a staged build older than either published feed.

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
 # Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: version, bundle, sign,
-# appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
-# appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
-# services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
-# app icon changes them, that release and dev builds both carry a signed dock tile plug-in that loads, that no
-# build edits a binary after it's signed, and that the iOS Simulator build carries the macOS dev build's version.
+# appcast. It ships as 1.0.0 in the notes, appcast and release.json, though the bump is minor. Then it asserts what
+# Sparkle relies on: an enclosure on the Blob store's download for the tag (in the appcast and release.json), the
+# pinned designated requirement, a strict verify of the whole bundle, and nested XPC services that keep Sparkle's own
+# entitlements. It also checks the six site icons bundle writes, that recoloring the app icon changes them, that
+# release and dev builds both carry a signed dock tile plug-in that loads, that no build edits a binary after it's
+# signed, and that the iOS Simulator build carries the macOS dev build's version.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,6 +43,7 @@ git add -A
 git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qm "Sample"
 
 version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
+[[ "$version" == "1.0.0" ]] || fail "a first release planned $version, not 1.0.0, whatever the bump"
 unsigned_edits "$release_kit" bundle
 
 icons_dir="build/release/icons"
@@ -102,6 +104,11 @@ grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appca
 [[ -f build/release/release.json ]] || fail "appcast wrote no build/release/release.json"
 [[ "$(plutil -extract download raw -o - build/release/release.json)" == "$download" ]] ||
   fail "release.json's download isn't $download"
+[[ "$(plutil -extract version raw -o - build/release/release.json)" == "$version" ]] ||
+  fail "release.json's version isn't $version"
+grep -qF "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" build/release/appcast.xml ||
+  fail "the staged appcast's shortVersionString isn't $version"
+grep -qF ">$version</h3>" "build/release/Sample-$version.html" || fail "the release notes aren't headed $version"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

@@ -54,6 +54,60 @@ screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dar
     ]);
     assert.equal(site.assets, "https://demo.public.blob.vercel-storage.com");
     assert.equal(site.favicon, "light");
+    assert.equal(site.headingFont, "sans");
+    assert.deepEqual(site.features, []);
+  });
+
+  it("reads heading-font, frames and features", () => {
+    const site = siteIn(
+      app(`${manifest.replace('dark-src = "shot-dark.png"', 'frame = "iphone"')}heading-font = "serif"
+features = [{ title = "Seeded puzzles", body = "Every board has one answer." }]
+`),
+    );
+    assert.equal(site.headingFont, "serif");
+    assert.equal(site.screenshots[0].frame, "iphone");
+    assert.deepEqual(site.features, [{ title: "Seeded puzzles", body: "Every board has one answer." }]);
+  });
+
+  it("reads WebP sizes from each of its three headers", () => {
+    const root = app(manifest);
+    const webp = (chunk: string, body: (header: Buffer) => void) => {
+      const header = Buffer.alloc(30);
+      header.write("RIFF", 0, "latin1");
+      header.write("WEBP", 8, "latin1");
+      header.write(chunk, 12, "latin1");
+      body(header);
+      return header;
+    };
+    const files = {
+      "extended.webp": webp("VP8X", (header) => {
+        header.writeUIntLE(1599, 24, 3);
+        header.writeUIntLE(899, 27, 3);
+      }),
+      "lossy.webp": webp("VP8 ", (header) => {
+        header.writeUInt16LE(1600, 26);
+        header.writeUInt16LE(900, 28);
+      }),
+      "lossless.webp": webp("VP8L", (header) => {
+        header.writeUInt8(0x2f, 20);
+        header.writeUInt32LE(1599 | (899 << 14), 21);
+      }),
+    };
+    for (const [name, bytes] of Object.entries(files)) {
+      fs.writeFileSync(path.join(root, "server", "public", name), bytes);
+    }
+    const shots = Object.keys(files)
+      .map((name) => `{ src = "${name}", alt = "${name}" }`)
+      .join(", ");
+    fs.writeFileSync(path.join(root, "DylApp.toml"), manifest.replace(/screenshots = .*/, `screenshots = [${shots}]`));
+    assert.deepEqual(
+      siteIn(root).screenshots.map(({ width, height }) => [width, height]),
+      [
+        [1600, 900],
+        [1600, 900],
+        [1600, 900],
+      ],
+    );
   });
 
   it("keeps the app's own config and transpiles @dylkit/web", () => {
@@ -71,6 +125,18 @@ screenshots = [{ src = "shot.png", alt = "The main window", dark-src = "shot-dar
     );
     assert.throws(() => siteIn(app(manifest.replace(/assets = .*\n/, ""))), /`release\.assets`/);
     assert.throws(() => siteIn(app(`${manifest}favicon = "blue"\n`)), /`site\.favicon`/);
+    assert.throws(() => siteIn(app(`${manifest}heading-font = "mono"\n`)), /`site\.heading-font` must be "sans" or "serif"/);
+    assert.throws(
+      () => siteIn(app(manifest.replace('dark-src = "shot-dark.png"', 'frame = "picture-frame"'))),
+      /`site\.screenshots\[0\]\.frame` must be "iphone"/,
+    );
+    assert.throws(() => siteIn(app(`${manifest}features = [{ title = "No body" }]\n`)), /site\.features\[0\] needs `title` and `body`/);
+  });
+
+  it("names a screenshot that isn't PNG or WebP", () => {
+    const root = app(manifest);
+    fs.writeFileSync(path.join(root, "server", "public", "shot.png"), Buffer.from([0xff, 0xd8, 0xff, ...Array(27).fill(0)]));
+    assert.throws(() => siteIn(root), /shot\.png: screenshots must be PNG or WebP/);
   });
 });
 

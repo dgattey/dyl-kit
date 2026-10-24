@@ -8,6 +8,7 @@ import CryptoKit
 #endif
 
 @testable import ReleaseKit
+import ReleaseNotes
 
 let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures")
 let packageRoot = URL(fileURLWithPath: #filePath)
@@ -93,7 +94,7 @@ private let sconeosModules = [
               <li style="margin-bottom: 6px; line-height: 1.45;">Keeps real parentheses (like this one) intact, with spacing.</li>
               <li style="margin-bottom: 6px; line-height: 1.45;">Mixed noise &amp; &lt;tags&gt; escaped continuation line joins the bullet</li>
               <li style="margin-bottom: 6px; line-height: 1.45;">nested bullet becomes its own bullet</li>
-              <li style="margin-bottom: 6px; line-height: 1.45;">star bullet with <code>code</code></li>
+              <li style="margin-bottom: 6px; line-height: 1.45;">star bullet with code</li>
             </ul>
             """#
         ),
@@ -103,6 +104,75 @@ private let sconeosModules = [
         let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + sconeosModules)
         let extracted = ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "")
         #expect(formatter.html(extracted.isEmpty ? body : extracted, version: "2.3.4") == html)
+    }
+}
+
+@Suite struct ReleaseNotesTests {
+    @Test func releaseNotesWinOverWhatChangedWithoutCommentsOrFooters() {
+        let body = """
+            # What changed?
+
+            - Builds with `--disable-get-task-allow-entitlement` in `Bundler.swift`.
+
+            # Release notes
+            <!-- 1–3 plain-English bullets. -->
+
+            - Dev builds no longer print code-signing warnings (#8).
+
+            # Release info
+
+            - [x] Patch
+            """
+        #expect(ReleaseNotes.markdown(body: body) == "- Dev builds no longer print code-signing warnings (#8).")
+        #expect(ReleaseNotes.problems(inBody: body).isEmpty)
+        let footer = "# Release notes\n\n- Faster sync.\n\n---\n\n- [Open in Cursor](https://cursor.com/agents/bc-1)"
+        #expect(ReleaseNotes.markdown(body: footer) == "- Faster sync.")
+    }
+
+    @Test func whatChangedIsTheFallbackWhenReleaseNotesAreMissingOrEmpty() {
+        let body = "# Release notes\n\n- \n\n# Highlights\n\n- Old heading.\n\n# What changed?\n\n- Map drags."
+        #expect(ReleaseNotes.markdown(body: body) == "- Map drags.")
+        #expect(ReleaseNotes.markdown(body: "# Summary\n\n- Faster sync.") == "- Faster sync.")
+        #expect(ReleaseNotes.markdown(body: "<!-- # Release notes\n- Hidden. -->") == nil)
+        #expect(ReleaseNotes.problems(inBody: "# What changed?\n\n- Map drags.") == [
+            "there's no # Release notes section with content; add 1–3 plain-English bullets above # Release info"
+        ])
+    }
+
+    @Test(arguments: [
+        ("- Uses `shippedVersion()` now.", "backticked code `shippedVersion()`"),
+        ("- Edited Sources/ReleaseKit/Bundler.swift.", "a file path Sources/ReleaseKit/Bundler.swift"),
+        ("- Moved the check to web/src.", "a file path web/src"),
+        ("- Reads DylApp.toml and package.json.", "a file path DylApp.toml, package.json"),
+        ("- Builds with --disable-get-task-allow-entitlement.", "a command-line flag --disable-get-task-allow-entitlement"),
+        ("- Calls shippedVersion() first.", "a code identifier shippedVersion()"),
+        ("- Fixed Bundler.fixRpaths and state.externalSpotify.", "a code identifier Bundler.fixRpaths, state.externalSpotify"),
+        ("- Sets BLOB_READ_WRITE_TOKEN and site_deploy.", "a code identifier BLOB_READ_WRITE_TOKEN, site_deploy"),
+        ("- Ships @dylkit/web.", "a code identifier @dylkit/web"),
+        ("- Drops .changelog__code styling.", "a CSS selector or dotfile .changelog__code"),
+    ])
+    func rejectsCode(_ notes: String, _ problem: String) {
+        #expect(ReleaseNotes.problems(in: notes) == ["\(problem) in “\(notes)”"])
+    }
+
+    @Test func acceptsPlainEnglish() {
+        let notes = """
+            - The iOS and macOS apps show the same version, like v0.3.5, on iPhone's Settings screen (#10).
+            - Node.js 22 builds of the download site at dylangattey.com work again, e.g. on Vercel — see [the PR](https://github.com/dgattey/dyl-kit/pull/9).
+            - **Faster sync:** Apple silicon and Intel Macs re-sign the app once, 24/7 and/or on demand, since 10/24/2026.
+            """
+        #expect(ReleaseNotes.problems(in: notes).isEmpty)
+        #expect(ReleaseNotes.problems(in: "One plain sentence for internal plumbing (#4).").isEmpty)
+    }
+
+    @Test func rejectsMoreThanThreeBullets() {
+        #expect(ReleaseNotes.problems(in: "- One.\n- Two.\n- Three.\n- Four.") == ["4 bullets; keep it to 1–3"])
+    }
+
+    /// scone-os #7 put a component name in backticks in otherwise user-facing notes.
+    @Test func scone7NotesFailTheRules() throws {
+        let problems = ReleaseNotes.problems(inBody: try fixture("release-info/pr-7-body.md"))
+        #expect(problems.count == 1 && problems[0].hasPrefix("backticked code `Playing on This computer`"))
     }
 }
 
@@ -189,7 +259,7 @@ private let sconeosModules = [
         #expect(
             notes
                 == "Covers in the editor.\n### Changes\n- Paste a cover image.\n### Details\n- Drop a cover file.")
-        #expect(ReleaseInfo.section("Description", in: "# Description\n- Faster sync.") == "- Faster sync.")
+        #expect(ReleaseNotes.section("Description", in: "# Description\n- Faster sync.") == "- Faster sync.")
         let html = NotesFormatter().html(notes, version: "1.0.0")
         #expect(html.contains("Paste a cover image.") && html.contains("Drop a cover file."))
         #expect(!html.contains("Pasted three covers") && !html.contains("Changes"))
@@ -413,7 +483,7 @@ private let sconeosModules = [
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
             "server/vercel.json", ".github/pull_request_template.md", ".github/workflows/dylkit.yml",
-            ".github/workflows/verify.yml",
+            ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
         for path in appFiles {
             let destination = root.appending(path: path)
@@ -485,6 +555,27 @@ private let sconeosModules = [
         for rule in ["min_os_consistency", "appcast_signature", "staged_release"] {
             #expect(failed[rule]?.count == 1 && failed[rule]?.first?.contains("24b") == true, "\(rule): \(failed)")
         }
+    }
+
+    @Test func prTemplateNeedsReleaseNotesAboveReleaseInfoAndTheRule() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let template = workspace.url(".github/pull_request_template.md")
+        let original = try String(contentsOf: template, encoding: .utf8)
+        func failures(_ text: String) throws -> [String]? {
+            try Data(text.utf8).write(to: template)
+            return errors(ReleaseChecks(workspace: workspace).run())["release_notes"]
+        }
+        #expect(try failures(original) == nil)
+        #expect(try failures("# What changed?\n\n-\n\n# Release info\n\n- [x] Patch") != nil)
+        #expect(try failures("<!-- # Release notes -->\n# Release info\n\n- [x] Patch") != nil)
+        #expect(try failures("# Release info\n\n- [x] Patch\n\n## Release notes\n\n-") != nil)
+        #expect(try failures("## Release notes\n\n-\n\n## Release info\n\n- [x] Patch") == nil)
+
+        try FileManager.default.removeItem(at: workspace.url(".cursor/rules/changelog-release-notes.mdc"))
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["release_notes"] == [
+            ".cursor/rules/changelog-release-notes.mdc"
+        ])
     }
 
     /// Photos #9: library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.

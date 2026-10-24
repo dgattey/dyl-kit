@@ -1,0 +1,44 @@
+---
+description: Write a plain-English # Release notes section in every PR body; it becomes the published release notes
+alwaysApply: true
+---
+
+# Release notes
+
+Every pull request body has a `# Release notes` section above `# Release info`, separate from `# What changed?`. When the PR merges, the release takes its notes from `# Release notes`, falling back to `# What changed?` only when it's missing or empty. Comments and anything after a `---` rule are dropped. Those notes are what people read in the app's update dialog, on its download page and in its release history.
+
+The PR check fails until the notes follow these rules. Run `swift run release-kit notes --check --body-file <body.md>` to check a body before opening the PR.
+
+## Rules
+
+1. **Write for someone using the app, not a code reviewer.** Lead with what changed and what they can now see or do.
+2. **Keep it to 1–3 short bullets,** or one short sentence for internal plumbing.
+3. **No file paths, package or module names, function, type or variable names, CSS selectors, command-line flags, or backticks.** Those go in `# What changed?`.
+4. **Plain PR numbers like (#12) and plain feature names in prose are fine.**
+
+## Examples
+
+### Bad (code dump)
+
+```markdown
+# Release notes
+
+- Build with `--disable-get-task-allow-entitlement` in `Sources/ReleaseKit/Bundler.swift` so `install_name_tool` stops warning.
+- `ReleasePipeline.shippedVersion()` reads the Blob feed before local tags.
+```
+
+### Good (user-facing change)
+
+```markdown
+# Release notes
+
+- Dev builds show the version that's actually shipped, even when the checkout hasn't fetched the latest tags (#9).
+```
+
+### Good (internal plumbing)
+
+```markdown
+# Release notes
+
+- Internal build and code-signing cleanup (#8).
+```

@@ -1,7 +1,8 @@
 Closes
 
-<!-- User-facing bullets for Sparkle's update dialog and the release. No file paths or symbol names. -->
 # Release notes
+
+<!-- 1–3 short, plain-English bullets about what people using the app can see or do, or one sentence for internal plumbing. No file paths, code names, flags or backticks; those go in What changed? -->
 
 -
 

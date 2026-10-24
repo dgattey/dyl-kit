@@ -244,12 +244,9 @@
   margin-top: 8px;
 }
 
+/* Older notes may still carry <code>; it reads as the text around it. */
 .noteBody code {
-  font-family: var(--font-mono);
-  font-size: 0.875em;
-  padding: 1px 5px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font: inherit;
 }
 
 .footer {

@@ -2,6 +2,7 @@ import ArgumentParser
 import DylToolSupport
 import Foundation
 import ReleaseKit
+import ReleaseNotes
 
 @main
 struct ReleaseKitCommand: AsyncParsableCommand {
@@ -128,8 +129,19 @@ extension ReleaseKitCommand {
         @OptionGroup var options: RootOption
         @Option(help: "Format this PR body instead of the planned release's.") var bodyFile: String?
         @Option(help: "The version heading when formatting --body-file.") var version: String = "next"
+        @Flag(help: "Check --body-file's `# Release notes` against the PR check's rules instead of formatting it.")
+        var check = false
 
         func run() async throws {
+            if check {
+                guard let bodyFile else { throw ToolError("--check needs --body-file") }
+                let problems = ReleaseNotes.problems(inBody: try String(contentsOfFile: bodyFile, encoding: .utf8))
+                guard problems.isEmpty else {
+                    throw ToolError("Release notes break the rules:\n" + problems.map { "  \($0)" }.joined(separator: "\n"))
+                }
+                print("Release notes OK")
+                return
+            }
             let workspace = try options.workspace()
             let pipeline = ReleasePipeline(workspace: workspace)
             var state = try? pipeline.state()

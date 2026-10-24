@@ -1,0 +1,5 @@
+# actionlint 1.7.12 predates the job.workflow_* context properties GitHub added in September 2026.
+paths:
+  .github/workflows/app.yml:
+    ignore:
+      - 'property "workflow_(repository|sha)" is not defined in object type'

@@ -1,5 +1,6 @@
 import DylToolSupport
 import Foundation
+import ReleaseNotes
 
 /// What every release shares, an app's or DylKit's own: a checkout whose tags carry the versions, the Blob store its
 /// files go to, and the plan `version` leaves in `build/release/plan.json` for the later steps.
@@ -41,6 +42,8 @@ public struct ReleaseRepo: Sendable {
             body = source.body
             bump = source.bump
         }
+        // The PR check already rejected these; a release still ships rather than strand a merged PR.
+        for problem in ReleaseNotes.problems(inBody: body) { Log.warn("Release notes: \(problem)") }
         let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: root)) ?? 1
         let plan = ReleasePipeline.plan(
             headTags: try tags("--points-at", "HEAD"), tags: try tags("--list"), published: published,

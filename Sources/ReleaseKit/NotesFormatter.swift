@@ -2,7 +2,8 @@ import DylToolSupport
 import Foundation
 
 /// Turns release-note Markdown into the small HTML subset Sparkle's update dialog renders well: paragraphs, one flat
-/// bullet list, links, bold and code. Parenthesized file-path asides are dropped because users can't act on them.
+/// bullet list, links and bold. Backticked code reads as plain text, and parenthesized file-path asides are dropped
+/// because users can't act on them.
 public struct NotesFormatter: Sendable {
     /// Top-level directories whose paths count as noise inside parentheses, besides anything with a file extension.
     public var pathRoots: [String]
@@ -63,7 +64,7 @@ public struct NotesFormatter: Sendable {
         var escaped = escapeHTML(stripFilePathParens(text))
         escaped = escaped.replacing(pattern: #"\[([^\]]+)\]\((https?://[^\s)]+)\)"#, with: #"<a href="$2">$1</a>"#)
         escaped = escaped.replacing(pattern: #"\*\*([^*]+)\*\*"#, with: "<strong>$1</strong>")
-        escaped = escaped.replacing(pattern: #"`([^`]+)`"#, with: "<code>$1</code>")
+        escaped = escaped.replacing(pattern: #"`([^`]+)`"#, with: "$1")
         return escaped
     }
 

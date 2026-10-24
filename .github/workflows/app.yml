@@ -20,35 +20,49 @@ on:
 
 jobs:
   release-info:
-    # Edits only matter when they change a Release info checkbox; contains() is case-insensitive.
+    # Edits only matter when they change the body: its Release info box or its Release notes.
     if: >-
-      github.event_name == 'pull_request' && github.event.action != 'closed' && (
-        github.event.action != 'edited' || (github.event.changes.body && (
-          contains(github.event.changes.body.from, '- [x] Major') != contains(github.event.pull_request.body, '- [x] Major') ||
-          contains(github.event.changes.body.from, '- [x] Minor') != contains(github.event.pull_request.body, '- [x] Minor') ||
-          contains(github.event.changes.body.from, '- [x] Patch') != contains(github.event.pull_request.body, '- [x] Patch')
-        ))
-      )
+      github.event_name == 'pull_request' && github.event.action != 'closed' &&
+      (github.event.action != 'edited' || github.event.changes.body)
     # Job-level so skipped edit runs don't cancel an in-flight check.
     concurrency:
       group: release-info-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
-      - name: Check exactly one Release info box
+      - name: Read the PR body
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' >"$RUNNER_TEMP/body.md"
+      - name: Check exactly one Release info box
         run: |
-          body="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""')"
-          checked="$(printf '%s\n' "$body" | grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' || true)"
+          checked="$(grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' "$RUNNER_TEMP/body.md" || true)"
           if [ "$checked" != "1" ]; then
             echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
             exit 1
           fi
           echo "Release info OK"
+      # DylKit at the version the app pins, which is this workflow's own commit.
+      - uses: actions/checkout@v4
+        if: ${{ !cancelled() }}
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .dylkit
+          sparse-checkout: |
+            Sources/ReleaseNotes
+            scripts/check-release-notes.swift
+          sparse-checkout-cone-mode: false
+      # Compiling the one module with swiftc skips resolving DylKit's package, so this takes seconds.
+      - name: Check the Release notes
+        if: ${{ !cancelled() }}
+        run: |
+          swiftc -parse-as-library -swift-version 6 .dylkit/Sources/ReleaseNotes/*.swift \
+            .dylkit/scripts/check-release-notes.swift -o "$RUNNER_TEMP/check-release-notes"
+          "$RUNNER_TEMP/check-release-notes" <"$RUNNER_TEMP/body.md"
 
   # A merge to the default branch that only touches docs, the site, tests or CI ships no new app, so it doesn't release.
   changes:

@@ -48,7 +48,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
    1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved` and run `npm install`. `dylkit_version` names the URL.
    2. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README.
    - Delete the committed site icons (`app/icon.png`, `apple-icon.png`, `favicon.ico`, `public/app-icon.png`, `apple-icon.png`) and the icon-generator lines that write them. If the icon's light variant vanishes on a light tab, as Sconeos's does, set `favicon = "dark"` under `[site]`.
-   3. In `server/vercel.json`, set `"ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`.
+   3. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`.
    - Check: `npm run build` in `server/` succeeds.
 5. An app with an `NSDockTilePlugIn`: keep its dynamic library product and set `[build] dock-tile-plugin` to that product and the plug-in's principal class. Delete the script steps that copied and signed the `.docktileplugin`, and the `NSDockTilePlugIn` key in the old `Info.plist`. The plug-in must find the app's preferences from its own bundle identifier, as DylKit's README says, so a dev build never reads the installed release's.
    - Check: `swift run devkit build`, then `codesign --verify --deep --strict "build/<App> Dev.app"` succeeds and `build/<App> Dev.app/Contents/PlugIns/` holds the plug-in.
@@ -65,14 +65,22 @@ One PR moves the three pins to the same version, with their lockfiles:
 3. The `@v<version>` in `.github/workflows/dylkit.yml`.
    - Check: `swift run devkit checks` reports 0 errors; `dylkit_version` names any pin that differs from `Package.resolved`.
 
-### 0.2.x to 0.3.0
+### 0.2.x to 0.3.2
 
 0.3.0 drops `devkit sync` and `./run`: apps run `swift run devkit`, `swift run release-kit` and `swift run dyl-lint` directly, DylKit's PR check and release become one reusable workflow, and `@dylkit/web` reads `DylApp.toml` when Next builds instead of at request time, through `withDylKit`. `loadSite()` is gone.
 
-1. Pin `from: "0.3.0"` and run `swift package update dyl-kit`. In `server/package.json`, depend on `https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz` and run `npm install` in `server/`.
-2. Delete `.github/workflows/pr-check.yml` and `.github/workflows/release.yml`, and copy `.github/workflows/dylkit.yml` from DylKit's `Tests/Fixtures/SampleApp/` at `v0.3.0`. It keeps their triggers and permissions, and `secrets: inherit` passes the app's `SPARKLE_ED_PRIVATE_KEY_BASE64` and `BLOB_READ_WRITE_TOKEN`. Add `BLOB_READ_WRITE_TOKEN` first if the repo lacks it, as in Blob store and secrets above.
+1. Pin `from: "0.3.2"` and run `swift package update dyl-kit`. In `server/package.json`, depend on `https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.2/dylkit-web-0.3.2.tgz` and run `npm install` in `server/`.
+2. Delete `.github/workflows/pr-check.yml` and `.github/workflows/release.yml`, and copy `.github/workflows/dylkit.yml` from DylKit's `Tests/Fixtures/SampleApp/` at `v0.3.2`, setting its `@v` to `v0.3.2`. It keeps their triggers and permissions, and `secrets: inherit` passes the app's `SPARKLE_ED_PRIVATE_KEY_BASE64` and `BLOB_READ_WRITE_TOKEN`. Add `BLOB_READ_WRITE_TOKEN` first if the repo lacks it, as in Blob store and secrets above.
 3. Delete `./run`. Replace every `./run dev`, `./run release` and `./run lint` in workflows, scripts and docs with `swift run devkit`, `swift run release-kit` and `swift run dyl-lint`; a mode `./run` handed to `scripts/run` is now `scripts/run <mode>`. Delete the "Written by `devkit sync`" first line of `.github/pull_request_template.md`, which stays, owned by the app.
 4. In `server/next.config.ts`, import `withDylKit` from `@dylkit/web/config` and export `withDylKit(nextConfig)`. Remove `transpilePackages`, which it adds, and any `outputFileTracingRoot` or `outputFileTracingIncludes`.
 5. Replace `app/layout.tsx`, `app/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts`, `app/icons/[name]/route.ts`, `app/icon.png/route.ts`, `app/apple-touch-icon.png/route.ts` and `app/favicon.ico/route.ts` with the one-line re-exports in DylKit's README.
-6. In `server/vercel.json`, set `"ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`. `site_deploy` rejects the 0.2.x `HEAD^` form.
+6. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`. `site_deploy` rejects the 0.2.x `HEAD^` form.
    - Check: `swift run devkit checks` reports 0 errors, and `npm run build` in `server/` succeeds.
+
+### 0.3.0 or 0.3.1 to 0.3.2
+
+0.3.0's `ignoreCommand` exits 128 when Vercel's clone lacks the last deployed commit, as after a force-push or rebase, and Vercel fails the deploy. 0.3.2's checks that commit first and builds without it.
+
+1. Move the three pins to 0.3.2 as above.
+2. In `server/vercel.json`, replace the leading `[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] &&` with `git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" &&` and keep the paths. `site_deploy` names the whole command.
+   - Check: `swift run devkit checks` reports 0 errors.

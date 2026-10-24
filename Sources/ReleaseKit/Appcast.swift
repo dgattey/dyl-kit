@@ -74,10 +74,10 @@ public enum Appcast {
         return data
     }
 
-    /// What updaters polling `url` see right now. Only a 404 reads as empty, since nothing has been published there
-    /// yet. Anything else short of a feed with items throws: a release planned from a feed that merely failed to load
-    /// would reuse a shipped build number and drop the notes before it.
-    public static func published(_ url: String, transport: any HTTPTransport) async throws -> [AppcastItem] {
+    /// What updaters polling `url` see right now, or nil for a 404, since nothing has been published there yet.
+    /// Anything else short of a feed with items throws: a release planned from a feed that merely failed to load would
+    /// reuse a shipped build number and drop the notes before it.
+    public static func published(_ url: String, transport: any HTTPTransport) async throws -> [AppcastItem]? {
         guard let parsed = URL(string: url) else { throw ToolError("\(url) isn't a URL") }
         let data: Data
         let response: HTTPURLResponse
@@ -89,7 +89,7 @@ public enum Appcast {
         let status = response.statusCode
         switch status {
         case 404:
-            return []
+            return nil
         case 200..<300:
             let items = try items(in: data, source: "the published feed \(url) (HTTP \(status))")
             guard !items.isEmpty else {

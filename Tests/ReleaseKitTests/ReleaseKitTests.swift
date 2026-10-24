@@ -512,7 +512,8 @@ private let sconeosModules = [
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let config = #"{ "ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- app" }"#
+        let command = ReleaseChecks.ignoreCommandPrefix.replacingOccurrences(of: "\"", with: #"\""#) + "app"
+        let config = #"{ "ignoreCommand": "\#(command)" }"#
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
@@ -532,9 +533,56 @@ private let sconeosModules = [
 
         #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
             #"diffs from HEAD^, which can skip a site change Vercel never deployed; use `"ignoreCommand": "#
-                + #""[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- "#
-                + #"<paths>"`"#
+                + #""git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && "#
+                + #"git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- <paths>"`"#
         ])
+    }
+
+    /// scone-os #22: 0.3.0's command failed every deploy after a rebase, so it names the replacement with the app's paths.
+    @Test func siteDeployNamesTheGuardedCommandForTheOldOne() throws {
+        let old = #"[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"#
+        let workspace = try scratchWorkspace(["server/vercel.json": #"{ "ignoreCommand": "\#(old)" }"#])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
+            "exits 128 and fails the deploy when Vercel's clone lacks the last deployed commit, as after a force-push "
+                + #"or rebase; use `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" "#
+                + #"&& git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`"#
+        ])
+    }
+
+    /// Vercel builds on exit 1, skips on 0 and fails the deploy on anything else. The previous SHA is missing after a
+    /// force-push or rebase, and empty on a branch's first deploy.
+    @Test func sampleIgnoreCommandBuildsWhenThePreviousCommitIsMissing() throws {
+        let config = try String(contentsOf: appRoot.appending(path: "server/vercel.json"), encoding: .utf8)
+        let command = try #require(
+            try JSONDecoder().decode([String: String].self, from: Data(config.utf8))["ignoreCommand"])
+        let repo = FileManager.default.temporaryDirectory.appending(path: "dylkit-ignore-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let server = repo.appending(path: "server")
+        try FileManager.default.createDirectory(at: server, withIntermediateDirectories: true)
+        func commit(_ path: String, _ text: String) throws -> String {
+            try Data(text.utf8).write(to: repo.appending(path: path))
+            _ = try Shell.capture(["git", "add", "."], cwd: repo)
+            let identity = ["-c", "user.name=Test", "-c", "user.email=test@example.com"]
+            _ = try Shell.capture(["git"] + identity + ["commit", "--quiet", "-m", path], cwd: repo)
+            return try Shell.capture(["git", "rev-parse", "HEAD"], cwd: repo)
+        }
+        func ignore(previous: String) throws -> Int32 {
+            try Shell.run(
+                ["sh", "-c", command], cwd: server, environment: ["VERCEL_GIT_PREVIOUS_SHA": previous], quiet: true,
+                allowFailure: true)
+        }
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: repo)
+        _ = try commit("DylApp.toml", "a")
+        let deployed = try commit("server/page.txt", "a")
+        _ = try commit("notes.txt", "a")
+
+        #expect(try ignore(previous: deployed) == 0)
+        #expect(try ignore(previous: "0123456789abcdef0123456789abcdef01234567") == 1)
+        #expect(try ignore(previous: "") == 1)
+        _ = try commit("DylApp.toml", "b")
+        #expect(try ignore(previous: deployed) == 1)
     }
 
     @Test func aSecretNothingReadsFails() throws {

@@ -299,11 +299,20 @@ public struct ReleaseChecks: Sendable {
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
     /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45). It diffs from the last deployed commit, so a
-    /// site change in a skipped commit still deploys with the next one, and a branch's first deploy, which has no last
-    /// commit, always builds.
+    /// site change in a skipped commit still deploys with the next one. A branch's first deploy, which has no last
+    /// commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
+    /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy (scone-os #22).
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
+
+    static let ignoreCommandPrefix =
+        #"git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && "#
+        + #"git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
+
+    /// 0.3.0 and 0.3.1's prefix, which fails the deploy when the last deployed commit is gone.
+    static let unguardedIgnoreCommandPrefix =
+        #"[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
 
     /// The site's root, the nearest folder above the artifacts dir with a `package.json`, and that file's text.
     private var site: (root: String, package: String)? {
@@ -327,14 +336,21 @@ public struct ReleaseChecks: Sendable {
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
-        let prefix = #"[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
+        let prefix = Self.ignoreCommandPrefix
         guard command.hasPrefix(prefix) else {
-            let json = prefix.replacingOccurrences(of: "\"", with: #"\""#)
-            let reason =
-                command.contains("HEAD^")
-                ? "diffs from HEAD^, which can skip a site change Vercel never deployed; use" : "needs"
-            findings.append(
-                error("site_deploy", file, "\(reason) `\"ignoreCommand\": \"\(json)<paths>\"`"))
+            let message: String
+            if command.hasPrefix(Self.unguardedIgnoreCommandPrefix) {
+                let fixed = prefix + command.dropFirst(Self.unguardedIgnoreCommandPrefix.count)
+                message =
+                    "exits 128 and fails the deploy when Vercel's clone lacks the last deployed commit, as after a "
+                    + "force-push or rebase; use `\"ignoreCommand\": \"\(Self.jsonEscaped(fixed))\"`"
+            } else {
+                let reason =
+                    command.contains("HEAD^")
+                    ? "diffs from HEAD^, which can skip a site change Vercel never deployed; use" : "needs"
+                message = "\(reason) `\"ignoreCommand\": \"\(Self.jsonEscaped(prefix))<paths>\"`"
+            }
+            findings.append(error("site_deploy", file, message))
             return
         }
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
@@ -351,6 +367,10 @@ public struct ReleaseChecks: Sendable {
             let relative = absolute.replacingOccurrences(of: workspace.root.standardized.path + "/", with: "")
             findings.append(error("site_deploy", file, "ignoreCommand skips commits that only change \(relative)"))
         }
+    }
+
+    private static func jsonEscaped(_ text: String) -> String {
+        text.replacingOccurrences(of: "\"", with: #"\""#)
     }
 
     private struct PackageResolved: Decodable {

@@ -21,17 +21,17 @@ An app depends on DylKit twice, and pins it three times to the same version:
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/dgattey/dyl-kit", from: "0.3.0"),
+.package(url: "https://github.com/dgattey/dyl-kit", from: "0.3.2"),
 ```
 
 ```json
 // server/package.json, the tarball DylKit's release uploads
-"@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz"
+"@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.2/dylkit-web-0.3.2.tgz"
 ```
 
 ```yaml
 # .github/workflows/dylkit.yml
-uses: dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0
+uses: dgattey/dyl-kit/.github/workflows/app.yml@v0.3.2
 ```
 
 `dylkit_version` fails when the tarball or the workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those three lines and the lockfiles; nothing is generated or synced.
@@ -66,7 +66,7 @@ export { download as GET } from "@dylkit/web/routes";
 export { icon as GET } from "@dylkit/web/routes";
 ```
 
-`server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
+`server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
 
 Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. dylangattey.com reads `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.
 

@@ -98,7 +98,7 @@ extension DevKitCommand {
         func run() async throws {
             let workspace = try Workspace.locate()
             let ios = IOSBuild(workspace: workspace)
-            print(try ios.build().path)
+            print(try await ios.build().path)
             guard run || capture else { return }
             let udid = try ios.run(options: launch.options, simulator: simulator)
             guard capture else { return }

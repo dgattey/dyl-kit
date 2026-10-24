@@ -4,8 +4,8 @@
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
-# app icon changes them, that release and dev builds both carry a signed dock tile plug-in that loads, and that no
-# build edits a binary after it's signed.
+# app icon changes them, that release and dev builds both carry a signed dock tile plug-in that loads, that no
+# build edits a binary after it's signed, and that the iOS Simulator build carries the macOS dev build's version.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")/.." && pwd)"
@@ -142,4 +142,13 @@ dev_app="$(unsigned_edits "$kit/.build/debug/devkit" build | tail -1)"
 codesign --verify --strict --deep "$dev_app" || fail "$dev_app doesn't verify"
 dock_tile "$dev_app" "$bundle_id.dev"
 
-echo "release e2e OK: $requirement, ${#services[@]} XPC services, 6 site icons, $plugin_name in release and dev"
+ios_app="$("$kit/.build/debug/devkit" ios | tail -1)"
+for key in CFBundleShortVersionString CFBundleVersion; do
+  macos_value="$(plutil -extract "$key" raw -o - "$dev_app/Contents/Info.plist")"
+  ios_value="$(plutil -extract "$key" raw -o - "$ios_app/Info.plist")"
+  echo "$key: macOS dev $macos_value, iOS $ios_value"
+  [[ "$ios_value" == "$macos_value" ]] || fail "$ios_app's $key is $ios_value, not the dev build's $macos_value"
+done
+
+echo "release e2e OK: $requirement, ${#services[@]} XPC services, 6 site icons, $plugin_name in release and dev," \
+  "iOS at the dev build's version"

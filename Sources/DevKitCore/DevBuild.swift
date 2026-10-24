@@ -3,6 +3,19 @@ import DylToolSupport
 import Foundation
 import ReleaseKit
 
+/// What dev builds, macOS and iOS alike, carry: the last shipped version and the commit count as the build.
+struct DevVersion: Sendable {
+    let shortVersion: String
+    let build: String
+
+    /// - Blocking: reads the published feeds and runs git.
+    static func current(_ workspace: Workspace, transport: any HTTPTransport) async throws -> DevVersion {
+        let shipped = try await ReleasePipeline(workspace: workspace, transport: transport).shippedVersion()
+        let build = (try? Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? "1"
+        return DevVersion(shortVersion: shipped.description, build: build)
+    }
+}
+
 /// Local app builds into `build/`, never `/Applications`, so the installed release keeps updating on its own. They
 /// carry the dev identity, so they never share a bundle ID with the installed release.
 public struct DevBuild: Sendable {
@@ -22,13 +35,12 @@ public struct DevBuild: Sendable {
     @discardableResult
     public func build(configuration: Bundler.Configuration) async throws -> URL {
         let manifest = workspace.manifest
-        let version = try await ReleasePipeline(workspace: workspace, transport: transport).shippedVersion().description
-        let build = (try? Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? "1"
+        let version = try await DevVersion.current(workspace, transport: transport)
         try FileManager.default.createDirectory(at: workspace.buildDir, withIntermediateDirectories: true)
         let app = try Bundler(workspace: workspace)
             .bundle(
-                configuration: configuration, identity: .dev, shortVersion: version, build: build,
-                into: workspace.buildDir)
+                configuration: configuration, identity: .dev, shortVersion: version.shortVersion,
+                build: version.build, into: workspace.buildDir)
         try Signer(
             entitlements: workspace.url(manifest.build.entitlements),
             bundleIdentifier: AppIdentity.dev.bundleId(manifest)
@@ -40,7 +52,7 @@ public struct DevBuild: Sendable {
         if FileManager.default.isExecutableFile(atPath: lsregister) {
             try Shell.run([lsregister, "-f", app.path], allowFailure: true)
         }
-        Log.step("built \(app.path) (\(version), build \(build))")
+        Log.step("built \(app.path) (\(version.shortVersion), build \(version.build))")
         return app
     }
 }

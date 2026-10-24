@@ -10,7 +10,7 @@ public enum ReleaseNotes {
     ]
     /// Subsections of a notes section that are for reviewers, not users.
     static let reviewerSubsections: Set = ["verification", "testing", "test plan", "screenshots", "release info"]
-    static let maxBullets = 3
+    static let maxBullets = 5
 
     /// The first of `headings` with content in `body`, nil when none has any.
     public static func markdown(body: String) -> String? {
@@ -63,16 +63,16 @@ public enum ReleaseNotes {
     /// What breaks the rules in `body`'s `# Release notes`, which every PR needs. Empty when the notes follow them.
     public static func problems(inBody body: String) -> [String] {
         guard let notes = section("Release notes", in: body) else {
-            return ["there's no # Release notes section with content; add 1–3 plain-English bullets above # Release info"]
+            return ["there's no # Release notes section with content; add plain-English bullets above # Release info, aim for 3, up to 5"]
         }
         return problems(in: notes)
     }
 
-    /// More than three bullets, and code on any line: backticks, file paths, flags, identifiers and selectors.
+    /// More than five bullets, and code on any line: backticks, file paths, flags, identifiers and selectors.
     public static func problems(in notes: String) -> [String] {
         let lines = notes.components(separatedBy: "\n")
         let bullets = lines.filter { $0.firstMatch(of: #/^\s*[-*]\s+\S/#) != nil }.count
-        var problems = bullets > maxBullets ? ["\(bullets) bullets; keep it to 1–3"] : []
+        var problems = bullets > maxBullets ? ["\(bullets) bullets; aim for 3, up to \(maxBullets)"] : []
         for line in lines {
             let excerpt = line.trimmingCharacters(in: .whitespaces)
             let shown = excerpt.count > 80 ? "\(excerpt.prefix(79))…" : excerpt

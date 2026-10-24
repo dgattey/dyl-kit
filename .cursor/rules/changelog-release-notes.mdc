@@ -12,7 +12,7 @@ The PR check fails until the notes follow these rules. Run `swift run release-ki
 ## Rules
 
 1. **Write for someone using the app, not a code reviewer.** Lead with what changed and what they can now see or do.
-2. **Keep it to 1–3 short bullets,** or one short sentence for internal plumbing.
+2. **Aim for 3 short bullets, up to 5,** or one short sentence for internal plumbing.
 3. **No file paths, package or module names, function, type or variable names, CSS selectors, command-line flags, or backticks.** Those go in `# What changed?`.
 4. **Plain PR numbers like (#12) and plain feature names in prose are fine.**
 

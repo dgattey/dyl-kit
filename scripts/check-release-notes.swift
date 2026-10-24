@@ -14,10 +14,10 @@ import Foundation
         for problem in problems { print("::error title=Release notes::\(problem)") }
         print(
             """
-            Release notes are what people read in the update dialog and on the download page: 1–3 short, plain-English \
-            bullets about what they can see or do, or one sentence for internal plumbing. Plain PR numbers like (#12) \
-            are fine. File paths, code names, flags and backticks go in # What changed? instead. DylKit's \
-            .cursor/rules/changelog-release-notes.mdc has examples.
+            Release notes are what people read in the update dialog and on the download page: short, plain-English \
+            bullets about what they can see or do (aim for 3, up to 5), or one sentence for internal plumbing. Plain PR \
+            numbers like (#12) are fine. File paths, code names, flags and backticks go in # What changed? instead. \
+            DylKit's .cursor/rules/changelog-release-notes.mdc has examples.
             """)
         exit(1)
     }

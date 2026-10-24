@@ -67,7 +67,7 @@ One PR moves the three pins to the same version, with their lockfiles:
 
 ### 0.3.x to 0.4.0
 
-0.4.0 holds release notes to plain English. The PR check fails a PR whose `# Release notes` is missing or has file paths, code names, flags, CSS selectors, backticks or more than three bullets, and it re-runs whenever the PR body is edited. `release_notes` in the checks fails without the rule file or the template section. The download page no longer styles code in notes.
+0.4.0 holds release notes to plain English. The PR check fails a PR whose `# Release notes` is missing or has file paths, code names, flags, CSS selectors, backticks or more than three bullets, and it re-runs whenever the PR body is edited. `release_notes` in the checks fails without the rule file or the template section. The download page no longer styles code in notes. Releases after 0.4.0 allow up to five bullets while still aiming for three; on those, copy the rule file and the template's `# Release notes` comment from SampleApp at the pinned version so agents see the new limit.
 
 1. Pin `from: "0.4.0"` and run `swift package update dyl-kit`. In `server/package.json`, depend on `https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.4.0/dylkit-web-0.4.0.tgz` and run `npm install` in `server/`. Set `.github/workflows/dylkit.yml`'s `@v` to `v0.4.0`.
 2. Copy `.cursor/rules/changelog-release-notes.mdc` from DylKit's `Tests/Fixtures/SampleApp/` at `v0.4.0`.

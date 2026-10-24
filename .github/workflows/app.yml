@@ -56,7 +56,7 @@ jobs:
             Sources/ReleaseNotes
             scripts/check-release-notes.swift
           sparse-checkout-cone-mode: false
-      # Compiling the one module with swiftc skips resolving DylKit's package, so this takes seconds.
+      # Compiling the one module with swiftc skips resolving DylKit's package, so this takes well under a minute.
       - name: Check the Release notes
         if: ${{ !cancelled() }}
         run: |

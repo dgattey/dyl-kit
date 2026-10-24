@@ -67,6 +67,22 @@ export { download as GET } from "@dylkit/web/routes";
 export { icon as GET } from "@dylkit/web/routes";
 ```
 
+The default page is a hero with the first screenshot, the rest as a gallery, the features and the release notes, all from `[site]`:
+
+```toml
+[site]
+tagline = "One line under the app's name."
+accent = { light = "#467e61", dark = "#6fae8c" }
+heading-font = "serif"                  # or "sans", the default
+screenshots = [                         # under release.artifacts-dir; PNG or WebP
+    { src = "mac.png", dark-src = "mac-dark.png", alt = "…" },
+    { src = "phone.webp", alt = "…", frame = "iphone" },
+]
+features = [{ title = "…", body = "…" }]
+```
+
+An app that wants its own layout writes `app/page.tsx` from the same pieces `@dylkit/web` exports: `SitePage`, `Hero` (with its own `visual`, `title` or `lead`), `Section`, `Showcase`, `Gallery`, `Screenshot`, `DeviceFrame`, `Features` and `Feature` (with any `glyph`), and `ReleaseNotes`. The kit's CSS is in `@layer dylkit`, so the app's own CSS and CSS Modules override it without fighting specificity, and an app restyles the whole page by setting the theme tokens (`--canvas`, `--paper`, `--ink`, `--ink-muted`, `--line`, `--shadow`) on `:root`.
+
 `server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
 
 Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. dylangattey.com reads `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.

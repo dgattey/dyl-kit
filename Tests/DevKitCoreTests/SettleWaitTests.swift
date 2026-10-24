@@ -72,15 +72,17 @@ import UniformTypeIdentifiers
         #expect(FileManager.default.fileExists(atPath: output.path))
     }
 
-    /// Sconeos: frames 0 to 18 captured, then the window went to another Space and frame 19 failed, failing the run.
+    /// Sconeos: frames 0 to 18 captured, then frame 19 failed and failed the run.
     @Test func keepsTheLastGoodFrameWhenTheWindowGoesAway() async throws {
         let good = (1...3).map { _ in Self.output() }
         defer { good.forEach { try? FileManager.default.removeItem(at: $0) } }
         for (index, url) in good.enumerated() { try Self.writePNG(gray: CGFloat(index + 1) / 4, to: url) }
+        // ImageIO's first decode is slow on a cold runner; keep it off the settle clock.
+        _ = SettleWait.pixels(at: good[0])
         var index = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
-        let wait = SettleWait(timeout: .seconds(1), minimum: .seconds(5), interval: .milliseconds(10))
+        let wait = SettleWait(timeout: .seconds(2), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
             guard index <= good.count else { throw ToolError("window 7681 closed before it could be captured") }

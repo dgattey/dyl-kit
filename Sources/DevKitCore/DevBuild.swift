@@ -156,10 +156,15 @@ public struct Launcher: Sendable {
         #endif
     }
 
+    /// A window counts once two polls in a row see it shown: one ordered in and straight back out before its first
+    /// draw reads as ordered in for a moment.
     private func waitForWindow(pid: Int32, within grace: Duration) async throws -> Bool {
         let deadline = ContinuousClock.now + grace
+        var seen = false
         while ContinuousClock.now < deadline {
-            if WindowCapture.mainWindow(of: pid) != nil { return true }
+            let shown = WindowCapture.mainWindow(of: pid) != nil
+            if shown, seen { return true }
+            seen = shown
             try await Task.sleep(for: .milliseconds(250))
         }
         return false

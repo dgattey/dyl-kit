@@ -1,0 +1,66 @@
+@layer dylkit {
+  .shot {
+    display: block;
+    min-width: 0;
+  }
+
+  .shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .iphone {
+    container-type: inline-size;
+  }
+
+  .iphoneBezel {
+    padding: 3.6cqw;
+    border-radius: 17cqw;
+    background: #0d0d0f;
+    box-shadow:
+      0 0 0 1.5px #3a3a3c,
+      0 24px 50px rgb(0 0 0 / 0.3);
+  }
+
+  .iphoneBezel img {
+    border-radius: 13.5cqw;
+  }
+
+  /* Mac captures carry their own window chrome and shadow, so the window isn't framed again. */
+  .showcase {
+    position: relative;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding-right: 13%;
+  }
+
+  .showcasePhone {
+    position: absolute;
+    right: 0;
+    bottom: 1%;
+    width: 23%;
+  }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 32px;
+  }
+
+  .galleryShot img {
+    border-radius: 14px;
+    filter: drop-shadow(0 24px 48px var(--shadow));
+  }
+
+  @media (max-width: 520px) {
+    .showcase {
+      padding-right: 16%;
+    }
+
+    .showcasePhone {
+      width: 30%;
+      bottom: -4%;
+    }
+  }
+}

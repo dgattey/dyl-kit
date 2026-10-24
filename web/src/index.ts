@@ -1,7 +1,11 @@
-export { DownloadPage } from "./DownloadPage";
+export { DownloadPanel, Hero, Intro } from "./Hero";
 export { iconResponse } from "./icons";
 export { siteMetadata } from "./next";
 export { appcastResponse, downloadResponse, latestRelease } from "./release";
-export type { Release, ReleaseNotes } from "./release";
+export type { Release, ReleaseNotes as ReleaseNotesEntry } from "./release";
+export { ReleaseNotes } from "./ReleaseNotes";
+export { DeviceFrame, Gallery, Screenshot, Showcase } from "./Screenshot";
+export { Feature, Features, Section, SitePage } from "./Section";
+export { site } from "./site";
+export type { Feature as FeatureEntry, Frame, Screenshot as ScreenshotEntry, Site } from "./site";
 export { SiteLayout } from "./SiteLayout";
-export type { Site } from "./site";

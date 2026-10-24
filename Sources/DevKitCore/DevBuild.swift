@@ -140,27 +140,26 @@ public struct Launcher: Sendable {
 
     /// Linked against the macOS 27 SDK, a SwiftUI app launched without activating can open no window until it gets a
     /// reopen event. A second `open -g` sends one without activating it. It waits `grace` first, because a reopen while
-    /// no window is visible opens a new one, and a slow first window would end up with a twin. Only a window on screen
-    /// counts: the window list also holds windows that were created but never ordered in.
+    /// no window is visible opens a new one, and a slow first window would end up with a twin. A window on a Space
+    /// that isn't active counts, as when a full-screen app has focus and the app opens on the desktop. One that was
+    /// created but never ordered in doesn't.
     ///
     /// - Blocking: polls the window list and runs `open`.
     private func reopenIfWindowless(_ app: URL, pid: Int32, grace: Duration = .seconds(5)) async throws {
         #if canImport(CoreGraphics)
         if try await waitForWindow(pid: pid, within: grace) { return }
-        let hidden = WindowCapture.mainWindow(of: pid).map { " (window \($0) exists but isn't on screen)" } ?? ""
-        Log.step("no window on screen after \(grace)\(hidden); reopening \(app.lastPathComponent) in the background")
+        let unshown = WindowCapture.unshownWindow(of: pid).map { " (window \($0) exists but was never shown)" } ?? ""
+        Log.step("no window after \(grace)\(unshown); reopening \(app.lastPathComponent) in the background")
         try Shell.run(Self.reopenArguments(app))
         if try await waitForWindow(pid: pid, within: grace) { return }
-        Log.warn(
-            "\(app.lastPathComponent) still has no window on screen after the reopen; if you switched Spaces, it may "
-                + "have opened on the one you left")
+        Log.warn("\(app.lastPathComponent) still has no window after the reopen")
         #endif
     }
 
     private func waitForWindow(pid: Int32, within grace: Duration) async throws -> Bool {
         let deadline = ContinuousClock.now + grace
         while ContinuousClock.now < deadline {
-            if WindowCapture.mainWindow(of: pid, onScreenOnly: true) != nil { return true }
+            if WindowCapture.mainWindow(of: pid) != nil { return true }
             try await Task.sleep(for: .milliseconds(250))
         }
         return false

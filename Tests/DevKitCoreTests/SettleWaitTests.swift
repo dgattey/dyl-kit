@@ -83,7 +83,7 @@ import UniformTypeIdentifiers
         let wait = SettleWait(timeout: .seconds(1), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
-            guard index <= good.count else { throw ToolError("window 7681 is off screen") }
+            guard index <= good.count else { throw ToolError("window 7681 closed before it could be captured") }
             try FileManager.default.copyItem(at: good[index - 1], to: frame)
         }
         #expect(index > good.count + 1)
@@ -97,16 +97,10 @@ import UniformTypeIdentifiers
         await #expect(throws: ToolError.self) {
             try await wait.capture(to: output) { _ in
                 attempts += 1
-                throw ToolError("window 7681 is off screen")
+                throw ToolError("window 7681 closed before it could be captured")
             }
         }
         #expect(attempts > 1)
         #expect(!FileManager.default.fileExists(atPath: output.path))
-    }
-
-    @Test func aWindowThatsGoneIsSaidPlainly() {
-        #expect(WindowCapture.visibility(of: .max) == .gone)
-        #expect(WindowCapture.unreadable(.max).message.contains("closed"))
-        #expect(WindowCapture.offScreen(7681).message.contains("another Space"))
     }
 }

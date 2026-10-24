@@ -1,9 +1,9 @@
 export { DownloadPanel, Hero, Intro } from "./Hero";
 export { iconResponse } from "./icons";
-export { siteMetadata } from "./next";
-export { appcastResponse, downloadResponse, latestRelease } from "./release";
-export type { Release, ReleaseNotes as ReleaseNotesEntry } from "./release";
-export { ReleaseNotes } from "./ReleaseNotes";
+export { releasesMetadata, siteMetadata } from "./next";
+export { appcastResponse, downloadResponse, latestRelease, releaseHistory } from "./release";
+export type { HistoryEntry, Release, ReleaseNotes as ReleaseNotesEntry } from "./release";
+export { AllReleases, ReleaseNotes } from "./ReleaseNotes";
 export { DeviceFrame, Gallery, Screenshot, Showcase } from "./Screenshot";
 export { Feature, Features, Section, SitePage } from "./Section";
 export { site } from "./site";

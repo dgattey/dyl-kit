@@ -1,6 +1,14 @@
 import type { Metadata } from "next";
 import type { Site } from "./site";
 
+export function releasesMetadata(site: Site): Metadata {
+  return {
+    title: `Release history · ${site.name}`,
+    description: `Every ${site.name} release for macOS and what changed in it.`,
+    alternates: { canonical: "/releases" },
+  };
+}
+
 export function siteMetadata(site: Site): Metadata {
   const description = `Download ${site.name} for macOS. ${site.tagline}`;
   const image = site.screenshots[0] ?? { src: "/icon.png", width: 1024, height: 1024, alt: site.name };

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Hero } from "./Hero";
-import { siteMetadata } from "./next";
+import { releasesMetadata as releasesPageMetadata, siteMetadata } from "./next";
 import { latestRelease } from "./release";
-import { ReleaseNotes } from "./ReleaseNotes";
+import { AllReleases, ReleaseNotes } from "./ReleaseNotes";
 import { Gallery } from "./Screenshot";
 import { Features, SitePage } from "./Section";
 import { site } from "./site";
@@ -27,6 +27,17 @@ export async function Page() {
       <Gallery />
       <Features />
       <ReleaseNotes release={release} />
+    </SitePage>
+  );
+}
+
+/** `app/releases/page.tsx`: `export { Releases as default, releasesMetadata as metadata } from "@dylkit/web/app";` */
+export const releasesMetadata = releasesPageMetadata(site);
+
+export async function Releases() {
+  return (
+    <SitePage>
+      <AllReleases release={await latestRelease(site)} />
     </SitePage>
   );
 }

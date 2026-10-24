@@ -38,13 +38,13 @@ struct SettleArguments: ParsableArguments {
 }
 
 extension DevKitCommand {
-    struct Build: ParsableCommand {
+    struct Build: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Bundle and ad-hoc sign build/<App> Dev.app.")
 
         @Argument(help: "debug or release.") var configuration: Bundler.Configuration = .debug
 
-        func run() throws {
-            print(try DevBuild(workspace: try Workspace.locate()).build(configuration: configuration).path)
+        func run() async throws {
+            print(try await DevBuild(workspace: try Workspace.locate()).build(configuration: configuration).path)
         }
     }
 
@@ -59,7 +59,7 @@ extension DevKitCommand {
         func run() async throws {
             let workspace = try Workspace.locate()
             let builder = DevBuild(workspace: workspace)
-            let app = noBuild ? builder.appURL : try builder.build(configuration: configuration)
+            let app = noBuild ? builder.appURL : try await builder.build(configuration: configuration)
             try await Launcher(workspace: workspace).launch(app, options: launch.options)
         }
     }
@@ -75,7 +75,7 @@ extension DevKitCommand {
         func run() async throws {
             let workspace = try Workspace.locate()
             let builder = DevBuild(workspace: workspace)
-            let app = noBuild ? builder.appURL : try builder.build(configuration: .debug)
+            let app = noBuild ? builder.appURL : try await builder.build(configuration: .debug)
             let pid = try await Launcher(workspace: workspace).launch(app, options: launch.options)
             let capture = WindowCapture(workspace: workspace)
             let label = [launch.appearance?.rawValue, launch.initialView].compactMap { $0 }.joined(separator: "-")

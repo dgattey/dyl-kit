@@ -85,11 +85,20 @@ public struct ReleasePipeline: Sendable {
         return .next(current.bumped(bump), build: build, bumpedFrom: current)
     }
 
-    /// The version the last release shipped, which dev builds carry until the next one.
+    /// The version the last release shipped, which dev builds carry until the next one: the highest of the published
+    /// feeds and the local tags. Checkouts that only fetch their branch never get new tags, so the feeds come first;
+    /// when they can't be read, offline say, the tags decide.
     ///
-    /// - Blocking: runs git.
-    public func shippedVersion() throws -> AppVersion {
-        Self.currentVersion(published: [], tags: try repo.tags("--list"))
+    /// - Blocking: reads the published feeds and runs git.
+    public func shippedVersion() async throws -> AppVersion {
+        let published: [AppcastItem]
+        do {
+            published = try await publishedFeeds()
+        } catch {
+            Log.step("\(error); the version comes from local tags")
+            published = []
+        }
+        return Self.currentVersion(published: published, tags: try repo.tags("--list"))
     }
 
     /// The highest of every published version and tag, or 1.0.0 for a first release.

@@ -110,6 +110,27 @@ private func item(_ version: String, build: Int) -> String {
             try await ReleasePipeline(workspace: workspace, transport: storeDown).publishedFeeds()
         }
     }
+
+    /// Agent checkouts fetch only their branch, so their tags stop at an old release (scone-os showed 1.1.0 with 1.2.0
+    /// out). Dev builds take the feeds' version, and the tags when the feeds can't be read.
+    @Test func shippedVersionReadsTheFeedsThenTheTags() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-shipped-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            at: appRoot.appending(path: "DylApp.toml"), to: root.appending(path: "DylApp.toml"))
+        let identity = ["-c", "user.name=t", "-c", "user.email=t@invalid"]
+        for arguments in [["init", "--quiet"], identity + ["commit", "-qm", "1", "--allow-empty"], ["tag", "v1.1.0"]] {
+            _ = try Shell.capture(["git"] + arguments, cwd: root)
+        }
+        let workspace = try Workspace.locate(root.path)
+        func shippedVersion(_ transport: FakeTransport) async throws -> String {
+            try await ReleasePipeline(workspace: workspace, transport: transport).shippedVersion().description
+        }
+
+        #expect(try await shippedVersion(FakeTransport { _ in (200, sparkleFeed(item("1.2.0", build: 48))) }) == "1.2.0")
+        #expect(try await shippedVersion(FakeTransport { _ in throw URLError(.notConnectedToInternet) }) == "1.1.0")
+    }
 }
 
 @Suite struct GitHubTests {

@@ -42,7 +42,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 ## The adoption PR
 
 1. Pin the release in `Package.swift`, `.package(url: "https://github.com/dgattey/dyl-kit", from: "<version>")`, then `swift package update dyl-kit`.
-2. Copy `.github/workflows/dylkit.yml` and `.github/pull_request_template.md` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set `dylkit.yml`'s `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. Delete any release or PR-check workflow they replace. App-owned workflows such as `verify.yml` stay, running `swift run devkit verify`; SampleApp's `verify.yml` is one to copy if the app has none.
+2. Copy `.github/workflows/dylkit.yml`, `.github/pull_request_template.md` and `.cursor/rules/changelog-release-notes.mdc` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set `dylkit.yml`'s `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. Delete any release or PR-check workflow they replace. App-owned workflows such as `verify.yml` stay, running `swift run devkit verify`; SampleApp's `verify.yml` is one to copy if the app has none.
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
 4. Switch the site to `@dylkit/web`.
    1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved` and run `npm install`. `dylkit_version` names the URL.
@@ -53,7 +53,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 5. An app with an `NSDockTilePlugIn`: keep its dynamic library product and set `[build] dock-tile-plugin` to that product and the plug-in's principal class. Delete the script steps that copied and signed the `.docktileplugin`, and the `NSDockTilePlugIn` key in the old `Info.plist`. The plug-in must find the app's preferences from its own bundle identifier, as DylKit's README says, so a dev build never reads the installed release's.
    - Check: `swift run devkit build`, then `codesign --verify --deep --strict "build/<App> Dev.app"` succeeds and `build/<App> Dev.app/Contents/PlugIns/` holds the plug-in.
 6. Verify on the Mac: `swift run devkit checks` and `swift run release-kit check` report 0 errors, and `swift run devkit capture` shows the app.
-7. Open the PR from the template with exactly one Release info box checked. When it merges, the `dylkit` run tags `v<version>` and uploads to the store.
+7. Open the PR from the template with exactly one Release info box checked and plain-English `# Release notes`, as the rule file says. When it merges, the `dylkit` run tags `v<version>` and uploads to the store.
    - Check: `git ls-remote --tags origin v<version>` prints the tag, `curl -fsSL <assets>/release.json` shows that version, and `curl -fsSL <site>/appcast.xml` matches `curl -fsSL <assets>/appcast.xml`.
 
 ## Later upgrades
@@ -64,6 +64,15 @@ One PR moves the three pins to the same version, with their lockfiles:
 2. The `@dylkit/web` tarball in `server/package.json`, then `npm install` in `server/` for `package-lock.json`.
 3. The `@v<version>` in `.github/workflows/dylkit.yml`.
    - Check: `swift run devkit checks` reports 0 errors; `dylkit_version` names any pin that differs from `Package.resolved`.
+
+### 0.3.x to 0.4.0
+
+0.4.0 holds release notes to plain English. The PR check fails a PR whose `# Release notes` is missing or has file paths, code names, flags, CSS selectors, backticks or more than three bullets, and it re-runs whenever the PR body is edited. `release_notes` in the checks fails without the rule file or the template section. The download page no longer styles code in notes.
+
+1. Pin `from: "0.4.0"` and run `swift package update dyl-kit`. In `server/package.json`, depend on `https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.4.0/dylkit-web-0.4.0.tgz` and run `npm install` in `server/`. Set `.github/workflows/dylkit.yml`'s `@v` to `v0.4.0`.
+2. Copy `.cursor/rules/changelog-release-notes.mdc` from DylKit's `Tests/Fixtures/SampleApp/` at `v0.4.0`.
+3. In `.github/pull_request_template.md`, put a `# Release notes` section above `# Release info` and keep it separate from `# What changed?`. SampleApp's template at `v0.4.0` has it, with the comment that goes under the heading.
+   - Check: `swift run devkit checks` reports 0 errors, and `swift run release-kit notes --check --body-file <body.md>` passes on the upgrade PR's own body.
 
 ### 0.2.x to 0.3.2
 

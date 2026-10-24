@@ -29,7 +29,7 @@ swift run release-kit check --live
 swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN
 ```
 
-`swift run release-kit notes --body-file <pr-body.md>` previews the cumulative notes without releasing. Don't open the staged app to check it: it has the installed app's bundle ID. Run `swift run release-kit check --live` instead.
+`swift run release-kit notes --body-file <pr-body.md>` previews the cumulative notes without releasing, and `--check` runs the PR check's Release notes rules on that body instead. Don't open the staged app to check it: it has the installed app's bundle ID. Run `swift run release-kit check --live` instead.
 
 ## Invariants
 

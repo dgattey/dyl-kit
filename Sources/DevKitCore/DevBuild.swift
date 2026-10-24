@@ -7,18 +7,22 @@ import ReleaseKit
 /// carry the dev identity, so they never share a bundle ID with the installed release.
 public struct DevBuild: Sendable {
     public let workspace: Workspace
+    private let transport: any HTTPTransport
 
-    public init(workspace: Workspace) { self.workspace = workspace }
+    public init(workspace: Workspace, transport: any HTTPTransport = URLSessionTransport(quick: true)) {
+        self.workspace = workspace
+        self.transport = transport
+    }
 
     public var appURL: URL { workspace.buildDir.appending(path: "\(AppIdentity.dev.name(workspace.manifest)).app") }
 
     /// Bundles and ad-hoc signs `build/<App> Dev.app` with the last shipped version and the commit count as its build.
     ///
-    /// - Blocking: runs `swift build`, `codesign` and `lsregister`.
+    /// - Blocking: reads the published feeds, runs `swift build`, `codesign` and `lsregister`.
     @discardableResult
-    public func build(configuration: Bundler.Configuration) throws -> URL {
+    public func build(configuration: Bundler.Configuration) async throws -> URL {
         let manifest = workspace.manifest
-        let version = try ReleasePipeline(workspace: workspace).shippedVersion().description
+        let version = try await ReleasePipeline(workspace: workspace, transport: transport).shippedVersion().description
         let build = (try? Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: workspace.root)) ?? "1"
         try FileManager.default.createDirectory(at: workspace.buildDir, withIntermediateDirectories: true)
         let app = try Bundler(workspace: workspace)

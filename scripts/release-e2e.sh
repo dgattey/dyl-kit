@@ -4,12 +4,24 @@
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
-# app icon changes them, and that release and dev builds both carry a signed dock tile plug-in that loads.
+# app icon changes them, that release and dev builds both carry a signed dock tile plug-in that loads, and that no
+# build edits a binary after it's signed.
 set -euo pipefail
 
 kit="$(cd "$(dirname "$0")/.." && pwd)"
 work="${1:-$(mktemp -d)}"
 fail() { echo "::error::$*" >&2; exit 1; }
+# Runs a build, echoing its stderr, and fails if install_name_tool edited a binary after it was signed.
+unsigned_edits() {
+  local log status=0
+  log="$(mktemp)"
+  "$@" 2>"$log" || status=$?
+  cat "$log" >&2
+  ((status == 0)) || exit "$status"
+  if grep -F "invalidate the code signature" "$log" >/dev/null; then
+    fail "$(basename "$1") $2 edited a binary after signing it"
+  fi
+}
 
 swift build --package-path "$kit" --product release-kit -q
 release_kit="$kit/.build/debug/release-kit"
@@ -30,7 +42,7 @@ git add -A
 git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qm "Sample"
 
 version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
-"$release_kit" bundle
+unsigned_edits "$release_kit" bundle
 
 icons_dir="build/release/icons"
 scratch="$(mktemp -d)"
@@ -121,12 +133,12 @@ dock_tile() {
   local plugin="$1/Contents/PlugIns/$plugin_name"
   [[ "$(plutil -extract CFBundleIdentifier raw -o - "$plugin/Contents/Info.plist")" == "$2.docktile" ]] ||
     fail "$plugin isn't $2.docktile"
-  codesign --verify --strict "$plugin" || fail "$plugin doesn't verify"
+  codesign --verify --deep --strict "$plugin" || fail "$plugin doesn't verify"
   "$scratch/load" "$plugin" || fail "$plugin's principal class isn't an NSDockTilePlugIn"
 }
 dock_tile "$app" "$bundle_id"
 
-dev_app="$("$kit/.build/debug/devkit" build | tail -1)"
+dev_app="$(unsigned_edits "$kit/.build/debug/devkit" build | tail -1)"
 codesign --verify --strict --deep "$dev_app" || fail "$dev_app doesn't verify"
 dock_tile "$dev_app" "$bundle_id.dev"
 

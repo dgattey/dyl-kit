@@ -26,10 +26,14 @@ public struct Bundler: Sendable {
 
         let platform = ResourceCompiler.Platform.macOS
         let sdkVersion = try platform.sdkVersion()
+        // Debug builds otherwise re-sign the executable, and from Xcode 27 the dylib, to add get-task-allow, so
+        // `fixRpaths` edits a signed binary and `install_name_tool` warns. That leaves the linker's signature, which
+        // `install_name_tool` keeps valid; the Signer then replaces it with the app's entitlements.
         for name in [product] + [manifest.build.dockTilePlugin?.product].compactMap({ $0 }) {
             Log.step("swift build -c \(configuration.rawValue) --product \(name) (SDK \(sdkVersion))")
             try Shell.run(
                 ["swift", "build", "-c", configuration.rawValue, "--product", name]
+                    + ["--disable-get-task-allow-entitlement"]
                     + platform.platformVersionFlags(minimumOS: manifest.app.platforms.macos, sdkVersion: sdkVersion),
                 cwd: workspace.root)
         }

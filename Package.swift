@@ -52,11 +52,14 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "dyl-lint", dependencies: ["DylLintRules"]),
-        .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport"]),
+        // Foundation only: app PR checks compile it with swiftc, without resolving this package.
+        .target(name: "ReleaseNotes"),
+        .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport", "ReleaseNotes"]),
         .executableTarget(
             name: "release-kit",
             dependencies: [
                 "ReleaseKit",
+                "ReleaseNotes",
                 "DylToolSupport",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
@@ -80,7 +83,7 @@ let package = Package(
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(
             name: "ReleaseKitTests",
-            dependencies: ["ReleaseKit", "DylManifest", "DylToolSupport", "release-kit"],
+            dependencies: ["ReleaseKit", "ReleaseNotes", "DylManifest", "DylToolSupport", "release-kit"],
             exclude: ["Fixtures"]
         ),
     ]

@@ -7,8 +7,12 @@ import ReleaseKit
 /// included), wraps it in `build/<App>-iOS.app`, and runs it on a simulator without opening Simulator.app.
 public struct IOSBuild: Sendable {
     public let workspace: Workspace
+    private let transport: any HTTPTransport
 
-    public init(workspace: Workspace) { self.workspace = workspace }
+    public init(workspace: Workspace, transport: any HTTPTransport = URLSessionTransport(quick: true)) {
+        self.workspace = workspace
+        self.transport = transport
+    }
 
     private var derivedData: URL { workspace.buildDir.appending(path: "ios/DerivedData") }
     public var appURL: URL { workspace.buildDir.appending(path: "\(workspace.manifest.app.name)-iOS.app") }
@@ -19,13 +23,16 @@ public struct IOSBuild: Sendable {
         "\(manifest.ios?.bundleId ?? manifest.app.bundleId).dev"
     }
 
-    /// - Blocking: runs `xcodebuild`, `actool` and `codesign`.
+    /// Stamped with the same version and build as the macOS dev build (see `DevVersion`).
+    ///
+    /// - Blocking: reads the published feeds, runs `xcodebuild`, `actool` and `codesign`.
     @discardableResult
-    public func build() throws -> URL {
+    public func build() async throws -> URL {
         let manifest = workspace.manifest
         guard let minimumOS = manifest.app.platforms.ios else {
             throw ToolError("DylApp.toml has no [app] platforms.ios")
         }
+        let version = try await DevVersion.current(workspace, transport: transport)
         let product = manifest.build.product
         let scheme = try Self.scheme(for: product, in: try schemes())
         let platform = ResourceCompiler.Platform.iOSSimulator
@@ -50,11 +57,13 @@ public struct IOSBuild: Sendable {
         let localValues = ResolvedLocalValues.resolve(workspace)
         if manifest.localValues != nil { Log.step(localValues.summary) }
         let plist = InfoPlist.finalizing(
-            InfoPlist.iOSContents(manifest: manifest, bundleId: bundleId, minimumOS: minimumOS),
+            InfoPlist.iOSContents(
+                manifest: manifest, bundleId: bundleId, minimumOS: minimumOS, shortVersion: version.shortVersion,
+                build: version.build),
             generated: generated, rawKeys: InfoPlist.rawKeys(manifest, iOS: true), localValues: localValues)
         try InfoPlist.data(plist).write(to: appURL.appending(path: "Info.plist"))
         try Shell.run(["codesign", "--force", "--sign", "-", appURL.path])
-        Log.step("built \(appURL.path)")
+        Log.step("built \(appURL.path) (\(version.shortVersion), build \(version.build))")
         return appURL
     }
 

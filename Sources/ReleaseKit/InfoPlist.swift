@@ -153,9 +153,11 @@ public enum InfoPlist {
 
     /// The iOS Simulator dev build's `Info.plist`: the shared bundle keys without Sparkle or AppKit ones. `actool`'s
     /// partial plist adds `CFBundleIcons`.
-    public static func iOSContents(manifest: DylAppManifest, bundleId: String, minimumOS: String) -> Plist {
+    public static func iOSContents(
+        manifest: DylAppManifest, bundleId: String, minimumOS: String, shortVersion: String, build: String
+    ) -> Plist {
         var plist = contents(
-            manifest: manifest, identity: .release, shortVersion: "1.0", build: "1", sparklePublicKey: nil)
+            manifest: manifest, identity: .release, shortVersion: shortVersion, build: build, sparklePublicKey: nil)
         for key in [
             "CFBundleIconFile", "LSMinimumSystemVersion", "LSApplicationCategoryType", "NSHighResolutionCapable",
             "NSPrincipalClass", "SUFeedURL", "SUEnableAutomaticChecks", "SUScheduledCheckInterval", "NSDockTilePlugIn",

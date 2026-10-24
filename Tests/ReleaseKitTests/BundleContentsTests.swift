@@ -61,7 +61,11 @@ import CryptoKit
         #expect(macOS["NSPrincipalClass"] == .string("SampleApplication"))
         #expect(macOS["UIRequiresFullScreen"] == nil)
 
-        let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0")
+        let iOS = InfoPlist.iOSContents(
+            manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0", shortVersion: "1.2.0",
+            build: "54")
+        #expect(iOS["CFBundleShortVersionString"] == .string("1.2.0"))
+        #expect(iOS["CFBundleVersion"] == .string("54"))
         #expect(iOS["ITSAppUsesNonExemptEncryption"] == .boolean(false))
         #expect(iOS["UIRequiresFullScreen"] == .boolean(true))
         let scenes: PlistValue = .dictionary(["UIApplicationSupportsMultipleScenes": .boolean(true)])
@@ -87,7 +91,8 @@ import CryptoKit
             #expect(plist["NSPrincipalClass"] == .string("SampleDockTilePlugIn"))
             #expect(plist["CFBundleVersion"] == .string("7"))
         }
-        let iOS = InfoPlist.iOSContents(manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0")
+        let iOS = InfoPlist.iOSContents(
+            manifest: manifest, bundleId: "com.dylkit.Sample.ios", minimumOS: "17.0", shortVersion: "1.2.0", build: "7")
         #expect(iOS["NSDockTilePlugIn"] == nil)
     }
 

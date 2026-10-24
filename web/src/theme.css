@@ -13,6 +13,8 @@
     --ink-muted: hsl(183deg 10% 40%);
     --line: hsl(24deg 10% 50% / 0.22);
     --shadow: hsl(24deg 30% 20% / 0.16);
+    /* Unframed screenshots. A `filter`, so it follows a window's rounded, transparent corners; `none` removes it. */
+    --shadow-shot: drop-shadow(0 2px 3px var(--shadow)) drop-shadow(0 20px 36px var(--shadow));
     --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
     --font-mono: Menlo, Consolas, "Roboto Mono", "Liberation Mono", monospace;

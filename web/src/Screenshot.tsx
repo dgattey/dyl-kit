@@ -19,7 +19,7 @@ export function ScreenshotImage({
   className,
 }: Props & { shot: Shot; frame?: Frame; priority?: boolean }) {
   const picture = (
-    <picture className={frame ? styles.shot : cx(styles.shot, className)}>
+    <picture className={frame ? styles.shot : cx(styles.shot, styles.window, className)}>
       {shot.darkSrc ? <source srcSet={shot.darkSrc} media="(prefers-color-scheme: dark)" /> : null}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

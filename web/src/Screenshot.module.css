@@ -10,6 +10,10 @@
     height: auto;
   }
 
+  .window {
+    filter: var(--shadow-shot);
+  }
+
   .iphone {
     container-type: inline-size;
   }
@@ -27,7 +31,6 @@
     border-radius: 13.5cqw;
   }
 
-  /* Mac captures carry their own window chrome and shadow, so the window isn't framed again. */
   .showcase {
     position: relative;
     max-width: 1000px;
@@ -50,7 +53,6 @@
 
   .galleryShot img {
     border-radius: 14px;
-    filter: drop-shadow(0 24px 48px var(--shadow));
   }
 
   @media (max-width: 520px) {

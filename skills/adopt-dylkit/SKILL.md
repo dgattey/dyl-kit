@@ -46,7 +46,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
 4. Switch the site to `@dylkit/web`.
    1. In `server/package.json`, depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved` and run `npm install`. `dylkit_version` names the URL.
-   2. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README.
+   2. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/releases/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README.
    - Delete the committed site icons (`app/icon.png`, `apple-icon.png`, `favicon.ico`, `public/app-icon.png`, `apple-icon.png`) and the icon-generator lines that write them. If the icon's light variant vanishes on a light tab, as Sconeos's does, set `favicon = "dark"` under `[site]`.
    3. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`.
    - Check: `npm run build` in `server/` succeeds.
@@ -55,6 +55,8 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 6. Verify on the Mac: `swift run devkit checks` and `swift run release-kit check` report 0 errors, and `swift run devkit capture` shows the app.
 7. Open the PR from the template with exactly one Release info box checked and plain-English `# Release notes`, as the rule file says. When it merges, the `dylkit` run tags `v<version>` and uploads to the store.
    - Check: `git ls-remote --tags origin v<version>` prints the tag, `curl -fsSL <assets>/release.json` shows that version, and `curl -fsSL <site>/appcast.xml` matches `curl -fsSL <assets>/appcast.xml`.
+8. Backfill the releases from before DylKit into `history.json`: `swift run release-kit history --appcast <each older appcast.xml> --github <owner/name>` with `GITHUB_TOKEN` set, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`.
+   - Check: `<site>/releases` lists every version.
 
 ## Later upgrades
 

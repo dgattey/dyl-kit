@@ -14,7 +14,8 @@ struct ReleaseKitCommand: AsyncParsableCommand {
             what the earlier ones left in build/release/.
             """,
         subcommands: [
-            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self, Library.self,
+            Version.self, Bundle.self, Sign.self, Appcast.self, Check.self, Publish.self, Notes.self, History.self,
+            Library.self,
         ]
     )
 }
@@ -151,6 +152,32 @@ extension ReleaseKitCommand {
             }
             guard let state else { throw ToolError("run `release-kit version` first, or pass --body-file") }
             print(pipeline.releaseNotes(state: state, history: try await pipeline.publishedFeeds()))
+        }
+    }
+
+    struct History: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Backfill history.json with the releases from before release-kit published it.",
+            discussion: """
+                Each release appends itself to history.json. Run this once per app to bring in older releases from \
+                the published feeds, older appcasts and the repo's GitHub Releases, then again with --publish.
+                """)
+
+        @OptionGroup var options: RootOption
+        @Option(name: .customLong("appcast"), help: "An older appcast.xml, as a path or URL. Repeat for each.")
+        var appcasts: [String] = []
+        @Option(help: "The GitHub repo whose releases to read, as owner/name. Defaults to GITHUB_REPOSITORY; needs GITHUB_TOKEN.")
+        var github: String?
+        @Flag(help: "Upload build/release/history.json to the Blob store root instead of building it.")
+        var publish = false
+
+        func run() async throws {
+            let pipeline = ReleasePipeline(workspace: try options.workspace())
+            if publish {
+                try await pipeline.publishHistory()
+            } else {
+                print(try await pipeline.backfillHistory(appcasts: appcasts, gitHubRepo: github).path)
+            }
         }
     }
 

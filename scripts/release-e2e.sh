@@ -102,6 +102,8 @@ grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appca
 [[ -f build/release/release.json ]] || fail "appcast wrote no build/release/release.json"
 [[ "$(plutil -extract download raw -o - build/release/release.json)" == "$download" ]] ||
   fail "release.json's download isn't $download"
+grep -qF "\"version\" : \"$version\"" build/release/history.json || fail "history.json doesn't list $version"
+grep -qF "/releases" build/release/appcast.xml || fail "the staged appcast doesn't link /releases"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

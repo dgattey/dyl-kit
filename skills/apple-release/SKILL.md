@@ -10,8 +10,8 @@ The release is `release-kit`, run in steps by DylKit's reusable `app` workflow, 
 1. `version --pr <n>` reads the merged PR's `# Release info` checkbox from GitHub (the merge commit message if that lookup fails), the tags and the published feeds, and writes `build/release/plan.json`. If HEAD already carries a release tag, it resumes that release, so rerunning a failed job finishes it.
 2. `bundle` builds the release app into `build/release/stage` with bundle-relative rpaths only.
 3. `sign` signs inside-out (frameworks, helpers, then the app), pins the designated requirement to the bundle ID, verifies, and zips.
-4. `appcast` writes cumulative notes, the appcast with its enclosure on the app's Blob store, and `release.json`. It signs the enclosure with `SPARKLE_ED_PRIVATE_KEY_BASE64`, checks the signature against the key baked into the app, and runs the release checks against the staged feed.
-5. `publish` tags `v<version>`, pushes the tag with plain git, and uploads the zip to `releases/v<version>/` in the Blob store at `[release] assets`, then the appcast and `release.json` to its root. Nothing is committed, and there's no GitHub release.
+4. `appcast` writes cumulative notes, the appcast with its enclosure on the app's Blob store, `release.json`, and `history.json` (the published history plus this release; a rerun replaces its own entry). It signs the enclosure with `SPARKLE_ED_PRIVATE_KEY_BASE64`, checks the signature against the key baked into the app, and runs the release checks against the staged feed.
+5. `publish` tags `v<version>`, pushes the tag with plain git, and uploads the zip to `releases/v<version>/` in the Blob store at `[release] assets`, then `history.json`, the appcast and `release.json` to its root. Nothing is committed, and there's no GitHub release.
 6. CI's `live-site` job then waits on ubuntu until the site serves the new version's appcast and download page.
 
 `swift run release-kit check` runs the same tier 3 checks on any branch, and `check --live` also compares the staged app with the live release (see `apple-dev-loop`). Its rule IDs explain themselves; read the finding instead of restating it here.

@@ -65,6 +65,7 @@ public struct ReleaseChecks: Sendable {
         check("forge_neutral", checkForgeNeutral)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
+        check("releases_page", checkReleasesPage)
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("release_notes", checkReleaseNotesFiles)
@@ -368,6 +369,19 @@ public struct ReleaseChecks: Sendable {
             let relative = absolute.replacingOccurrences(of: workspace.root.standardized.path + "/", with: "")
             findings.append(error("site_deploy", file, "ignoreCommand skips commits that only change \(relative)"))
         }
+    }
+
+    /// Sparkle's full-notes link and the end of every update's notes point at `/releases`, the only place a user more
+    /// than ten releases behind can read what they skipped, so a `@dylkit/web` site must serve it.
+    private func checkReleasesPage(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site, package.contains("\"@dylkit/web\"") else { return }
+        let pages = ["tsx", "ts", "jsx", "js"].map { "\(siteRoot)/app/releases/page.\($0)" }
+        guard !pages.contains(where: { FileManager.default.fileExists(atPath: workspace.url($0).path) }) else { return }
+        findings.append(
+            error(
+                "releases_page", pages[0],
+                "is missing; the update dialog links every version's notes there. Add "
+                    + #"`export { Releases as default, releasesMetadata as metadata } from "@dylkit/web/app";`"#))
     }
 
     private static func jsonEscaped(_ text: String) -> String {

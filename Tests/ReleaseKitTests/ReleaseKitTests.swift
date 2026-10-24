@@ -482,7 +482,8 @@ private let sconeosModules = [
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/vercel.json", ".github/pull_request_template.md", ".github/workflows/dylkit.yml",
+            "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
+            ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
         for path in appFiles {
@@ -597,6 +598,16 @@ private let sconeosModules = [
         let report = ReleaseChecks(workspace: workspace).run()
         #expect(errors(report)["library_validation"]?.count == 1)
         #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
+    }
+
+    /// The update dialog and Sparkle's Version History button link every version's notes at `/releases`.
+    @Test func aDylKitSiteServesTheReleasesPage() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["releases_page"] == nil)
+
+        try FileManager.default.removeItem(at: workspace.url("server/app/releases/page.tsx"))
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["releases_page"] == ["server/app/releases/page.tsx"])
     }
 
     /// Saga #45: Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.

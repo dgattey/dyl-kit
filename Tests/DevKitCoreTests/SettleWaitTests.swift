@@ -1,4 +1,5 @@
 import CoreGraphics
+import DylToolSupport
 import Foundation
 import ImageIO
 import Testing
@@ -69,5 +70,39 @@ import UniformTypeIdentifiers
             try Self.writePNG(gray: gray, to: frame)
         }
         #expect(FileManager.default.fileExists(atPath: output.path))
+    }
+
+    /// Sconeos: frames 0 to 18 captured, then frame 19 failed and failed the run.
+    @Test func keepsTheLastGoodFrameWhenTheWindowGoesAway() async throws {
+        let good = (1...3).map { _ in Self.output() }
+        defer { good.forEach { try? FileManager.default.removeItem(at: $0) } }
+        for (index, url) in good.enumerated() { try Self.writePNG(gray: CGFloat(index + 1) / 4, to: url) }
+        // ImageIO's first decode is slow on a cold runner; keep it off the settle clock.
+        _ = SettleWait.pixels(at: good[0])
+        var index = 0
+        let output = Self.output()
+        defer { try? FileManager.default.removeItem(at: output) }
+        let wait = SettleWait(timeout: .seconds(2), minimum: .seconds(5), interval: .milliseconds(10))
+        try await wait.capture(to: output) { frame in
+            index += 1
+            guard index <= good.count else { throw ToolError("window 7681 closed before it could be captured") }
+            try FileManager.default.copyItem(at: good[index - 1], to: frame)
+        }
+        #expect(index > good.count + 1)
+        #expect(SettleWait.pixels(at: output) == SettleWait.pixels(at: good[2]))
+    }
+
+    @Test func retriesAFailedFrameAndThrowsItIfNoneWorks() async throws {
+        var attempts = 0
+        let output = Self.output()
+        let wait = SettleWait(timeout: .milliseconds(100), minimum: .zero, interval: .milliseconds(10))
+        await #expect(throws: ToolError.self) {
+            try await wait.capture(to: output) { _ in
+                attempts += 1
+                throw ToolError("window 7681 closed before it could be captured")
+            }
+        }
+        #expect(attempts > 1)
+        #expect(!FileManager.default.fileExists(atPath: output.path))
     }
 }

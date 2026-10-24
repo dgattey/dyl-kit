@@ -16,7 +16,8 @@ public struct SettleWait: Sendable {
     var stableFrames = 3
 
     /// Calls `frame` with a scratch path to write a PNG to until the last `stableFrames` match, then moves the last
-    /// frame to `output`. Past `timeout` it keeps the last frame and warns.
+    /// frame to `output`. Past `timeout` it keeps the last frame and warns. A frame that throws is retried until
+    /// `timeout`, then the last good frame is kept, or the error is thrown if there's none.
     ///
     /// - Blocking: `frame` usually runs `screencapture` or `simctl io`.
     public func capture(to output: URL, frame: (URL) throws -> Void) async throws {
@@ -31,10 +32,24 @@ public struct SettleWait: Sendable {
         var still = 0
         var index = 0
         var last: URL?
+        var failing = false
         while true {
             let path = scratch.appending(path: "\(index).png")
             index += 1
-            try frame(path)
+            do {
+                try frame(path)
+                failing = false
+            } catch {
+                if !failing { Log.warn("\(error); retrying until the settle timeout (\(timeout))") }
+                failing = true
+                guard ContinuousClock.now - start >= timeout else {
+                    try await Task.sleep(for: interval)
+                    continue
+                }
+                guard last != nil else { throw error }
+                Log.warn("kept the last frame captured before that, which may not have settled")
+                break
+            }
             let pixels = Self.pixels(at: path)
             last = path
             if let pixels, pixels == previous { still += 1 } else { still = 1 }

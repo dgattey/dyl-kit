@@ -114,6 +114,8 @@ scripts/release-e2e.sh            # version, bundle, sign, appcast and check Sam
 
 CI runs the same on every PR. Docs-only changes skip CI.
 
+SampleApp depends on DylKit with `.package(path: "../../..")`, and SwiftPM names a path dependency after its folder, so the checkout or worktree folder must be named `dyl-kit`. Anything else fails with `unknown package 'dyl-kit'`; use a worktree path such as `/tmp/dk-<sha>/dyl-kit`.
+
 ## Releasing DylKit
 
 Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and the workflow ref together. DylKit's own PRs run the same `app.yml` Release info check apps call.

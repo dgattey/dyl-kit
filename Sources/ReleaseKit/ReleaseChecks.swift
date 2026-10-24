@@ -67,6 +67,7 @@ public struct ReleaseChecks: Sendable {
         check("site_deploy", checkSiteDeploy)
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
+        check("release_notes", checkReleaseNotesFiles)
         if let staged {
             check("staged_release") { checkStaged(staged, into: &$0) }
         }
@@ -440,6 +441,29 @@ public struct ReleaseChecks: Sendable {
             findings.append(error("local_values_ignored", file, "is committed; `git rm --cached` it and rotate its values"))
         } else if !ignored {
             findings.append(error("local_values_ignored", file, "isn't in .gitignore"))
+        }
+    }
+
+    static let pullRequestTemplate = ".github/pull_request_template.md"
+    static let releaseNotesRule = ".cursor/rules/changelog-release-notes.mdc"
+
+    /// Every PR needs a `# Release notes` section above `# Release info`, which app.yml's PR check lints, and agents
+    /// need the rule that says how to write it.
+    private func checkReleaseNotesFiles(_ findings: inout [CheckFinding]) {
+        let copy = "copy it from DylKit's Tests/Fixtures/SampleApp/ at the pinned tag"
+        if let template = read(Self.pullRequestTemplate) {
+            let headings = template.replacing(pattern: #"<!--[\s\S]*?-->"#, with: "").components(separatedBy: "\n")
+                .compactMap { $0.firstMatch(of: /^\s*#{1,2}\s+(.+?)\s*$/).map { $0.1.lowercased() } }
+            let info = headings.firstIndex(of: "release info") ?? headings.endIndex
+            if headings.firstIndex(of: "release notes") ?? .max > info {
+                findings.append(
+                    error("release_notes", Self.pullRequestTemplate, "needs a `# Release notes` section above `# Release info`"))
+            }
+        } else {
+            findings.append(error("release_notes", Self.pullRequestTemplate, "missing; \(copy)"))
+        }
+        if read(Self.releaseNotesRule) == nil {
+            findings.append(error("release_notes", Self.releaseNotesRule, "missing; \(copy)"))
         }
     }
 

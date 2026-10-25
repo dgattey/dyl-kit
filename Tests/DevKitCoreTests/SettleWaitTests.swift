@@ -82,7 +82,9 @@ import UniformTypeIdentifiers
         var index = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
-        let wait = SettleWait(timeout: .seconds(2), minimum: .seconds(5), interval: .milliseconds(10))
+        // The good frames must all land before the timeout. A busy macOS runner took over 2s for the first two, so the
+        // timeout is generous; the closed window's retries run until it, so it's also how long this test takes.
+        let wait = SettleWait(timeout: .seconds(10), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
             guard index <= good.count else { throw ToolError("window 7681 closed before it could be captured") }

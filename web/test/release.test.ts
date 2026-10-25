@@ -7,7 +7,7 @@ import type { Site } from "../src/site.ts";
 const site: Site = {
   name: "Demo",
   tagline: "A demo app.",
-  siteUrl: "https://demo.gattey.com",
+  siteUrl: "https://demo.example.com",
   accent: null,
   appleIcon: "/app-icon.png",
   screenshots: [],

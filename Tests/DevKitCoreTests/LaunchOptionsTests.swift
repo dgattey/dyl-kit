@@ -12,7 +12,7 @@ import Testing
         #expect(LaunchOverrides(environment: environment, arguments: []).staysInBackground)
     }
 
-    /// Photos: no app reads the overrides itself, so devkit sets prefix-free names and the appearance per process.
+    /// No app reads the overrides itself, so devkit sets prefix-free names and the appearance per process.
     @Test func appearanceIsAppliedToTheProcessNotTheSystem() {
         let app = URL(fileURLWithPath: "/tmp/build/Sample Dev.app")
         #expect(
@@ -24,13 +24,13 @@ import Testing
         #expect(Launcher.openArguments(app, options: LaunchOptions()).last == app.path)
     }
 
-    /// Sconeos at v0.3.0: linked against the macOS 27 SDK, the window only opened after a second `open -g`.
+    /// Linked against the macOS 27 SDK, the window only opened after a second `open -g`.
     @Test func theReopenStaysInTheBackground() {
         let app = URL(fileURLWithPath: "/tmp/build/Sample Dev.app")
         #expect(Launcher.reopenArguments(app) == ["open", "-g", app.path])
     }
 
-    /// Sconeos: `relaunch` left no window. An old copy that outlives the stop must not stand in for the new launch.
+    /// `relaunch` once left no window. An old copy that outlives the stop must not stand in for the new launch.
     @Test func aLaunchNeverTakesTheOldCopysPid() {
         #expect(Launcher.newPid([25600, 25673], excluding: [25600]) == 25673)
         #expect(Launcher.newPid([25600], excluding: [25600]) == nil)
@@ -40,7 +40,7 @@ import Testing
     @Test func overridesReadDevkitVariablesThenArguments() {
         let devkit = LaunchOverrides(environment: ["DYLKIT_INITIAL_VIEW": "Living"], arguments: [])
         #expect(devkit.initialView == "living")
-        let appPrefixed = LaunchOverrides(environment: ["SCONEOS_INITIAL_VIEW": "group"], arguments: [])
+        let appPrefixed = LaunchOverrides(environment: ["SAMPLE_INITIAL_VIEW": "group"], arguments: [])
         #expect(appPrefixed.initialView == nil)
         let both = LaunchOverrides(environment: ["DYLKIT_APPEARANCE": "dark"], arguments: ["--appearance=light"])
         #expect(both.appearance == .dark)

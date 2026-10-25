@@ -59,7 +59,7 @@ public struct DevBuild: Sendable {
 
 /// Launch-time options passed to the app as `DYLKIT_<NAME>` environment variables, which `LaunchOverrides.current`
 /// and `AppWindow` read without any app code. Every launch also sets `DYLKIT_BACKGROUND=1`, so the app never
-/// activates itself on top of whatever Dylan is doing.
+/// activates itself on top of whatever the user is doing.
 public struct LaunchOptions: Sendable {
     public typealias Appearance = LaunchOverrides.Appearance
 

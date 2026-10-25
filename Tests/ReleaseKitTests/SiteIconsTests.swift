@@ -4,7 +4,7 @@ import Testing
 @testable import ReleaseKit
 
 @Suite struct SiteIconsTests {
-    /// Photos' favicon: an ICO directory of PNG entries, which browsers read without an image library.
+    /// The favicon: an ICO directory of PNG entries, which browsers read without an image library.
     @Test func icoIndexesEachPNG() {
         let small = Data([0x89, 0x50, 0x4E, 0x47, 1])
         let large = Data([0x89, 0x50, 0x4E, 0x47, 2, 3])
@@ -25,7 +25,7 @@ import Testing
         #expect(Set(names).count == names.count, "\(names)")
     }
 
-    /// dylangattey.com reads these two paths, sizes and sources.
+    /// Other sites can embed these two paths, sizes and sources.
     @Test func keepsTheExternalContract() throws {
         let icon = try #require(SiteIcons.all.first { $0.name == "icon.png" })
         let touch = try #require(SiteIcons.all.first { $0.name == "apple-touch-icon.png" })

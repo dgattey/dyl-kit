@@ -25,9 +25,7 @@ func sparkleFeed(_ items: String) -> String {
     #"<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>\#(items)</channel></rss>"#
 }
 
-private let sconeosModules = [
-    "SconeDomain", "SconeStore", "SconeUI", "SconeosApp", "SonosProtocolBoundary", "SpotifyBridge",
-]
+private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
 
 @Suite struct NotesFormatterTests {
     static let cases: [(body: String, html: String)] = [
@@ -74,7 +72,7 @@ private let sconeosModules = [
 
             Intro paragraph with a [link](https://example.com/a?b=1&c=2) and **bold** text.
 
-            - Fixed the map (`Sources/SconeUI/FloorplanMapView.swift`, `FloorplanMapView.swift`) so it stops jumping.
+            - Fixed the map (`Sources/DemoUI/MapView.swift`, `MapView.swift`) so it stops jumping.
             - Keeps real parentheses (like this one) intact , with spacing .
             - Mixed (`scripts/build-macos.sh` and `package.json`) noise & <tags> escaped
               continuation line joins the bullet
@@ -101,7 +99,7 @@ private let sconeosModules = [
     ]
 
     @Test(arguments: cases) func formatsTheNotesSection(_ body: String, _ html: String) {
-        let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + sconeosModules)
+        let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + appModules)
         let extracted = ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "")
         #expect(formatter.html(extracted.isEmpty ? body : extracted, version: "2.3.4") == html)
     }
@@ -146,7 +144,7 @@ private let sconeosModules = [
         ("- Reads DylApp.toml and package.json.", "a file path DylApp.toml, package.json"),
         ("- Builds with --disable-get-task-allow-entitlement.", "a command-line flag --disable-get-task-allow-entitlement"),
         ("- Calls shippedVersion() first.", "a code identifier shippedVersion()"),
-        ("- Fixed Bundler.fixRpaths and state.externalSpotify.", "a code identifier Bundler.fixRpaths, state.externalSpotify"),
+        ("- Fixed Bundler.fixRpaths and state.externalPlayer.", "a code identifier Bundler.fixRpaths, state.externalPlayer"),
         ("- Sets BLOB_READ_WRITE_TOKEN and site_deploy.", "a code identifier BLOB_READ_WRITE_TOKEN, site_deploy"),
         ("- Ships @dylkit/web.", "a code identifier @dylkit/web"),
         ("- Drops .changelog__code styling.", "a CSS selector or dotfile .changelog__code"),
@@ -158,7 +156,7 @@ private let sconeosModules = [
     @Test func acceptsPlainEnglish() {
         let notes = """
             - The iOS and macOS apps show the same version, like v0.3.5, on iPhone's Settings screen (#10).
-            - Node.js 22 builds of the download site at dylangattey.com work again, e.g. on Vercel — see [the PR](https://github.com/dgattey/dyl-kit/pull/9).
+            - Node.js 22 builds of the download site at example.com work again, e.g. on Vercel — see [the PR](https://github.com/dgattey/dyl-kit/pull/9).
             - **Faster sync:** Apple silicon and Intel Macs re-sign the app once, 24/7 and/or on demand, since 10/24/2026.
             """
         #expect(ReleaseNotes.problems(in: notes).isEmpty)
@@ -171,8 +169,8 @@ private let sconeosModules = [
         #expect(ReleaseNotes.problems(in: five + "\n- Six.") == ["6 bullets; aim for 3, up to 5"])
     }
 
-    /// scone-os #7 put a component name in backticks in otherwise user-facing notes.
-    @Test func scone7NotesFailTheRules() throws {
+    /// A real PR put a component name in backticks in otherwise user-facing notes.
+    @Test func aBacktickedComponentNameFailsTheRules() throws {
         let problems = ReleaseNotes.problems(inBody: try fixture("release-info/pr-7-body.md"))
         #expect(problems.count == 1 && problems[0].hasPrefix("backticked code `Playing on This computer`"))
     }
@@ -208,13 +206,13 @@ private let sconeosModules = [
 
     @Test func readsThePullRequestFromSquashAndMergeCommits() {
         #expect(ReleaseInfo.pullRequestNumber(in: "Composable download site (#12)\n\n* Shadow (#3)") == 12)
-        #expect(ReleaseInfo.pullRequestNumber(in: "Merge pull request #7 from dgattey/site\n\nSite") == 7)
+        #expect(ReleaseInfo.pullRequestNumber(in: "Merge pull request #7 from owner/site\n\nSite") == 7)
         #expect(ReleaseInfo.pullRequestNumber(in: "Bump the version\n\n(#4)") == nil)
     }
 
-    /// scone-os #7 checked Minor but shipped as 1.0.6: the squash commit carried only the commit list, and the old
+    /// A real PR checked Minor but shipped as 1.0.6: the squash commit carried only the commit list, and the old
     /// scripts defaulted to patch. Its body, verbatim, has prose and a rule before the heading and labels after each box.
-    @Test func scone7ReleasesAsMinorFromItsBodyAndNeverDefaultsToPatch() throws {
+    @Test func releasesAsMinorFromItsBodyAndNeverDefaultsToPatch() throws {
         let body = try fixture("release-info/pr-7-body.md")
         let squashMessage = try fixture("release-info/pr-7-merge-commit.txt")
         #expect(ReleaseInfo.releaseType(in: body) == .minor)
@@ -224,17 +222,17 @@ private let sconeosModules = [
         #expect(ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "").hasPrefix("- **One-click Spotify transfer:**"))
     }
 
-    /// Scone #13's shape: an agent-written body between markers, with a footer after them.
+    /// An agent-written body between markers, with a footer after them.
     @Test func notesComeFromTheFirstNonEmptySectionElseTheTitle() {
         let body = """
             <!-- CURSOR_AGENT_PR_BODY_BEGIN -->
             # Release notes
 
-            - Sconeos no longer stalls at launch.
+            - The app no longer stalls at launch.
 
             # What changed?
 
-            - `SonosHousehold.waitForTopology` stops spinning once cancelled.
+            - `Household.waitForTopology` stops spinning once cancelled.
 
             # Release info
 
@@ -243,12 +241,12 @@ private let sconeosModules = [
 
             <div><a href="https://cursor.com/agents/bc-1">Open in Cursor</a></div>
             """
-        #expect(ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "Title") == "- Sconeos no longer stalls at launch.")
+        #expect(ReleaseInfo.notesMarkdown(body: body, fallbackTitle: "Title") == "- The app no longer stalls at launch.")
         let empty = "# Release notes\n\n- \n\n# What changed?\n\n- "
         #expect(ReleaseInfo.notesMarkdown(body: empty, fallbackTitle: "Fix the map") == "- Fix the map")
     }
 
-    /// Saga #45: the secret may hold the exported key text or that text base64-encoded again.
+    /// The secret may hold the exported key text or that text base64-encoded again.
     @Test func sparkleKeySecretAcceptsSingleOrDoubleBase64() throws {
         let exported = Data(repeating: 7, count: 32).base64EncodedString()
         let doubled = Data(exported.utf8).base64EncodedString()
@@ -258,7 +256,7 @@ private let sconeosModules = [
         #expect(throws: ToolError.self) { try ReleasePipeline.edKeyFile(fromSecret: "not base64!") }
     }
 
-    /// Saga #52: `## Summary` with `### Changes` under it was cut at the subheading, and reviewer sections leaked in.
+    /// `## Summary` with `### Changes` under it was cut at the subheading, and reviewer sections leaked in.
     @Test func notesKeepDeeperSubheadingsButSkipReviewerSections() {
         let body = """
             ## Summary
@@ -598,7 +596,7 @@ private let sconeosModules = [
         ])
     }
 
-    /// Photos #9: library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
+    /// Library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
     @Test func libraryValidationOffAndNoXcodeProject() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -629,7 +627,7 @@ private let sconeosModules = [
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["releases_page"] == ["server/app/releases/page.tsx"])
     }
 
-    /// Saga #45: Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
+    /// Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -642,7 +640,7 @@ private let sconeosModules = [
         ])
     }
 
-    /// Gattey Photos: diffing from HEAD^ can skip a site change Vercel never deployed, including on a branch's first
+    /// Diffing from HEAD^ can skip a site change Vercel never deployed, including on a branch's first
     /// deploy, when VERCEL_GIT_PREVIOUS_SHA is empty.
     @Test(arguments: [
         #"git diff --quiet HEAD^ HEAD -- . ../DylApp.toml"#,
@@ -659,7 +657,8 @@ private let sconeosModules = [
         ])
     }
 
-    /// scone-os #22: 0.3.0's command failed every deploy after a rebase, so it names the replacement with the app's paths.
+    /// The unguarded command fails every deploy after a rebase, so the check names the replacement with the app's
+    /// paths.
     @Test func siteDeployNamesTheGuardedCommandForTheOldOne() throws {
         let old = #"[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"#
         let workspace = try scratchWorkspace(["server/vercel.json": #"{ "ignoreCommand": "\#(old)" }"#])
@@ -754,7 +753,7 @@ private let sconeosModules = [
         #expect(ReleaseChecks.forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
-    /// Photos: a `file:` @dylkit/web points into `.build/checkouts`, which Vercel never has.
+    /// A `file:` @dylkit/web points into `.build/checkouts`, which Vercel never has.
     @Test func fileDependencyOnTheWebPackageSaysToUseTheTarball() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -818,7 +817,7 @@ private let sconeosModules = [
 }
 
 /// `release.yml` appends `release-kit version`'s stdout to `$GITHUB_OUTPUT`, which accepts only `key=value` lines.
-/// The scone-os #14 release failed when a `git ls-remote` ref leaked into it.
+/// A release once failed when a `git ls-remote` ref leaked into it.
 @Suite struct VersionOutputTests {
     private final class Marker {}
 

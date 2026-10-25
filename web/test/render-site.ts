@@ -4,7 +4,7 @@ import type { Site } from "../src/site.ts";
 export const testSite: Site = {
   name: "Demo",
   tagline: "A demo app.",
-  siteUrl: "https://demo.gattey.com",
+  siteUrl: "https://demo.example.com",
   accent: null,
   favicon: "light",
   headingFont: "sans",

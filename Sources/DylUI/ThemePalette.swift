@@ -21,7 +21,7 @@ extension ThemePalette {
     public var surfaceTint: Color { .clear }
 }
 
-/// The installed palette as the app's own type, app-specific colors included: `@Palette var palette: SagaPalette`.
+/// The installed palette as the app's own type, app-specific colors included: `@Palette var palette: MyAppPalette`.
 @propertyWrapper
 public struct Palette<Value: ThemePalette>: DynamicProperty {
     @Environment(\.palette) private var installed

@@ -1,6 +1,6 @@
 import type { Site } from "./site";
 
-/** dylangattey.com fetches `/icon.png` and `/apple-touch-icon.png` cross-origin, and shows a new icon within the hour. */
+/** Other sites can fetch `/icon.png` and `/apple-touch-icon.png` cross-origin, and show a new icon within the hour. */
 const cacheControl = "public, max-age=3600, stale-while-revalidate=86400";
 
 /**

@@ -1,5 +1,5 @@
 /*
- * dylangattey.com's canvas, ink and type, with each app's accent from `[site] accent`. These tokens are the interface
+ * The shared canvas, ink and type, with each app's accent from `[site] accent`. These tokens are the interface
  * an app restyles through. Everything sits in the `dylkit` layer, so an app's own CSS wins without fighting specificity.
  */
 @layer dylkit {

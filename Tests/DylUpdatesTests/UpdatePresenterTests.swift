@@ -13,9 +13,9 @@ import Sparkle
     @Test func onlyAnInstalledReleaseMayTakeFocus() {
         let release = AppInfo { ["SUFeedURL": "https://example.com/appcast.xml", "SUPublicEDKey": "key"][$0] }
         let dev = AppInfo { _ in nil }
-        let installed = URL(filePath: "/Applications/Sconeos.app")
-        let userInstalled = URL(filePath: "/Users/dylan/Applications/Sconeos.app")
-        let devBuild = URL(filePath: "/Users/dylan/repos/scone-os/build/Sconeos.app")
+        let installed = URL(filePath: "/Applications/Demo.app")
+        let userInstalled = URL(filePath: "/Users/me/Applications/Demo.app")
+        let devBuild = URL(filePath: "/Users/me/repos/demo/build/Demo.app")
         let quiet = LaunchOverrides(environment: [:], arguments: [])
         let devkit = LaunchOverrides(environment: ["DYLKIT_BACKGROUND": "1"], arguments: [])
         let agentArgs = LaunchOverrides(environment: [:], arguments: ["--background"])
@@ -108,7 +108,7 @@ import Sparkle
         }
     }
 
-    /// Photos #12: a `checkForUpdates` made while Sparkle is still finding the update is dropped, so only the
+    /// A `checkForUpdates` made while Sparkle is still finding the update is dropped, so only the
     /// deferred `willShowUpdate` may re-run it, and an aborted session must not leave quit blocked.
     @Test func onlyTheDeferredShowReRunsTheCheck() {
         var shownInFocus = 0

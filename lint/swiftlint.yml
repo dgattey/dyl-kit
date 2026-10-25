@@ -1,4 +1,4 @@
-# DylKit tier 1: regex rules for pitfalls that shipped in Dylan's apps. `swift run devkit checks` passes this as the
+# DylKit tier 1: regex rules for pitfalls that shipped in DylKit apps. `swift run devkit checks` passes this as the
 # parent of the app's own `.swiftlint.yml`, which adds `included` paths and has no `parent_config`. Paths here resolve
 # against this file's folder, so devkit excludes the app's `.build` and `build/` in a layer of its own.
 #

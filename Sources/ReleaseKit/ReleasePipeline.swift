@@ -286,9 +286,14 @@ public struct ReleasePipeline: Sendable {
     public func backfillHistory(appcasts: [String], gitHubRepo: String?) async throws -> URL {
         var items = try await publishedFeeds()
         for source in appcasts {
-            items += source.hasPrefix("https://") || source.hasPrefix("http://")
-                ? try await Appcast.published(source, transport: transport)
-                : try Appcast.items(at: URL(fileURLWithPath: source))
+            guard source.hasPrefix("https://") || source.hasPrefix("http://") else {
+                items += try Appcast.items(at: URL(fileURLWithPath: source))
+                continue
+            }
+            guard let older = try await Appcast.published(source, transport: transport) else {
+                throw ToolError("\(source) answered HTTP 404")
+            }
+            items += older
         }
         var history = try await ReleaseHistory.published(latestHistoryURL, transport: transport)
             .filling(items.sorted { $0.build > $1.build }.flatMap(ReleaseHistory.entries(from:)))

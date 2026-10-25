@@ -22,8 +22,9 @@ public struct ReleaseRepo: Sendable {
     private var planFile: URL { stagingDir.appending(path: "plan.json") }
 
     /// Plans the release from the merged PR's body (the merge commit message when there's no PR or GitHub can't
-    /// return it), the tags and `published`, then resets `build/release/` around the new plan. A release tag already at
-    /// HEAD is resumed instead (see `ReleasePipeline.plan`).
+    /// return it), the tags and `published`, then resets `build/release/` around the new plan. Earlier merges that
+    /// never released fold in (see `unreleasedMerges`). A release tag already at HEAD is resumed instead (see
+    /// `ReleasePipeline.plan`).
     ///
     /// - Blocking: runs git and writes the plan.
     public func version(
@@ -32,8 +33,8 @@ public struct ReleaseRepo: Sendable {
         let prBody = await pullRequestBody(pullRequest)
         try Shell.run(["git", "fetch", "--quiet", "--tags", "origin"], cwd: root, allowFailure: true)
         let head = CommitMessage(try Shell.capture(["git", "log", "-1", "--format=%B"], cwd: root))
-        let body: String
-        let bump: AppVersion.Bump
+        var body: String
+        var bump: AppVersion.Bump
         if let explicitBump {
             body = prBody ?? head.body
             bump = explicitBump
@@ -44,6 +45,13 @@ public struct ReleaseRepo: Sendable {
         }
         // The PR check already rejected these; a release still ships rather than strand a merged PR.
         for problem in ReleaseNotes.problems(inBody: body) { Log.warn("Release notes: \(problem)") }
+        let earlier = try await unreleasedMerges()
+        if !earlier.isEmpty {
+            Log.step("also releasing \(earlier.map(\.subject).joined(separator: "; ")), merged without a release")
+            let folded = ReleaseInfo.folded([.init(subject: head.subject, body: body, bump: bump)] + earlier)
+            body = folded.body
+            if explicitBump == nil { bump = folded.bump }
+        }
         let commitCount = Int(try Shell.capture(["git", "rev-list", "--count", "HEAD"], cwd: root)) ?? 1
         let plan = ReleasePipeline.plan(
             headTags: try tags("--points-at", "HEAD"), tags: try tags("--list"), published: published,
@@ -105,6 +113,39 @@ public struct ReleaseRepo: Sendable {
     func tags(_ selection: String...) throws -> [String] {
         try Shell.capture(["git", "tag"] + selection, cwd: root, allowFailure: true)
             .split(separator: "\n").map(String.init)
+    }
+
+    /// Merges since the last release tag before HEAD that have none of their own, newest first. A concurrency group
+    /// keeps one pending run and cancels any older one, so when merges land while a release runs, only the newest
+    /// releases. Merges that only touch docs, the site, tests or CI never release, and those without a Release info box
+    /// are left out.
+    ///
+    /// - Blocking: runs git.
+    private func unreleasedMerges() async throws -> [ReleaseInfo.Merge] {
+        let base = try Shell.capture(
+            ["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD^"], cwd: root, allowFailure: true)
+        guard !base.isEmpty else { return [] }
+        var merges: [ReleaseInfo.Merge] = []
+        let commits = try Shell.capture(["git", "rev-list", "--first-parent", "\(base)..HEAD^"], cwd: root)
+        for commit in commits.split(separator: "\n").map(String.init) {
+            let files = try Shell.capture(["git", "diff", "--name-only", "\(commit)^", commit], cwd: root)
+            guard files.split(separator: "\n").contains(where: { !Self.neverReleases($0) }) else { continue }
+            let raw = try Shell.capture(["git", "log", "-1", "--format=%B", commit], cwd: root)
+            let message = CommitMessage(raw)
+            let number = ReleaseInfo.pullRequestNumber(in: raw)
+            let prBody = number == nil ? nil : await pullRequestBody(number)
+            guard let source = try? ReleaseInfo.source(prBody: prBody, commitBody: message.body) else {
+                Log.warn("\(message.subject) has no Release info box; leaving it out of this release")
+                continue
+            }
+            merges.append(.init(subject: message.subject, body: source.body, bump: source.bump))
+        }
+        return merges
+    }
+
+    /// Paths that never release on their own, as app.yml's `changes` job decides.
+    private static func neverReleases(_ path: Substring) -> Bool {
+        path.wholeMatch(of: #/.*\.md|(docs|server|Tests|\.github|\.cursor)\/.*/#) != nil
     }
 
     private func pullRequestBody(_ number: Int?) async -> String? {

@@ -91,7 +91,8 @@ jobs:
   release:
     needs: changes
     if: needs.changes.outputs.release == 'true'
-    # Job-level, so a PR closed without merging never queues behind a release.
+    # Job-level, so a PR closed without merging never queues behind a release. GitHub keeps only the newest pending
+    # run, so release-kit folds in merges whose runs this cancels.
     concurrency:
       group: release-${{ github.repository }}
       cancel-in-progress: false

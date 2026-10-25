@@ -21,6 +21,7 @@ permissions:
 jobs:
   release:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    # GitHub keeps only the newest pending run, so release-kit folds in merges whose runs this cancels.
     concurrency:
       group: release
       cancel-in-progress: false

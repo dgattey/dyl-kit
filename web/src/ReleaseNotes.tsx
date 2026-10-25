@@ -53,7 +53,9 @@ export async function ReleaseNotes({
  */
 export async function AllReleases({ release, className }: { release: Release | null; className?: string }) {
   const versions = releaseList(release, await releaseHistory(site));
-  const count = versions.length === 1 ? "1 release" : `${versions.length} releases`;
+  const lead = !versions.length
+    ? `${site.name} hasn't been released yet. Each version's notes will be listed here once it ships.`
+    : `${versions.length === 1 ? "1 release" : `${versions.length} releases`} of ${site.name}, newest first.`;
   return (
     <div className={cx(styles.allPage, className)}>
       <header className={styles.allHeader}>
@@ -69,9 +71,7 @@ export async function AllReleases({ release, className }: { release: Release | n
           {site.name}
         </a>
         <h1 className={styles.allTitle}>Release history</h1>
-        <p className={styles.allLead}>
-          {count} of {site.name}, newest first.
-        </p>
+        <p className={styles.allLead}>{lead}</p>
       </header>
       {versions.length ? (
         <ol className={styles.allList}>
@@ -79,9 +79,7 @@ export async function AllReleases({ release, className }: { release: Release | n
             <ReleaseCard key={entry.version} entry={entry} latest={index === 0} Heading="h2" />
           ))}
         </ol>
-      ) : (
-        <p className={styles.date}>No releases yet.</p>
-      )}
+      ) : null}
     </div>
   );
 }

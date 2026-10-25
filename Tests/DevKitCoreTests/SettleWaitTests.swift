@@ -25,8 +25,9 @@ import UniformTypeIdentifiers
         FileManager.default.temporaryDirectory.appending(path: "settle-\(UUID().uuidString).png")
     }
 
+    // The spinner settles after seven frames, so the timeout only has to outlast a busy macOS runner (over 5s once).
     private static let quick = SettleWait(
-        timeout: .seconds(5), minimum: .seconds(5), interval: .milliseconds(1), stableFrames: 3)
+        timeout: .seconds(60), minimum: .seconds(5), interval: .milliseconds(1), stableFrames: 3)
 
     /// Photos: `devkit ios capture` caught the launch spinner. Frames that keep changing aren't captured until they stop.
     @Test func waitsForTheSpinnerToStop() async throws {

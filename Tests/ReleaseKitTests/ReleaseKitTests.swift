@@ -56,7 +56,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             #"""
             Just a plain body without headings.
             - one
-            - two (Tests/SconeKitTests/SconeDomainTests.swift)
+            - two (Tests/SconeKitTests/SconeDomainTests.swift, pnpm test)
             """#,
             #"""
             <p style="margin: 0 0 8px 0; line-height: 1.45;">Just a plain body without headings.</p>
@@ -499,7 +499,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
+            "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
             ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
@@ -765,6 +765,24 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let messages = errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] ?? []
         #expect(messages.count == 1)
         #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
+    }
+
+    /// Sites install with pnpm like dylangattey.com; without its lockfile Vercel installs with npm, and pnpm ignores
+    /// npm's overrides.
+    @Test func siteInstallsWithPnpm() throws {
+        let workspace = try scratchWorkspace(["server/package-lock.json": "{}"])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let package = workspace.url("server/package.json")
+        let text = try String(contentsOf: package, encoding: .utf8)
+            .replacing(/"packageManager": "[^"]+",/, with: #""overrides": { "postcss": "^8.5.10" },"#)
+        try Data(text.utf8).write(to: package)
+        try FileManager.default.removeItem(at: workspace.url("server/pnpm-lock.yaml"))
+
+        let report = ReleaseChecks(workspace: workspace).run()
+        #expect(errorFiles(report)["site_package_manager"] == [
+            "server/package.json", "server/package.json", "server/package-lock.json", "server/pnpm-lock.yaml",
+        ])
+        #expect(errors(report)["site_package_manager"]?.first?.contains("SampleApp server/package.json") == true)
     }
 
     /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside

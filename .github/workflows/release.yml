@@ -51,13 +51,16 @@ jobs:
           set -o pipefail
           .build/release/release-kit library version --type "$RELEASE_TYPE" ${PR_NUMBER:+--pr "$PR_NUMBER"} |
             tee -a "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          package_json_file: web/package.json
       - name: Pack @dylkit/web at the planned version
         working-directory: web
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-          npm pack
+          pnpm pkg set version="$VERSION"
+          pnpm pack
       - name: Publish
         env:
           BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}

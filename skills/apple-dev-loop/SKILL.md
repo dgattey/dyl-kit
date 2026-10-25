@@ -35,7 +35,7 @@ Run everything from the app repo through `swift run devkit …`, which builds `d
 | Lint tiers 1–3 | `swift run devkit checks` |
 | What macOS CI runs: checks, build, then all tests | `swift run devkit verify` |
 | Bump DylKit | The three pins in `adopt-dylkit`'s Later upgrades, then `swift run devkit checks` |
-| Download site | `npm run dev` or `npm run build` in `server/` |
+| Download site | `pnpm dev` or `pnpm build` in `server/` |
 
 ## Hard rules
 

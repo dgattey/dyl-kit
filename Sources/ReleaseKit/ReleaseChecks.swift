@@ -65,6 +65,7 @@ public struct ReleaseChecks: Sendable {
         check("forge_neutral", checkForgeNeutral)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
+        check("site_package_manager", checkSitePackageManager)
         check("releases_page", checkReleasesPage)
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
@@ -371,6 +372,39 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    /// Sites install with pnpm, as dylangattey.com does: `packageManager` pins it and Vercel installs with it from
+    /// `pnpm-lock.yaml`. Vercel falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`,
+    /// so the security pins there would stop applying.
+    private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site else { return }
+        let file = "\(siteRoot)/package.json"
+        let fields = (try? JSONSerialization.jsonObject(with: Data(package.utf8))) as? [String: Any] ?? [:]
+        if (fields["packageManager"] as? String)?.hasPrefix("pnpm@") != true {
+            findings.append(
+                error(
+                    "site_package_manager", file,
+                    "doesn't pin pnpm; copy \"packageManager\" from DylKit's SampleApp server/package.json"))
+        }
+        if fields["overrides"] != nil {
+            findings.append(
+                error(
+                    "site_package_manager", file,
+                    "has npm's overrides, which pnpm ignores; move them to pnpm-workspace.yaml"))
+        }
+        for lockfile in ["package-lock.json", "yarn.lock"] where read("\(siteRoot)/\(lockfile)") != nil {
+            findings.append(
+                error(
+                    "site_package_manager", "\(siteRoot)/\(lockfile)",
+                    "is another package manager's lockfile; delete it"))
+        }
+        if read("\(siteRoot)/pnpm-lock.yaml") == nil {
+            findings.append(
+                error(
+                    "site_package_manager", "\(siteRoot)/pnpm-lock.yaml",
+                    "is missing, so Vercel installs with npm; run `pnpm install` in \(siteRoot)"))
+        }
+    }
+
     /// Sparkle's full-notes link and the end of every update's notes point at `/releases`, the only place a user more
     /// than ten releases behind can read what they skipped, so a `@dylkit/web` site must serve it.
     private func checkReleasesPage(_ findings: inout [CheckFinding]) {
@@ -397,7 +431,7 @@ public struct ReleaseChecks: Sendable {
         var pins: [Pin]
     }
 
-    /// SwiftPM, npm and the app's workflow each pin DylKit, so they can drift onto different releases. A DylKit
+    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different releases. A DylKit
     /// pinned to a branch or revision has no version to compare.
     private func checkPinsMatch(_ findings: inout [CheckFinding]) {
         let callers = workflows.compactMap { workflow in

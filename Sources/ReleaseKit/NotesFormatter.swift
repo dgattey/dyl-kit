@@ -99,7 +99,7 @@ public struct NotesFormatter: Sendable {
         let extensions =
             "swift|ts|tsx|js|mjs|css|json|yml|yaml|sh|md|plist|entitlements|pbxproj|xcframework|png|jpg|"
             + "jpeg|svg|ico|xml|toml"
-        let pattern = #"^([/\.]\S+|(?:\#(roots))/\S*|\S+\.(?:\#(extensions))|swift\s+test|npm\s+test)\n?$"#
+        let pattern = #"^([/\.]\S+|(?:\#(roots))/\S*|\S+\.(?:\#(extensions))|swift\s+test|p?npm\s+test)\n?$"#
         return token.matches(pattern: pattern)
     }
 }

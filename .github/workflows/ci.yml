@@ -51,13 +51,16 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6.1.0
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: web/.node-version
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
       - name: Test @dylkit/web
-        run: npm ci --no-audit --no-fund && npm test
+        run: pnpm install && pnpm test
 
   # DylKit's workflows, the reusable one apps call included, and SampleApp's copies of the files apps adopt once.
   # actionlint runs shellcheck over every `run:` block.

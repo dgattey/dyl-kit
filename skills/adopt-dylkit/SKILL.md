@@ -16,7 +16,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 1. Create the store.
    1. Open the Vercel team that holds the app's site project, and click the **Storage** tab.
    2. Click **Create Database**, pick **Blob**, and click **Continue**.
-   3. Name it after the app, such as `saga-releases`. Set access to **Public**. A private store's files can't be downloaded by Sparkle or the site.
+   3. Name it after the app, such as `<app>-releases`. Set access to **Public**. A private store's files can't be downloaded by Sparkle or the site.
    4. Click **Create**. If Vercel offers to connect the store to a project, skip it.
    5. On the store's page, copy its public URL, `https://<store>.public.blob.vercel-storage.com`. The adoption PR puts it in `DylApp.toml`.
    - Check: `curl -s -o /dev/null -w '%{http_code}' https://<store>.public.blob.vercel-storage.com/appcast.xml` prints `404` before the first release.

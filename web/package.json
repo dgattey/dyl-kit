@@ -14,7 +14,7 @@
     "src"
   ],
   "scripts": {
-    "test": "node --test test/*.test.ts"
+    "test": "node --import ./test/render-hooks.mjs --test test/*.test.ts"
   },
   "dependencies": {
     "smol-toml": "^1.3.0"
@@ -33,5 +33,10 @@
     "react": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }

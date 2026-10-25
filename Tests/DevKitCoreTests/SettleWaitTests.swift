@@ -25,8 +25,9 @@ import UniformTypeIdentifiers
         FileManager.default.temporaryDirectory.appending(path: "settle-\(UUID().uuidString).png")
     }
 
+    // The spinner settles after seven frames, so the timeout only has to outlast a busy macOS runner (over 5s once).
     private static let quick = SettleWait(
-        timeout: .seconds(5), minimum: .seconds(5), interval: .milliseconds(1), stableFrames: 3)
+        timeout: .seconds(60), minimum: .seconds(5), interval: .milliseconds(1), stableFrames: 3)
 
     /// Photos: `devkit ios capture` caught the launch spinner. Frames that keep changing aren't captured until they stop.
     @Test func waitsForTheSpinnerToStop() async throws {
@@ -82,7 +83,9 @@ import UniformTypeIdentifiers
         var index = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
-        let wait = SettleWait(timeout: .seconds(2), minimum: .seconds(5), interval: .milliseconds(10))
+        // The good frames must all land before the timeout. A busy macOS runner took over 2s for the first two, so the
+        // timeout is generous; the closed window's retries run until it, so it's also how long this test takes.
+        let wait = SettleWait(timeout: .seconds(10), minimum: .seconds(5), interval: .milliseconds(10))
         try await wait.capture(to: output) { frame in
             index += 1
             guard index <= good.count else { throw ToolError("window 7681 closed before it could be captured") }

@@ -96,7 +96,7 @@ The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skill
 
 Each app releases to its own public Vercel Blob store, `[release] assets` in `DylApp.toml`. The repo's `BLOB_READ_WRITE_TOKEN` secret lets release-kit upload, and the site reads the public URLs with no token. The store holds each release's zip under `releases/v<version>/`, the newest release's `appcast.xml` and `release.json` at its root, and `history.json`, every release's notes, which each release appends to. The forge only gets the pushed tag.
 
-The appcast holds only the newest build, so Sparkle offers it to every install however far behind, with the last ten versions' notes and a link to `/releases` for the rest. That page and the site's earlier versions read `history.json`. For an app with releases from before it, run `swift run release-kit history --appcast <older appcast.xml> --github <owner/name>` once with `GITHUB_TOKEN` set, check `build/release/history.json`, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`. `adopt-dylkit` has the setup steps.
+The appcast holds only the newest build, so Sparkle offers it to every install however far behind, with the last ten versions' notes and a link to `/releases` for the rest. That page shows every release as a card, from `history.json`; the home page shows the newest three and links to it. For an app with releases from before it, run `swift run release-kit history --appcast <older appcast.xml> --github <owner/name>` once with `GITHUB_TOKEN` set, check `build/release/history.json`, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`. `adopt-dylkit` has the setup steps.
 
 ### Dock tile plug-in
 

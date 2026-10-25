@@ -195,6 +195,23 @@ private let sconeosModules = [
         #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4") }
     }
 
+    @Test func foldedMergesTakeTheLargestBumpAndEveryMergesNotesNewestFirst() {
+        let site = "# Release notes\n\n- New site.\n\n# Release info\n\n- [x] Minor"
+        let folded = ReleaseInfo.folded([
+            .init(subject: "Site", body: site, bump: .minor),
+            .init(subject: "Fix a thing", body: "No notes here", bump: .patch),
+        ])
+        #expect(folded.bump == .minor)
+        #expect(ReleaseInfo.releaseType(in: folded.body) == .minor)
+        #expect(ReleaseInfo.notesMarkdown(body: folded.body, fallbackTitle: "") == "- New site.\n- Fix a thing")
+    }
+
+    @Test func readsThePullRequestFromSquashAndMergeCommits() {
+        #expect(ReleaseInfo.pullRequestNumber(in: "Composable download site (#12)\n\n* Shadow (#3)") == 12)
+        #expect(ReleaseInfo.pullRequestNumber(in: "Merge pull request #7 from dgattey/site\n\nSite") == 7)
+        #expect(ReleaseInfo.pullRequestNumber(in: "Bump the version\n\n(#4)") == nil)
+    }
+
     /// scone-os #7 checked Minor but shipped as 1.0.6: the squash commit carried only the commit list, and the old
     /// scripts defaulted to patch. Its body, verbatim, has prose and a rule before the heading and labels after each box.
     @Test func scone7ReleasesAsMinorFromItsBodyAndNeverDefaultsToPatch() throws {

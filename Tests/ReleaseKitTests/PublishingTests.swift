@@ -203,6 +203,50 @@ private func item(_ version: String, build: Int) -> String {
     }
 }
 
+/// dyl-kit #13, #15 and #12 merged within 30 seconds. #13's release ran, #12's run replaced #15's pending one, and
+/// #15 never got a tag. The next release ships both, with the largest bump and every PR's notes.
+@Suite struct UnreleasedMergeTests {
+    @Test func theNextReleaseFoldsInMergesWhoseRunsWereCancelled() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-fold-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "Sources"), withIntermediateDirectories: true)
+        func commit(_ file: String, _ message: String) throws {
+            try message.write(to: root.appending(path: file), atomically: true, encoding: .utf8)
+            _ = try Shell.capture(["git", "add", "-A"], cwd: root)
+            _ = try Shell.capture(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-q", "-m", message], cwd: root)
+        }
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: root)
+        try commit("Sources/a.swift", "Release notes allow five bullets (#13)")
+        _ = try Shell.capture(["git", "tag", "v0.4.1"], cwd: root)
+        try commit("Sources/b.swift", "First release from tags (#15)")
+        try commit("README.md", "Docs (#14)")
+        try commit("Sources/c.swift", "Composable download site (#12)")
+        try commit(
+            "Sources/d.swift", "Fix the build (#16)\n\n# Release notes\n\n- Build fix.\n\n# Release info\n\n- [x] Patch"
+        )
+        let bodies = [
+            15: "# Release notes\n\n- First releases plan from tags.\n\n# Release info\n\n- [x] Patch",
+            14: "# Release notes\n\n- Docs.\n\n# Release info\n\n- [x] Major",
+            12: "# Release notes\n\n- A composable site.\n\n# Release info\n\n- [x] Minor",
+        ]
+        let transport = FakeTransport { request in
+            let number = request.url.flatMap { Int($0.lastPathComponent) }
+            guard let body = number.flatMap({ bodies[$0] }) else { return (404, "") }
+            return (200, String(decoding: try JSONEncoder().encode(["body": body]), as: UTF8.self))
+        }
+        let repo = ReleaseRepo(
+            root: root, environment: ["GITHUB_REPOSITORY": "o/dyl-kit", "GITHUB_TOKEN": "t0ken"], transport: transport)
+
+        let plan = try await repo.version(explicitBump: nil, pullRequest: nil, published: [])
+        #expect(plan.version == "0.5.0")
+        #expect(
+            ReleaseInfo.notesMarkdown(body: plan.body, fallbackTitle: "")
+                == "- Build fix.\n- A composable site.\n- First releases plan from tags.")
+        #expect(await !transport.calls.contains { $0.hasSuffix("/pulls/14") })
+    }
+}
+
 @Suite struct GitHubTests {
     private let actions = ["GITHUB_REPOSITORY": "o/app", "GITHUB_TOKEN": "t0ken"]
 

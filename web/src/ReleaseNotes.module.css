@@ -1,0 +1,197 @@
+@layer dylkit {
+  .recent {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .release {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .third {
+    flex: 0 1 calc((100% - 40px) / 3);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .version {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .latest {
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+
+  .notes {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .notes ul,
+  .notes ol {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+
+  /* Each card is itself a list item, so the notes' list would otherwise get nested-list circles. */
+  .notes ul {
+    list-style: disc;
+  }
+
+  .notes p {
+    margin: 0;
+  }
+
+  .notes li::marker {
+    color: var(--accent);
+  }
+
+  .notes li + li,
+  .notes p + p {
+    margin-top: 8px;
+  }
+
+  /* Older notes may still carry <code>; it reads as the text around it. */
+  .notes code {
+    font: inherit;
+  }
+
+  .date {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .release > .date {
+    margin-top: -10px;
+  }
+
+  .noNotes {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-style: italic;
+    color: var(--ink-muted);
+  }
+
+  .all {
+    display: flex;
+    width: fit-content;
+    margin: 32px auto 0;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 20px;
+    border-radius: 999px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .all::after {
+    content: "→";
+  }
+
+  .all:hover {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .all:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .allPage {
+    max-width: 880px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .allList {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .allHeader {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .back::before {
+    content: "←";
+  }
+
+  .backIcon {
+    display: block;
+    width: 32px;
+    height: 32px;
+  }
+
+  .allTitle {
+    margin: 8px 0 0;
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 1.8rem + 2vw, 3.25rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+
+  .allLead {
+    margin: 0;
+    font-size: 1.125rem;
+    color: var(--ink-muted);
+  }
+
+  @media (max-width: 900px) {
+    .third {
+      flex-basis: calc((100% - 20px) / 2);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .third {
+      flex-basis: 100%;
+    }
+  }
+}

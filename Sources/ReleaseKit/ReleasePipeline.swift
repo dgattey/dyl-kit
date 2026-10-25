@@ -21,9 +21,15 @@ public struct ReleasePipeline: Sendable {
     func downloadPrefix(tag: String) -> String { "\(assets)/releases/\(tag)/" }
     /// The newest published release's feed, which each publish replaces.
     var latestAppcastURL: String { "\(assets)/appcast.xml" }
+    /// Every release's notes, which each publish appends to.
+    var latestHistoryURL: String { "\(assets)/history.json" }
+    /// The site's page with every version's notes, where Sparkle's full-notes link and the end of each update's notes
+    /// point. An update's own notes stop at ten versions.
+    var allReleasesURL: String { workspace.manifest.release.siteUrl + "/releases" }
     public var stagingDir: URL { repo.stagingDir }
     var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
     var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
+    public var stagedHistory: URL { stagingDir.appending(path: "history.json") }
     var stagedIcons: URL { stagingDir.appending(path: "icons") }
     private var stageDir: URL { stagingDir.appending(path: "stage") }
 
@@ -189,7 +195,7 @@ public struct ReleasePipeline: Sendable {
 
     /// Writes the notes, runs Sparkle's `generate_appcast` with enclosures on the Blob store, fails closed unless the new
     /// signature verifies against the key baked into the app, runs the release checks against the published feeds,
-    /// then writes `release.json` beside the appcast.
+    /// then writes `release.json` and `history.json` beside the appcast.
     ///
     /// - Blocking: runs Sparkle's tools and writes into `build/release/`.
     @discardableResult
@@ -211,6 +217,9 @@ public struct ReleasePipeline: Sendable {
         guard let item = try Appcast.items(at: appcast).newest else { throw ToolError("\(appcast.path) has no items") }
         try PublishedRelease(item).write(to: stagedReleaseJSON)
         Log.step("wrote \(stagedReleaseJSON.path)")
+        let history = try await ReleaseHistory.published(latestHistoryURL, transport: transport)
+        try ReleaseHistory.next(published: history, staged: item, feeds: published).write(to: stagedHistory)
+        Log.step("wrote \(stagedHistory.path)")
         return appcast
     }
 
@@ -220,13 +229,13 @@ public struct ReleasePipeline: Sendable {
             published: published)
     }
 
-    /// Publishes the staged zip, the site icons, then the appcast and `release.json` as the latest (see
+    /// Publishes the staged zip, the site icons, then `history.json`, the appcast and `release.json` as the latest (see
     /// `ReleaseRepo.publish`), unless that would offer an older build than the published feeds.
     ///
     /// - Blocking: runs git.
     public func publish() async throws {
         let state = try state()
-        let latest = [stagedAppcast, stagedReleaseJSON]
+        let latest = [stagedHistory, stagedAppcast, stagedReleaseJSON]
         let icons = SiteIcons.all.map { stagedIcons.appending(path: $0.name) }
         for file in [archiveURL(state)] + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path); run `release-kit appcast` first")
@@ -251,14 +260,60 @@ public struct ReleasePipeline: Sendable {
     /// - Blocking: lists `Sources/`.
     public func releaseNotes(state: State, history: [AppcastItem]) -> String {
         let markdown = ReleaseInfo.notesMarkdown(body: state.body, fallbackTitle: state.subject)
-        let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
-        let formatter = NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + modules.sorted())
         return CumulativeNotes.html(
             version: state.version,
             build: String(state.build),
-            newNotes: formatter.html(markdown, version: state.version),
-            history: history
+            newNotes: notesFormatter.html(markdown, version: state.version),
+            history: history,
+            allNotesURL: allReleasesURL
         )
+    }
+
+    /// - Blocking: lists `Sources/`.
+    private var notesFormatter: NotesFormatter {
+        let modules = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Sources").path)) ?? []
+        return NotesFormatter(pathRoots: NotesFormatter.defaultPathRoots + modules.sorted())
+    }
+
+    // MARK: History backfill
+
+    /// Builds `history.json` for an app whose releases predate it: the published history, then every version the
+    /// published feeds and `appcasts` (older feeds, as paths or URLs) describe, then the GitHub Releases of `gitHubRepo`
+    /// (default `GITHUB_REPOSITORY`; needs `GITHUB_TOKEN`). Earlier sources win, and newer feeds before older ones, so
+    /// re-running converges. Writes `build/release/history.json` and returns it.
+    ///
+    /// - Blocking: reads the appcasts and writes the file.
+    public func backfillHistory(appcasts: [String], gitHubRepo: String?) async throws -> URL {
+        var items = try await publishedFeeds()
+        for source in appcasts {
+            items += source.hasPrefix("https://") || source.hasPrefix("http://")
+                ? try await Appcast.published(source, transport: transport)
+                : try Appcast.items(at: URL(fileURLWithPath: source))
+        }
+        var history = try await ReleaseHistory.published(latestHistoryURL, transport: transport)
+            .filling(items.sorted { $0.build > $1.build }.flatMap(ReleaseHistory.entries(from:)))
+        if let name = gitHubRepo ?? repo.environment["GITHUB_REPOSITORY"] {
+            var environment = repo.environment
+            environment["GITHUB_REPOSITORY"] = name
+            let releases = try await GitHub(environment: environment, transport: transport).releases()
+            history = history.filling(ReleaseHistory.entries(from: releases, formatter: notesFormatter))
+        } else {
+            Log.step("no GitHub repo; the history has only what the appcasts carry")
+        }
+        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        try history.write(to: stagedHistory)
+        let withNotes = history.releases.filter { !$0.html.isEmpty }.count
+        Log.step("wrote \(stagedHistory.path): \(history.releases.count) releases, \(withNotes) with notes")
+        return stagedHistory
+    }
+
+    /// Uploads the backfilled `history.json` to the Blob store root.
+    public func publishHistory() async throws {
+        guard FileManager.default.fileExists(atPath: stagedHistory.path) else {
+            throw ToolError("no \(stagedHistory.path); run `release-kit history` first")
+        }
+        _ = try await BlobStore(environment: repo.environment, transport: transport)
+            .publish(root: [stagedHistory], assets: assets)
     }
 
     private func generateAppcast(edKeyFile: URL?, downloadPrefix: String) throws -> URL {
@@ -273,13 +328,13 @@ public struct ReleasePipeline: Sendable {
         where name.hasSuffix(".zip") || name.hasSuffix(".html") {
             try FileManager.default.copyItem(at: stagingDir.appending(path: name), to: feed.appending(path: name))
         }
-        let site = workspace.manifest.release.siteUrl
-        // The site's notes section lists every version the appcast carries, so it's the dialog's "full notes" link.
+        // The feed holds only this release: Sparkle offers the newest item a Mac can run, whatever build it's on, and
+        // shows only that item's notes. Its "Version History" button opens the full-notes link.
         let key = edKeyFile.map { ["--ed-key-file", $0.path] } ?? []
         try Shell.run(
             [
                 tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", downloadPrefix,
-                "--link", site, "--full-release-notes-url", site + "/#release-notes",
+                "--link", workspace.manifest.release.siteUrl, "--full-release-notes-url", allReleasesURL,
             ] + key + [feed.path])
         try? FileManager.default.removeItem(at: stagedAppcast)
         try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: stagedAppcast)

@@ -1,3 +1,6 @@
+/** A bezel the site draws around a screenshot. Mac captures carry their own window chrome, so they need none. */
+export type Frame = "iphone";
+
 export type Screenshot = {
   /** Path under the artifacts dir, served from the site root. */
   src: string;
@@ -6,7 +9,11 @@ export type Screenshot = {
   alt: string;
   width: number;
   height: number;
+  frame?: Frame;
 };
+
+/** A `[site] features` card. A page file passes JSX cards instead when one needs a glyph or rich text. */
+export type Feature = { title: string; body: string };
 
 export type Site = {
   name: string;
@@ -15,7 +22,10 @@ export type Site = {
   accent: { light: string; dark: string } | null;
   /** `site.favicon`: which appearance the browser tab shows, for an icon whose light variant vanishes on a light tab. */
   favicon: "light" | "dark";
+  /** `site.heading-font`: sets `--font-display`, which every heading uses. */
+  headingFont: "sans" | "serif";
   screenshots: Screenshot[];
+  features: Feature[];
   /** `release.assets`: the public Blob store release-kit uploads each release to, without a trailing slash. */
   assets: string;
 };

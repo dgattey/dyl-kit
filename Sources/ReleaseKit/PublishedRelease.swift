@@ -35,10 +35,7 @@ struct PublishedRelease: Encodable, Equatable, Sendable {
         self.download = download
         self.sizeBytes = sizeBytes
         notes = CumulativeNotes.sections(item).compactMap { entry in
-            let html = entry.body
-                .replacing(pattern: #"(?is)<style\b[^>]*>.*?</style>"#, with: "")
-                .replacing(pattern: #"(?i)\s+style\s*=\s*"[^"]*""#, with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let html = ReleaseHistory.siteHTML(entry.body)
             return html.isEmpty ? nil : Notes(version: entry.version, html: html)
         }
     }

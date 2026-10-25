@@ -1,66 +1,76 @@
-/* dylangattey.com's canvas, ink and type, with each app's accent from `[site] accent`. */
-:root {
-  color-scheme: light dark;
-  --accent-light: hsl(183deg 33% 39%);
-  --accent-dark: hsl(24deg 88% 70%);
-  --canvas: hsl(24deg 48% 92%);
-  --paper: hsl(24deg 52% 96%);
-  --ink: hsl(183deg 12% 22%);
-  --ink-muted: hsl(183deg 10% 40%);
-  --line: hsl(24deg 10% 50% / 0.22);
-  --shadow: hsl(24deg 30% 20% / 0.16);
-  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: Menlo, Consolas, "Roboto Mono", "Liberation Mono", monospace;
-  --radius-card: 32px;
-  --radius-control: 14px;
-}
-
-body {
-  --accent: var(--accent-light);
-  --on-accent: #fff;
-}
-
-@media (prefers-color-scheme: dark) {
+/*
+ * dylangattey.com's canvas, ink and type, with each app's accent from `[site] accent`. These tokens are the interface
+ * an app restyles through. Everything sits in the `dylkit` layer, so an app's own CSS wins without fighting specificity.
+ */
+@layer dylkit {
   :root {
-    --canvas: hsl(30deg 8% 7%);
-    --paper: hsl(30deg 7% 11%);
-    --ink: hsl(24deg 6% 90%);
-    --ink-muted: hsl(24deg 4% 64%);
-    --line: hsl(24deg 10% 60% / 0.16);
-    --shadow: hsl(0deg 0% 0% / 0.5);
+    color-scheme: light dark;
+    --accent-light: hsl(183deg 33% 39%);
+    --accent-dark: hsl(24deg 88% 70%);
+    --canvas: hsl(24deg 48% 92%);
+    --paper: hsl(24deg 52% 96%);
+    --ink: hsl(183deg 12% 22%);
+    --ink-muted: hsl(183deg 10% 40%);
+    --line: hsl(24deg 10% 50% / 0.22);
+    --shadow: hsl(24deg 30% 20% / 0.16);
+    /* Unframed screenshots. A `filter`, so it follows a window's rounded, transparent corners; `none` removes it. */
+    --shadow-shot: drop-shadow(0 2px 3px var(--shadow)) drop-shadow(0 20px 36px var(--shadow));
+    --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-serif: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+    --font-mono: Menlo, Consolas, "Roboto Mono", "Liberation Mono", monospace;
+    /* Headings: `[site] heading-font` picks the body font or the serif. */
+    --font-display: var(--font-body);
+    --radius-card: 22px;
+    --radius-control: 14px;
   }
 
   body {
-    --accent: var(--accent-dark);
-    --on-accent: hsl(30deg 30% 8%);
+    --accent: var(--accent-light);
+    --on-accent: #fff;
   }
-}
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: hsl(30deg 8% 7%);
+      --paper: hsl(30deg 7% 11%);
+      --ink: hsl(24deg 6% 90%);
+      --ink-muted: hsl(24deg 4% 64%);
+      --line: hsl(24deg 10% 60% / 0.16);
+      --shadow: hsl(0deg 0% 0% / 0.5);
+    }
 
-html {
-  scrollbar-gutter: stable;
-}
+    body {
+      --accent: var(--accent-dark);
+      --on-accent: hsl(30deg 30% 8%);
+    }
+  }
 
-html,
-body {
-  margin: 0;
-  min-height: 100%;
-}
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-body {
-  background: var(--canvas);
-  color: var(--ink);
-  font-family: var(--font-body);
-  font-size: 17px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
+  html {
+    scrollbar-gutter: stable;
+  }
 
-a {
-  color: var(--accent);
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--accent);
+  }
 }

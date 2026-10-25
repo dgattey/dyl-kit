@@ -14,6 +14,7 @@ import Foundation
 public enum CumulativeNotes {
     static let topHeadingStyle = "margin: 0 0 6px 0; font-size: 13px;"
     static let previousHeadingStyle = "margin: 14px 0 6px 0; font-size: 13px; opacity: 0.75;"
+    static let allNotesStyle = "margin: 14px 0 0 0; font-size: 12px;"
     static let installedVersionStyle =
         "<style>.sparkle-installed-version, .sparkle-installed-version ~ section { display: none; }</style>"
 
@@ -23,9 +24,12 @@ public enum CumulativeNotes {
         var body: String
     }
 
-    /// Earlier items win when two describe the same version.
+    /// Earlier items win when two describe the same version. With `allNotesURL`, the notes end with a link to every
+    /// version's notes, outside the sections so the installed-version style never hides it: a build more than
+    /// `maxVersions` behind finds the versions it skipped there.
     public static func html(
-        version: String, build: String, newNotes: String, history: [AppcastItem], maxVersions: Int = 10
+        version: String, build: String, newNotes: String, history: [AppcastItem], maxVersions: Int = 10,
+        allNotesURL: String? = nil
     )
         -> String
     {
@@ -56,6 +60,10 @@ public enum CumulativeNotes {
             if let entry = entries[previousVersion] {
                 output.append(section(entry, headingStyle: previousHeadingStyle))
             }
+        }
+        if let allNotesURL {
+            output.append(
+                #"<p style="\#(allNotesStyle)"><a href="\#(escapeHTML(allNotesURL))">Notes for every version</a></p>"#)
         }
         return output.joined(separator: "\n")
     }

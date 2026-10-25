@@ -5,8 +5,9 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// The one thing release-kit asks the forge for: a merged PR's body. Releases run on GitHub Actions, which names the
-/// repo in `GITHUB_REPOSITORY`; the workflow passes `GITHUB_TOKEN`.
+/// What release-kit asks the forge for: a merged PR's body, and the repo's releases when `release-kit history` backfills
+/// `history.json`. Releases run on GitHub Actions, which names the repo in `GITHUB_REPOSITORY`; the workflow passes
+/// `GITHUB_TOKEN`.
 struct GitHub: Sendable {
     static let tokenVariable = "GITHUB_TOKEN"
 
@@ -32,12 +33,39 @@ struct GitHub: Sendable {
         var body: String?
     }
 
+    struct Release: Decodable, Equatable, Sendable {
+        var tagName: String
+        var body: String?
+        var publishedAt: Date?
+        var draft: Bool
+        var prerelease: Bool
+    }
+
     private struct Failure: Decodable {
         var message: String
     }
 
     func pullRequestBody(number: Int) async throws -> String {
-        let url = "\(api)/repos/\(repo)/pulls/\(number)"
+        try JSONDecoder().decode(Pull.self, from: try await get("/repos/\(repo)/pulls/\(number)")).body ?? ""
+    }
+
+    /// Every release, newest first, a page of 100 at a time.
+    func releases() async throws -> [Release] {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        var all: [Release] = []
+        for page in 1... {
+            let batch = try decoder.decode(
+                [Release].self, from: try await get("/repos/\(repo)/releases?per_page=100&page=\(page)"))
+            all += batch
+            if batch.count < 100 { break }
+        }
+        return all
+    }
+
+    private func get(_ path: String) async throws -> Data {
+        let url = api + path
         guard let parsed = URL(string: url) else { throw ToolError("\(url) isn't a URL") }
         var request = URLRequest(url: parsed)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -48,6 +76,6 @@ struct GitHub: Sendable {
             let message = (try? JSONDecoder().decode(Failure.self, from: data)).map { ": \($0.message)" } ?? ""
             throw ToolError("GitHub answered HTTP \(response.statusCode) to GET \(url)\(message)")
         }
-        return try JSONDecoder().decode(Pull.self, from: data).body ?? ""
+        return data
     }
 }

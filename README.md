@@ -57,6 +57,9 @@ export { Layout as default, metadata } from "@dylkit/web/app";
 // app/page.tsx
 export { Page as default } from "@dylkit/web/app";
 
+// app/releases/page.tsx, every version's notes, where the update dialog links
+export { Releases as default, releasesMetadata as metadata } from "@dylkit/web/app";
+
 // app/appcast.xml/route.ts
 export { appcast as GET } from "@dylkit/web/routes";
 
@@ -67,6 +70,22 @@ export { download as GET } from "@dylkit/web/routes";
 export { icon as GET } from "@dylkit/web/routes";
 ```
 
+The default page is a hero with the first screenshot, the rest as a gallery, the features and the release notes, all from `[site]`:
+
+```toml
+[site]
+tagline = "One line under the app's name."
+accent = { light = "#467e61", dark = "#6fae8c" }
+heading-font = "serif"                  # or "sans", the default
+screenshots = [                         # under release.artifacts-dir; PNG or WebP
+    { src = "mac.png", dark-src = "mac-dark.png", alt = "…" },
+    { src = "phone.webp", alt = "…", frame = "iphone" },
+]
+features = [{ title = "…", body = "…" }]
+```
+
+An app that wants its own layout writes `app/page.tsx` from the same pieces `@dylkit/web` exports: `SitePage`, `Hero` (with its own `visual`, `title` or `lead`), `Section`, `Showcase`, `Gallery`, `Screenshot`, `DeviceFrame`, `Features` and `Feature` (with any `glyph`), and `ReleaseNotes`. The kit's CSS is in `@layer dylkit`, so the app's own CSS and CSS Modules override it without fighting specificity, and an app restyles the whole page by setting the theme tokens (`--canvas`, `--paper`, `--ink`, `--ink-muted`, `--line`, `--shadow`) on `:root`.
+
 `server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
 
 Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. dylangattey.com reads `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.
@@ -75,7 +94,9 @@ The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skill
 
 ### Release setup
 
-Each app releases to its own public Vercel Blob store, `[release] assets` in `DylApp.toml`. The repo's `BLOB_READ_WRITE_TOKEN` secret lets release-kit upload, and the site reads the public URLs with no token. The store holds each release's zip under `releases/v<version>/`, and the newest release's `appcast.xml` and `release.json` at its root. The forge only gets the pushed tag. `adopt-dylkit` has the setup steps.
+Each app releases to its own public Vercel Blob store, `[release] assets` in `DylApp.toml`. The repo's `BLOB_READ_WRITE_TOKEN` secret lets release-kit upload, and the site reads the public URLs with no token. The store holds each release's zip under `releases/v<version>/`, the newest release's `appcast.xml` and `release.json` at its root, and `history.json`, every release's notes, which each release appends to. The forge only gets the pushed tag.
+
+The appcast holds only the newest build, so Sparkle offers it to every install however far behind, with the last ten versions' notes and a link to `/releases` for the rest. That page shows every release as a card, from `history.json`; the home page shows the newest three and links to it. For an app with releases from before it, run `swift run release-kit history --appcast <older appcast.xml> --github <owner/name>` once with `GITHUB_TOKEN` set, check `build/release/history.json`, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`. `adopt-dylkit` has the setup steps.
 
 ### Dock tile plug-in
 

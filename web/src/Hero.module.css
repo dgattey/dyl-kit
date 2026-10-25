@@ -1,0 +1,285 @@
+@layer dylkit {
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(40px, 6vw, 88px);
+  }
+
+  .visual {
+    position: relative;
+    isolation: isolate;
+    min-width: 0;
+  }
+
+  .visual::before {
+    content: "";
+    position: absolute;
+    inset: 4% -6%;
+    z-index: -1;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+    filter: blur(20px);
+  }
+
+  .copy {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .intro {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .icon {
+    display: block;
+    width: 64px;
+    height: 64px;
+    filter: drop-shadow(0 8px 24px var(--shadow));
+  }
+
+  .badge {
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .title {
+    margin: 4px 0 0;
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 2rem + 2.4vw, 3.75rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+
+  .lead {
+    margin: 0;
+    font-size: clamp(1.0625rem, 1rem + 0.4vw, 1.25rem);
+    line-height: 1.5;
+    color: var(--ink-muted);
+    text-wrap: pretty;
+  }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .button,
+  .secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 24px;
+    border-radius: 999px;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .button {
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+
+  .button:hover {
+    background: color-mix(in srgb, var(--accent) 88%, black);
+  }
+
+  .version {
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+  }
+
+  .secondary {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+
+  .secondary:hover {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+
+  .button:focus-visible,
+  .secondary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  .facts,
+  .muted {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .muted {
+    font-size: 0.9375rem;
+  }
+
+  .gatekeeper {
+    margin-top: 4px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .gatekeeper summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    font-weight: 500;
+    color: var(--accent);
+  }
+
+  .gatekeeper summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .gatekeeper summary::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    margin-top: -3px;
+    border-right: 1.75px solid currentColor;
+    border-bottom: 1.75px solid currentColor;
+    transform: rotate(45deg);
+  }
+
+  .gatekeeper[open] summary::after {
+    margin-top: 3px;
+    transform: rotate(-135deg);
+  }
+
+  .gatekeeperBody {
+    margin-top: 14px;
+    padding: 18px 20px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .gatekeeperBody ol,
+  .gatekeeperBody p {
+    margin: 0;
+  }
+
+  .gatekeeperBody ol {
+    padding-left: 1.25rem;
+  }
+
+  .gatekeeperBody li + li {
+    margin-top: 6px;
+  }
+
+  .gatekeeperBody strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.75rem;
+  }
+
+  .figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+  }
+
+  .command {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink);
+    overflow-x: auto;
+  }
+
+  .centered {
+    grid-template-columns: minmax(0, 560px);
+    justify-content: center;
+    text-align: center;
+  }
+
+  .centered .brand {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .centered .icon {
+    width: 128px;
+    height: 128px;
+  }
+
+  .centered .buttons {
+    justify-content: center;
+  }
+
+  .centered .gatekeeper {
+    text-align: left;
+  }
+
+  .centered .gatekeeper summary {
+    display: flex;
+    justify-content: center;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 40px;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .button,
+    .secondary {
+      flex: 1 1 100%;
+    }
+  }
+}

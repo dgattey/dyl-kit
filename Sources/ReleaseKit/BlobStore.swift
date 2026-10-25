@@ -7,7 +7,7 @@ import FoundationNetworking
 
 /// The public Vercel Blob store every release's files go to, whichever forge tags it. A release's files live under
 /// `releases/<tag>/`, its site icons under `icons/`, and `appcast.xml` and `release.json` at the store root describe
-/// the newest release.
+/// the newest release, beside `history.json` with every release's notes.
 struct BlobStore: Sendable {
     static let tokenVariable = "BLOB_READ_WRITE_TOKEN"
 
@@ -29,10 +29,20 @@ struct BlobStore: Sendable {
     func publish(
         tag: String, files: [URL], icons: [URL] = [], latest: [URL], assets: String?
     ) async throws -> [String] {
+        try await upload(
+            files.map { ($0, "releases/\(tag)/\($0.lastPathComponent)") }
+                + icons.map { ($0, "icons/\($0.lastPathComponent)") }
+                + latest.map { ($0, $0.lastPathComponent) },
+            assets: assets)
+    }
+
+    /// Uploads `files` to the store root on their own, such as a backfilled `history.json`.
+    func publish(root files: [URL], assets: String?) async throws -> [String] {
+        try await upload(files.map { ($0, $0.lastPathComponent) }, assets: assets)
+    }
+
+    private func upload(_ uploads: [(URL, String)], assets: String?) async throws -> [String] {
         var urls: [String] = []
-        let uploads = files.map { ($0, "releases/\(tag)/\($0.lastPathComponent)") }
-            + icons.map { ($0, "icons/\($0.lastPathComponent)") }
-            + latest.map { ($0, $0.lastPathComponent) }
         for (file, pathname) in uploads {
             let url = try await put(file, at: pathname)
             if let assets, !url.lowercased().hasPrefix(assets.lowercased() + "/") {

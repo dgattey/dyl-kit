@@ -29,6 +29,31 @@ export async function latestRelease(site: Site): Promise<Release | null> {
   }
 }
 
+/** One version in `history.json`. */
+export type HistoryEntry = {
+  version: string;
+  build?: number;
+  /** ISO 8601. */
+  publishedAt?: string;
+  /** Empty for a version that shipped without notes. */
+  html: string;
+};
+
+/**
+ * Every release the app has shipped, newest first, from the `history.json` release-kit publishes beside `release.json`.
+ * Null when it can't be read, so the page falls back to `release.json`'s newest ten.
+ */
+export async function releaseHistory(site: Site): Promise<HistoryEntry[] | null> {
+  try {
+    const response = await fetch(`${site.assets}/history.json`, { next: { revalidate: 60 } });
+    if (!response.ok) return null;
+    const history: { releases?: HistoryEntry[] } = await response.json();
+    return Array.isArray(history.releases) ? history.releases : null;
+  } catch {
+    return null;
+  }
+}
+
 /** `/appcast.xml`: the Blob store's newest feed, which Sparkle polls. */
 export async function appcastResponse(site: Site): Promise<Response> {
   const feed = await fetch(`${site.assets}/appcast.xml`, { next: { revalidate: 60 } })

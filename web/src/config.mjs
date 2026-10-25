@@ -4,7 +4,7 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 /**
- * Wraps the site's Next config. When Next loads it, this reads the app's `DylApp.toml` and its screenshots' PNG sizes
+ * Wraps the site's Next config. When Next loads it, this reads the app's `DylApp.toml` and its screenshots' sizes
  * and inlines them as `process.env.DYLKIT_SITE`, so the built site never reads either.
  * @param {import("next").NextConfig} [config]
  * @returns {import("next").NextConfig}
@@ -28,34 +28,56 @@ function loadSite(root) {
     tagline: requireString(manifest, "site.tagline"),
     siteUrl: requireString(manifest, "release.site-url"),
     accent: isRecord(accent) ? { light: requireString(manifest, "site.accent.light"), dark: requireString(manifest, "site.accent.dark") } : null,
-    favicon: faviconFrom(lookup(manifest, "site.favicon")),
-    screenshots: screenshotsFrom(lookup(manifest, "site.screenshots"), artifactsDir),
+    favicon: oneOf(manifest, "site.favicon", ["light", "dark"]),
+    headingFont: oneOf(manifest, "site.heading-font", ["sans", "serif"]),
+    screenshots: tablesFrom(manifest, "site.screenshots", ["src", "alt"], (entry, key) => {
+      const darkSrc = typeof entry["dark-src"] === "string" ? entry["dark-src"] : undefined;
+      const frame = entry.frame === undefined ? undefined : oneOf(entry, "frame", ["iphone"], `${key}.`);
+      const { width, height } = imageSize(path.join(artifactsDir, entry.src));
+      return { src: `/${entry.src}`, darkSrc: darkSrc && `/${darkSrc}`, alt: entry.alt, width, height, frame };
+    }),
+    features: tablesFrom(manifest, "site.features", ["title", "body"], ({ title, body }) => ({ title, body })),
     assets: requireString(manifest, "release.assets").replace(/\/$/, ""),
   };
 }
 
-function faviconFrom(value) {
-  if (value === undefined || value === "light" || value === "dark") return value ?? "light";
-  throw new Error('DylApp.toml: `site.favicon` must be "light" or "dark"');
+/** The value at `key`, which must be one of `allowed`; the first is the default. */
+function oneOf(table, key, allowed, prefix = "") {
+  const value = lookup(table, key) ?? allowed[0];
+  if (allowed.includes(value)) return value;
+  throw new Error(`DylApp.toml: \`${prefix}${key}\` must be ${allowed.map((option) => `"${option}"`).join(" or ")}`);
 }
 
-function screenshotsFrom(value, artifactsDir) {
+/** Maps each table in the array at `key`, after checking that it has every key in `strings` as a string. */
+function tablesFrom(manifest, key, strings, map) {
+  const value = lookup(manifest, key);
   if (value === undefined) return [];
-  if (!Array.isArray(value)) throw new Error("DylApp.toml: `site.screenshots` must be an array of tables");
+  if (!Array.isArray(value)) throw new Error(`DylApp.toml: \`${key}\` must be an array of tables`);
   return value.map((entry, index) => {
-    if (!isRecord(entry) || typeof entry.src !== "string" || typeof entry.alt !== "string") {
-      throw new Error(`DylApp.toml: site.screenshots[${index}] needs \`src\` and \`alt\` strings`);
+    if (!isRecord(entry) || strings.some((name) => typeof entry[name] !== "string")) {
+      throw new Error(`DylApp.toml: ${key}[${index}] needs ${strings.map((name) => `\`${name}\``).join(" and ")} strings`);
     }
-    const darkSrc = typeof entry["dark-src"] === "string" ? entry["dark-src"] : undefined;
-    const { width, height } = pngSize(path.join(artifactsDir, entry.src));
-    return { src: `/${entry.src}`, darkSrc: darkSrc && `/${darkSrc}`, alt: entry.alt, width, height };
+    return map(entry, `${key}[${index}]`);
   });
 }
 
-function pngSize(file) {
-  const header = fs.readFileSync(file).subarray(0, 24);
-  if (header.toString("latin1", 12, 16) !== "IHDR") throw new Error(`${file}: screenshots must be PNG`);
-  return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+/** A PNG's or WebP's pixel size, read from its header. */
+function imageSize(file) {
+  const header = fs.readFileSync(file).subarray(0, 30);
+  if (header.toString("latin1", 12, 16) === "IHDR") return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+  if (header.toString("latin1", 0, 4) === "RIFF" && header.toString("latin1", 8, 12) === "WEBP") {
+    switch (header.toString("latin1", 12, 16)) {
+      case "VP8X":
+        return { width: header.readUIntLE(24, 3) + 1, height: header.readUIntLE(27, 3) + 1 };
+      case "VP8 ":
+        return { width: header.readUInt16LE(26) & 0x3fff, height: header.readUInt16LE(28) & 0x3fff };
+      case "VP8L": {
+        const bits = header.readUInt32LE(21);
+        return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+      }
+    }
+  }
+  throw new Error(`${file}: screenshots must be PNG or WebP`);
 }
 
 function findRoot(start) {

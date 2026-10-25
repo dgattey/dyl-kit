@@ -34,9 +34,10 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
    2. On the store's page, open **Browser**, click **Upload**, and upload that file as `appcast.xml` at the store root.
    - Check: `curl -fsSL <assets>/appcast.xml` matches `curl -fsSL <site>/appcast.xml`.
 5. Have Vercel install with the site's pinned pnpm.
+   - An app whose site is new in the adoption PR has no site project yet. In the team, click **Add New…**, then **Project**, and import the app's repo. Set **Root Directory** to `server`, click **Deploy**, then add the `site-url` domain from `DylApp.toml`, such as `sudylko.gattey.com`, under **Settings**, **Domains**. The first deploy builds `main`, which has no site yet, and may fail; the adoption PR's preview is the one to check.
    1. Open the app's site project in Vercel, then **Settings**, then **Environment Variables**.
    2. Add `ENABLE_EXPERIMENTAL_COREPACK` with value `1` for every environment, as dylangattey.com's project has.
-   3. Under **Settings**, **Build and Deployment**, leave **Install Command** on its default.
+   3. Under **Settings**, **Build and Deployment**, leave **Install Command** on its default and set **Node.js Version** to 24.x, the version the site's `.node-version` pins.
    - Check: the next deploy's build log says `Detected ENABLE_EXPERIMENTAL_COREPACK=1 and "pnpm@…" in package.json` and `Done in … using pnpm v<the pinned version>`.
 
 ## A new app
@@ -76,7 +77,9 @@ One PR moves the three pins to the same version, with their lockfiles:
 
 0.6.0 moves sites from npm to pnpm, set up as dylangattey.com's is. `site_package_manager` in the checks fails a site without the pnpm pin or `pnpm-lock.yaml`, with `package-lock.json` or `yarn.lock`, or with npm's `overrides`, which pnpm ignores. Turborepo stays out: a site is one package with no task graph for it to cache.
 
-1. Dylan: set the Vercel project's `ENABLE_EXPERIMENTAL_COREPACK=1`, as in Blob store and secrets step 5. Without it Vercel picks a pnpm from the lockfile instead of the pin.
+A site still in an open PR, such as an adoption PR that adds `server/` to an app whose `main` has none, takes these steps on that PR's branch, not in a PR off `main`. That PR then pins 0.6.0, and its site never ships on npm.
+
+1. Dylan: set the Vercel project's `ENABLE_EXPERIMENTAL_COREPACK=1`, as in Blob store and secrets step 5, which also creates the project for a site that has none yet. Without it Vercel picks a pnpm from the lockfile instead of the pin.
 2. Move the three pins to 0.6.0 as above. Edit the tarball URL in `server/package.json` only; step 4's `pnpm install` writes the lockfile.
 3. In `server/`, copy `packageManager`, the `preinstall` script and `pnpm-workspace.yaml` from DylKit's `Tests/Fixtures/SampleApp/server/` at `v0.6.0`, and its `.node-version`, which matches the Vercel project's Node 24. A `mise.toml` that pins `node` pins that same version.
 4. Move any `"overrides"` in `server/package.json` to an `overrides:` map in `server/pnpm-workspace.yaml`, delete `server/package-lock.json` and any `server/.npmrc` that holds only npm settings, then run `pnpm install` in `server/`. When pnpm stops with `Ignored build scripts: <package>`, add `<package>: true` under `allowBuilds:` in `pnpm-workspace.yaml` (`sharp` below 0.34 has one) and run it again.

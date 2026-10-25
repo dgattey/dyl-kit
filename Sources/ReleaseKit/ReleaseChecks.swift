@@ -372,9 +372,9 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
-    /// Sites install with pnpm, as dylangattey.com does: `packageManager` pins it and Vercel installs with it from
-    /// `pnpm-lock.yaml`. Vercel falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`,
-    /// so the security pins there would stop applying.
+    /// Sites install with pnpm: `packageManager` pins it and Vercel installs with it from `pnpm-lock.yaml`. Vercel
+    /// falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`, so the security pins there
+    /// would stop applying.
     private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
         let file = "\(siteRoot)/package.json"

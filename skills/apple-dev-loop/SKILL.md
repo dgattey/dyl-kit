@@ -34,7 +34,7 @@ Run everything from the app repo through `swift run devkit …`, which builds `d
 | Unit tests | `swift test`. Test targets depend on `DylTestSupport` for ViewInspector and `AppDirectories.withTemporarySupportFolder`, so tests never read or write the real support folder |
 | Lint tiers 1–3 | `swift run devkit checks` |
 | What macOS CI runs: checks, build, then all tests | `swift run devkit verify` |
-| Bump DylKit | The three pins in `adopt-dylkit`'s Later upgrades, then `swift run devkit checks` |
+| Bump DylKit | The three pins in `adopt-dylkit`'s Upgrading DylKit, then `swift run devkit checks` |
 | Download site | `pnpm dev` or `pnpm build` in `server/` |
 
 ## Hard rules

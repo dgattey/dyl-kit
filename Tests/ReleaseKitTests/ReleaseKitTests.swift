@@ -56,7 +56,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             #"""
             Just a plain body without headings.
             - one
-            - two (Tests/SconeKitTests/SconeDomainTests.swift, pnpm test)
+            - two (Tests/SampleTests/SampleDomainTests.swift, pnpm test)
             """#,
             #"""
             <p style="margin: 0 0 8px 0; line-height: 1.45;">Just a plain body without headings.</p>
@@ -767,7 +767,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
     }
 
-    /// Sites install with pnpm like dylangattey.com; without its lockfile Vercel installs with npm, and pnpm ignores
+    /// Sites install with pnpm; without its lockfile Vercel installs with npm, and pnpm ignores
     /// npm's overrides.
     @Test func siteInstallsWithPnpm() throws {
         let workspace = try scratchWorkspace(["server/package-lock.json": "{}"])

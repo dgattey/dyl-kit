@@ -29,7 +29,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
    2. Under **Repository secrets**, click **New repository secret**.
    3. Set **Name** to `BLOB_READ_WRITE_TOKEN`, paste the token into **Secret**, and click **Add secret**.
    - Check: `gh secret list` shows `BLOB_READ_WRITE_TOKEN` and `SPARKLE_ED_PRIVATE_KEY_BASE64`.
-4. An app with installs: seed the store with the feed they read now, so Sparkle never sees an empty store.
+4. An app with installs: seed the store with the feed they read now, so Sparkle never sees an empty store. The seeded feed also tells `release-kit` that releases exist. An empty store reads as nothing shipped.
    1. Run `curl -fsSL <site>/appcast.xml -o appcast.xml`.
    2. On the store's page, open **Browser**, click **Upload**, and upload that file as `appcast.xml` at the store root.
    - Check: `curl -fsSL <assets>/appcast.xml` matches `curl -fsSL <site>/appcast.xml`.

@@ -67,8 +67,8 @@ private func item(_ version: String, build: Int) -> String {
 @Suite struct PublishedFeedTests {
     private let url = "https://example.com/appcast.xml"
 
-    @Test func notFoundIsAFirstRelease() async throws {
-        #expect(try await Appcast.published(url, transport: FakeTransport { _ in (404, "") }).isEmpty)
+    @Test func notFoundIsNothingPublished() async throws {
+        #expect(try await Appcast.published(url, transport: FakeTransport { _ in (404, "") }) == nil)
     }
 
     /// Planning from a feed that merely failed to load would reuse a shipped build and drop the notes before it.
@@ -94,18 +94,16 @@ private func item(_ version: String, build: Int) -> String {
     /// Installs are offered the site's feed or the Blob store's latest, and either can be ahead.
     @Test func publishedFeedsReadsTheSiteAndTheStoresLatestStrictly() async throws {
         let workspace = try Workspace.locate(appRoot.path)
-        let site = "https://dgattey.github.io/dyl-kit-sample/appcast.xml"
-        let latest = "https://dylkitsample.public.blob.vercel-storage.com/appcast.xml"
         let both = FakeTransport { request in
             switch request.url?.absoluteString {
-            case site: (200, sparkleFeed(item("1.0.0", build: 3)))
-            case latest: (200, sparkleFeed(item("1.1.0", build: 5)))
+            case Self.site: (200, sparkleFeed(item("1.0.0", build: 3)))
+            case Self.latest: (200, sparkleFeed(item("1.1.0", build: 5)))
             default: (404, "")
             }
         }
         #expect(try await ReleasePipeline(workspace: workspace, transport: both).publishedFeeds().map(\.build) == [3, 5])
 
-        let storeDown = FakeTransport { request in request.url?.absoluteString == latest ? (502, "") : (404, "") }
+        let storeDown = FakeTransport { request in request.url?.absoluteString == Self.latest ? (502, "") : (404, "") }
         await #expect(throws: ToolError.self) {
             try await ReleasePipeline(workspace: workspace, transport: storeDown).publishedFeeds()
         }
@@ -114,15 +112,8 @@ private func item(_ version: String, build: Int) -> String {
     /// Agent checkouts fetch only their branch, so their tags stop at an old release (scone-os showed 1.1.0 with 1.2.0
     /// out). Dev builds take the feeds' version, and the tags when the feeds can't be read.
     @Test func shippedVersionReadsTheFeedsThenTheTags() async throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-shipped-\(UUID().uuidString)")
+        let root = try Self.minorMerge(after: "v1.1.0")
         defer { try? FileManager.default.removeItem(at: root) }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(
-            at: appRoot.appending(path: "DylApp.toml"), to: root.appending(path: "DylApp.toml"))
-        let identity = ["-c", "user.name=t", "-c", "user.email=t@invalid"]
-        for arguments in [["init", "--quiet"], identity + ["commit", "-qm", "1", "--allow-empty"], ["tag", "v1.1.0"]] {
-            _ = try Shell.capture(["git"] + arguments, cwd: root)
-        }
         let workspace = try Workspace.locate(root.path)
         func shippedVersion(_ transport: FakeTransport) async throws -> String {
             try await ReleasePipeline(workspace: workspace, transport: transport).shippedVersion().description
@@ -130,6 +121,85 @@ private func item(_ version: String, build: Int) -> String {
 
         #expect(try await shippedVersion(FakeTransport { _ in (200, sparkleFeed(item("1.2.0", build: 48))) }) == "1.2.0")
         #expect(try await shippedVersion(FakeTransport { _ in throw URLError(.notConnectedToInternet) }) == "1.1.0")
+    }
+
+    /// Sudylko #5: tagged v1.0.0 with nothing published, then a Minor merge. Before the site's first deploy its host
+    /// doesn't resolve; once deployed, its route answers 503 until the store has a feed. The store's 404 says nothing
+    /// has shipped either way, so the tags plan 1.1.0.
+    @Test(arguments: [nil, 503] as [Int?])
+    func aSiteWithoutAFeedPlansFromTheTagsWhileTheStoreHasNone(_ site: Int?) async throws {
+        let plan = try await Self.version(site: Self.answer(site), store: Self.answer(404))
+        #expect(plan.version == "1.1.0")
+        #expect(plan.build == 2)
+    }
+
+    /// An app with releases has a feed in the store, so a site that can't serve it is an outage, not a first release.
+    @Test(arguments: [500, 502, 503, nil] as [Int?])
+    func aSiteOutageFailsOnceTheStoreHasAFeed(_ site: Int?) async throws {
+        let store = Self.answer(200, sparkleFeed(item("1.2.0", build: 40)))
+        let error = await #expect(throws: ToolError.self) {
+            try await Self.version(site: Self.answer(site), store: store)
+        }
+        #expect(error?.message.contains(Self.site) == true)
+    }
+
+    /// Only the store's own 404 says nothing has shipped, so any other answer from it fails, whatever the site says.
+    @Test(arguments: [500, 503, nil] as [Int?])
+    func aStoreOutageFails(_ store: Int?) async throws {
+        let error = await #expect(throws: ToolError.self) {
+            try await Self.version(site: Self.answer(503), store: Self.answer(store))
+        }
+        #expect(error?.message.contains(Self.latest) == true)
+    }
+
+    /// A published feed outranks the tags and raises the build, and the site's feed counts even while the store's
+    /// latest reads 404.
+    @Test func anExistingFeedPlansPastIt() async throws {
+        let feed = Self.answer(200, sparkleFeed(item("1.2.0", build: 40)))
+        let plan = try await Self.version(site: feed, store: feed)
+        #expect(plan.version == "1.3.0")
+        #expect(plan.build == 41)
+        #expect(try await Self.version(site: feed, store: Self.answer(404)) == plan)
+    }
+
+    private static let site = "https://dgattey.github.io/dyl-kit-sample/appcast.xml"
+    private static let latest = "https://dylkitsample.public.blob.vercel-storage.com/appcast.xml"
+
+    private typealias Answer = @Sendable () throws -> (status: Int, body: String)
+
+    /// `status` with `body`, or for nil, a host that doesn't resolve.
+    private static func answer(_ status: Int?, _ body: String = "") -> Answer {
+        guard let status else { return { throw URLError(.cannotFindHost) } }
+        return { (status, body) }
+    }
+
+    /// `release-kit version` on SampleApp tagged v1.0.0 then merged as Minor, with the feeds answering as given.
+    private static func version(site: @escaping Answer, store: @escaping Answer) async throws -> ReleasePipeline.State {
+        let root = try minorMerge(after: "v1.0.0")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = FakeTransport { request in
+            switch request.url?.absoluteString {
+            case Self.site: try site()
+            case Self.latest: try store()
+            default: (404, "")
+            }
+        }
+        return try await ReleasePipeline(workspace: try Workspace.locate(root.path), transport: transport)
+            .version(explicitBump: nil, pullRequest: nil)
+    }
+
+    /// A scratch checkout of SampleApp's manifest: one commit tagged `tag`, then a Minor merge. Delete it when done.
+    private static func minorMerge(after tag: String) throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-feeds-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            at: appRoot.appending(path: "DylApp.toml"), to: root.appending(path: "DylApp.toml"))
+        let commit = ["-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-q", "--allow-empty", "-m"]
+        let merge = "Add a thing (#2)\n\n# Release notes\n\n- A thing.\n\n# Release info\n\n- [ ] Major\n- [x] Minor\n"
+        for arguments in [["init", "--quiet"], commit + ["1"], ["tag", tag], commit + [merge]] {
+            _ = try Shell.capture(["git"] + arguments, cwd: root)
+        }
+        return root
     }
 }
 

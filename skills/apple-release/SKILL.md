@@ -35,7 +35,7 @@ swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN
 
 - The bump and notes come from the PR body, which needs exactly one checked box. No repo merge setting is involved. If neither the PR body nor the merge commit message checks exactly one box, `version` fails; rerun the workflow by hand with an explicit `release_type`.
 - Only release-kit calls a forge (`forge_neutral` enforces it), and only to read the PR body.
-- The published feeds are the site's feed and the Blob store's latest. Only a 404 counts as no feed (a first release). Any other error, or a feed without an integer `sparkle:version` on every item, fails the step.
+- The published feeds are the site's feed and the Blob store's latest. The store decides whether anything has shipped, since `publish` uploads its feed last and the site only proxies it. Only the store's 404 means nothing has shipped. Then the tags plan the release, and a site that can't serve a feed is skipped: a host that doesn't resolve before the first deploy, or the route's 503. Once the store has a feed, any other error from either feed fails the step, as does a feed without an integer `sparkle:version` on every item.
 - Build numbers only go up: the commit count, raised above every published `sparkle:version`. `publish` and `check --live` refuse a staged build older than either published feed.
 - Each version in the cumulative notes is a `<section data-sparkle-version="BUILD">`. Sparkle 2.5+ marks the section matching the running `CFBundleVersion`, and the notes' `<style>` hides it and everything older. So notes must stay HTML, and stamps must be the exact `CFBundleVersion` string.
 - The minimum OS in the appcast matches `[app] platforms` in `DylApp.toml`.

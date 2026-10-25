@@ -45,11 +45,34 @@ public struct ReleasePipeline: Sendable {
     }
 
     /// Every item installs can be offered: the site's feed, which `SUFeedURL` polls, then the Blob store's latest feed.
-    /// Each is read strictly (see `Appcast.published`).
+    ///
+    /// The store decides whether anything has shipped: `publish` uploads its feed last on every release, and the site
+    /// only proxies it. While the store answers 404 nothing has gone out, so a site that can't serve a feed (no DNS
+    /// before its first deploy, or the route's 503 while the store is empty) has nothing to offer and the tags plan the
+    /// release. Once the store has a feed, both are read strictly (see `Appcast.published`), as is the store itself.
     public func publishedFeeds() async throws -> [AppcastItem] {
-        async let site = Appcast.published(workspace.manifest.release.feedURL, transport: transport)
-        async let latest = Appcast.published(latestAppcastURL, transport: transport)
-        return try await site + latest
+        async let site = read(workspace.manifest.release.feedURL)
+        async let latest = read(latestAppcastURL)
+        let store = try await latest.get()
+        let served = await site
+        guard let store else {
+            switch served {
+            case .success(let items):
+                return items ?? []
+            case .failure(let error):
+                Log.step("\(error); \(latestAppcastURL) has never been published, so nothing has shipped yet")
+                return []
+            }
+        }
+        return (try served.get() ?? []) + store
+    }
+
+    private func read(_ url: String) async -> Result<[AppcastItem]?, any Error> {
+        do {
+            return .success(try await Appcast.published(url, transport: transport))
+        } catch {
+            return .failure(error)
+        }
     }
 
     // MARK: Steps

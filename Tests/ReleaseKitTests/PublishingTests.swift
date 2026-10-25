@@ -245,6 +245,45 @@ private func item(_ version: String, build: Int) -> String {
                 == "- Build fix.\n- A composable site.\n- First releases plan from tags.")
         #expect(await !transport.calls.contains { $0.hasSuffix("/pulls/14") })
     }
+
+    /// sudylko#5: planning on a PR branch warned about each of its 15 commits since the last tag.
+    @Test func aPullRequestBranchFoldsInOnlyWhatLandedOnTheDefaultBranch() async throws {
+        let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-fold-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let origin = scratch.appending(path: "origin.git")
+        let root = scratch.appending(path: "app")
+        try FileManager.default.createDirectory(at: root.appending(path: "Sources"), withIntermediateDirectories: true)
+        func commit(_ file: String, _ message: String) throws {
+            try message.write(to: root.appending(path: file), atomically: true, encoding: .utf8)
+            _ = try Shell.capture(["git", "add", "-A"], cwd: root)
+            _ = try Shell.capture(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@invalid", "commit", "-q", "-m", message], cwd: root)
+        }
+        _ = try Shell.capture(["git", "init", "--quiet", "--bare", "--initial-branch=main", origin.path])
+        _ = try Shell.capture(["git", "init", "--quiet", "--initial-branch=main"], cwd: root)
+        _ = try Shell.capture(["git", "remote", "add", "origin", origin.path], cwd: root)
+        try commit("Sources/a.swift", "Adopt DylKit (#4)")
+        _ = try Shell.capture(["git", "tag", "v1.0.0"], cwd: root)
+        try commit("Sources/b.swift", "Faster sync (#6)")
+        _ = try Shell.capture(["git", "push", "--quiet", "origin", "main"], cwd: root)
+        _ = try Shell.capture(["git", "checkout", "--quiet", "-b", "feature"], cwd: root)
+        try commit("Sources/c.swift", "WIP\n\n# Release notes\n\n- Half done.\n\n# Release info\n\n- [x] Major")
+        try commit("Sources/d.swift", "Address review")
+        try commit(
+            "Sources/e.swift",
+            "Adopt DylKit 0.5.0\n\n# Release notes\n\n- Uses DylKit 0.5.0.\n\n# Release info\n\n- [x] Patch")
+        let transport = FakeTransport { request in
+            guard request.url?.lastPathComponent == "6" else { return (404, "") }
+            let body = "# Release notes\n\n- Syncs faster.\n\n# Release info\n\n- [x] Minor"
+            return (200, String(decoding: try JSONEncoder().encode(["body": body]), as: UTF8.self))
+        }
+        let repo = ReleaseRepo(
+            root: root, environment: ["GITHUB_REPOSITORY": "o/app", "GITHUB_TOKEN": "t0ken"], transport: transport)
+
+        let plan = try await repo.version(explicitBump: nil, pullRequest: nil, published: [])
+        #expect(plan.version == "1.1.0")
+        #expect(ReleaseInfo.notesMarkdown(body: plan.body, fallbackTitle: "") == "- Uses DylKit 0.5.0.\n- Syncs faster.")
+    }
 }
 
 @Suite struct GitHubTests {

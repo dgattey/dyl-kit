@@ -118,7 +118,8 @@ public struct ReleaseRepo: Sendable {
     /// Merges since the last release tag before HEAD that have none of their own, newest first. A concurrency group
     /// keeps one pending run and cancels any older one, so when merges land while a release runs, only the newest
     /// releases. Merges that only touch docs, the site, tests or CI never release, and those without a Release info box
-    /// are left out.
+    /// are left out. Only commits on origin's default branch count, so on a PR branch its own commits, which squash
+    /// into one merge, are skipped.
     ///
     /// - Blocking: runs git.
     private func unreleasedMerges() async throws -> [ReleaseInfo.Merge] {
@@ -126,7 +127,8 @@ public struct ReleaseRepo: Sendable {
             ["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD^"], cwd: root, allowFailure: true)
         guard !base.isEmpty else { return [] }
         var merges: [ReleaseInfo.Merge] = []
-        let commits = try Shell.capture(["git", "rev-list", "--first-parent", "\(base)..HEAD^"], cwd: root)
+        let landed = try landedBeforeHead()
+        let commits = try Shell.capture(["git", "rev-list", "--first-parent", "\(base)..\(landed)"], cwd: root)
         for commit in commits.split(separator: "\n").map(String.init) {
             let files = try Shell.capture(["git", "diff", "--name-only", "\(commit)^", commit], cwd: root)
             guard files.split(separator: "\n").contains(where: { !Self.neverReleases($0) }) else { continue }
@@ -141,6 +143,18 @@ public struct ReleaseRepo: Sendable {
             merges.append(.init(subject: message.subject, body: source.body, bump: source.bump))
         }
         return merges
+    }
+
+    /// The newest commit before HEAD on origin's default branch: HEAD^ when HEAD is a merge into it, or where a PR
+    /// branch left it. HEAD^ when origin can't be read.
+    ///
+    /// - Blocking: runs git, over the network.
+    private func landedBeforeHead() throws -> String {
+        let fetched = try Shell.run(
+            ["git", "fetch", "--quiet", "--no-tags", "origin", "HEAD"], cwd: root, quiet: true, allowFailure: true)
+        guard fetched == 0 else { return "HEAD^" }
+        let landed = try Shell.capture(["git", "merge-base", "HEAD^", "FETCH_HEAD"], cwd: root, allowFailure: true)
+        return landed.isEmpty ? "HEAD^" : landed
     }
 
     /// Paths that never release on their own, as app.yml's `changes` job decides.

@@ -115,7 +115,7 @@ private let sconeosModules = [
             - Builds with `--disable-get-task-allow-entitlement` in `Bundler.swift`.
 
             # Release notes
-            <!-- 1–3 plain-English bullets. -->
+            <!-- Aim for 3 plain-English bullets, up to 5. -->
 
             - Dev builds no longer print code-signing warnings (#8).
 
@@ -135,7 +135,7 @@ private let sconeosModules = [
         #expect(ReleaseNotes.markdown(body: "# Summary\n\n- Faster sync.") == "- Faster sync.")
         #expect(ReleaseNotes.markdown(body: "<!-- # Release notes\n- Hidden. -->") == nil)
         #expect(ReleaseNotes.problems(inBody: "# What changed?\n\n- Map drags.") == [
-            "there's no # Release notes section with content; add 1–3 plain-English bullets above # Release info"
+            "there's no # Release notes section with content; add plain-English bullets above # Release info, aim for 3, up to 5"
         ])
     }
 
@@ -165,8 +165,10 @@ private let sconeosModules = [
         #expect(ReleaseNotes.problems(in: "One plain sentence for internal plumbing (#4).").isEmpty)
     }
 
-    @Test func rejectsMoreThanThreeBullets() {
-        #expect(ReleaseNotes.problems(in: "- One.\n- Two.\n- Three.\n- Four.") == ["4 bullets; keep it to 1–3"])
+    @Test func allowsUpToFiveBullets() {
+        let five = "- One.\n- Two.\n- Three.\n- Four.\n- Five."
+        #expect(ReleaseNotes.problems(in: five).isEmpty)
+        #expect(ReleaseNotes.problems(in: five + "\n- Six.") == ["6 bullets; aim for 3, up to 5"])
     }
 
     /// scone-os #7 put a component name in backticks in otherwise user-facing notes.

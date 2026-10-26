@@ -462,15 +462,21 @@ public struct ReleaseChecks: Sendable {
 
     private struct PackageResolved: Decodable {
         struct Pin: Decodable {
-            struct State: Decodable { var version: String? }
+            struct State: Decodable {
+                var version: String?
+                var branch: String?
+                var revision: String?
+            }
             var identity: String
             var state: State
         }
         var pins: [Pin]
     }
 
-    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different releases. A DylKit
-    /// pinned to a branch or revision has no version to compare.
+    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different
+    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs `app.yml@<sha>` and
+    /// the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch pin has no
+    /// one commit to compare.
     private func checkPinsMatch(_ findings: inout [CheckFinding]) {
         let callers = workflows.compactMap { workflow in
             workflow.text.firstMatch(of: /uses:\s*dgattey\/dyl-kit\/\.github\/workflows\/app\.yml@([^\s#]+)/)
@@ -487,25 +493,47 @@ public struct ReleaseChecks: Sendable {
                 error("dylkit_version", workflow.path, "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it"))
         }
         guard
-            let pinned = read("Package.resolved")
+            let state = read("Package.resolved")
                 .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) })?
-                .pins.first(where: { $0.identity == "dyl-kit" })?.state.version
+                .pins.first(where: { $0.identity == "dyl-kit" })?.state
         else { return }
-        for caller in callers where caller.ref != "v\(pinned)" {
+        let tarball = site.flatMap { site in
+            site.package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/)
+                .map { (file: "\(site.root)/package.json", url: String($0.1), version: String($0.2)) }
+        }
+        if let pinned = state.version {
+            for caller in callers where caller.ref != "v\(pinned)" {
+                findings.append(
+                    error(
+                        "dylkit_version", caller.path,
+                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
+                            + "use @v\(pinned)"))
+            }
+            guard let tarball, tarball.version != pinned else { return }
+            let url = tarball.url.replacingOccurrences(of: tarball.version, with: pinned)
             findings.append(
                 error(
-                    "dylkit_version", caller.path,
-                    "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); use @v\(pinned)"))
+                    "dylkit_version", tarball.file,
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit \(pinned); "
+                        + "depend on \"\(url)\""))
+        } else if state.branch == nil, let revision = state.revision {
+            let short = String(revision.prefix(7))
+            for caller in callers where caller.ref != revision {
+                findings.append(
+                    error(
+                        "dylkit_version", caller.path,
+                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
+                            + "use @\(revision)"))
+            }
+            guard let tarball else { return }
+            let commit = tarball.version.firstMatch(of: /-pr\.\d+\.([0-9a-f]{7,40})$/).map { String($0.1) }
+            guard commit.map({ !revision.hasPrefix($0) }) ?? true else { return }
+            findings.append(
+                error(
+                    "dylkit_version", tarball.file,
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on the "
+                        + "-pr.<number>.\(short) tarball its PR's prerelease job uploaded"))
         }
-        guard let (siteRoot, package) = site,
-            let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
-            match.2 != pinned
-        else { return }
-        let url = match.1.replacingOccurrences(of: match.2, with: pinned)
-        findings.append(
-            error(
-                "dylkit_version", "\(siteRoot)/package.json",
-                "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
 
     /// The pnpm every site and its repo root pin, as SampleApp does. The hash is the npm registry's integrity for that

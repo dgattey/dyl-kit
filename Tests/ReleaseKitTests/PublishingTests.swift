@@ -314,6 +314,31 @@ private func item(_ version: String, build: Int) -> String {
             }
         }
     }
+
+    @Test func readsTheRepoFromAGitHubRemote() {
+        for url in [
+            "https://github.com/o/app.git", "https://github.com/o/app", "https://x-access-token:t@github.com/o/app.git",
+            "git@github.com:o/app.git", "ssh://git@github.com/o/app.git", "git@github.com:o/app\n",
+        ] {
+            #expect(GitHub.repository(fromRemote: url) == "o/app", "\(url)")
+        }
+        #expect(GitHub.repository(fromRemote: "https://gitlab.com/o/app.git") == nil)
+        #expect(GitHub.repository(fromRemote: "") == nil)
+    }
+
+    /// Run locally, `release-kit version --pr N` has no GITHUB_REPOSITORY, so it names the repo from `origin`.
+    @Test func runLocallyTheRepoComesFromOrigin() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-origin-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: root)
+        _ = try Shell.capture(["git", "remote", "add", "origin", "git@github.com:o/app.git"], cwd: root)
+        let filled = GitHub.filling(["GITHUB_TOKEN": "t0ken"], from: root)
+        #expect(filled == ["GITHUB_REPOSITORY": "o/app", "GITHUB_TOKEN": "t0ken"])
+        #expect(GitHub.filling(actions.merging(["GITHUB_REPOSITORY": "o/other"]) { $1 }, from: root) == [
+            "GITHUB_REPOSITORY": "o/other", "GITHUB_TOKEN": "t0ken",
+        ])
+    }
 }
 
 @Suite struct BlobStoreTests {

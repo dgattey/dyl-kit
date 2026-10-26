@@ -37,7 +37,7 @@ openssl genpkey -algorithm ed25519 -out key.pem
 openssl pkey -in key.pem -outform DER | tail -c 32 | base64 >ed.key
 openssl pkey -in key.pem -pubout -outform DER | tail -c 32 | base64 >sparkle-public-key.txt
 rm key.pem
-printf 'build/\n.build/\ned.key\n' >.gitignore
+printf 'ed.key\n' >>.gitignore
 git init -q
 git add -A
 git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qm "Sample"
@@ -108,6 +108,10 @@ grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appca
   fail "release.json's download isn't $download"
 grep -qF "\"version\" : \"$version\"" build/release/history.json || fail "history.json doesn't list $version"
 grep -qF "/releases" build/release/appcast.xml || fail "the staged appcast doesn't link /releases"
+
+uploads="$("$release_kit" publish --dry-run)"
+grep -qxF "releases/v$version/Sample-$version.zip" <<<"$uploads" || fail "publish --dry-run lists: $uploads"
+[[ -z "$(git tag -l "v$version")" ]] || fail "publish --dry-run tagged v$version"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

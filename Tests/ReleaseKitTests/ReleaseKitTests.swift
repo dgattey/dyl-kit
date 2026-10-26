@@ -190,7 +190,14 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(try ReleaseInfo.source(prBody: minor, commitBody: patch).bump == .minor)
         #expect(try ReleaseInfo.source(prBody: nil, commitBody: patch).bump == .patch)
         #expect(try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: patch).bump == .patch)
-        #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4") }
+        let neither = #expect(throws: ToolError.self) {
+            try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4")
+        }
+        #expect(
+            neither?.description == "the PR body and the merge commit message each check none or several boxes; check "
+                + "exactly one of Major, Minor or Patch under `# Release info` in the PR, or pass the bump with --type")
+        let noBody = #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: nil, commitBody: "Merge #4") }
+        #expect(noBody?.description.hasPrefix("the merge commit message doesn't check exactly one") == true)
     }
 
     @Test func foldedMergesTakeTheLargestBumpAndEveryMergesNotesNewestFirst() {
@@ -855,33 +862,68 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         }
     }
 
-    /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside
-    /// dylkit.yml, which would release twice.
+    /// The fixture's site and workflow pin the current release. A 0.2 app that migrates keeps no synced workflow
+    /// beside dylkit.yml, which would release twice.
     @Test func everyPinMatchesTheResolvedDylKit() throws {
+        let workflow = try String(contentsOf: appRoot.appending(path: ".github/workflows/dylkit.yml"), encoding: .utf8)
+        let current = try #require(workflow.firstMatch(of: /app\.yml@v(\d+)\.(\d+)\.(\d+)/))
+        let pinned = "\(current.1).\(current.2).\(current.3)"
+        let next = "\(current.1).\(current.2).\(Int(current.3)! + 1)"
         func messages(_ state: String, _ extra: [String: String] = [:]) throws -> [String]? {
             let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#
             let workspace = try scratchWorkspace(extra.merging(["Package.resolved": resolved]) { $1 })
             defer { try? FileManager.default.removeItem(at: workspace.root) }
             return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
         }
-        #expect(try messages(#"{ "version": "0.3.0" }"#) == nil)
-        #expect(try messages(#"{ "branch": "main" }"#) == nil)
+        #expect(try messages(#"{ "version": "\#(pinned)" }"#) == nil)
+        #expect(try messages(#"{ "branch": "main", "revision": "\#(String(repeating: "e", count: 40))" }"#) == nil)
         #expect(
-            try messages(#"{ "version": "0.3.1" }"#) == [
-                "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0 but Package.resolved pins DylKit 0.3.1; "
-                    + "use @v0.3.1",
-                "@dylkit/web is 0.3.0 but Package.resolved pins DylKit 0.3.1; depend on "
-                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\"",
+            try messages(#"{ "version": "\#(next)" }"#) == [
+                "calls dgattey/dyl-kit/.github/workflows/app.yml@v\(pinned) but Package.resolved pins DylKit \(next); "
+                    + "use @v\(next)",
+                "@dylkit/web is \(pinned) but Package.resolved pins DylKit \(next); depend on "
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v\(next)/"
+                    + "dylkit-web-\(next).tgz\"",
             ])
         let synced = "# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.\nname: release\n"
         #expect(
             try messages(
-                #"{ "version": "0.3.0" }"#,
+                #"{ "version": "\#(pinned)" }"#,
                 [".github/workflows/dylkit.yml": "name: dylkit\n", ".github/workflows/release.yml": synced]) == [
                     "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
                         + "DylKit's SampleApp",
                     "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it",
                 ])
+    }
+
+    /// While an app runs a DylKit PR, SwiftPM pins a commit, and the workflow and tarball must name that commit too.
+    @Test func aRevisionPinNeedsThatCommitsWorkflowAndTarball() throws {
+        let revision = "bf26f74" + String(repeating: "0", count: 33)
+        let tarball = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-22/dylkit-web-0.6.0-pr.22"
+        func messages(workflowRef: String, tarballCommit: String?) throws -> [String]? {
+            let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": { "revision": "\#(revision)" } }] }"#
+            let workflow = "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/app.yml@\(workflowRef)\n"
+            let server = try String(contentsOf: appRoot.appending(path: "server/package.json"), encoding: .utf8)
+                .replacing(
+                    /"@dylkit\/web": "[^"]*"/,
+                    with: "\"@dylkit/web\": \"\(tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz")\"")
+            let workspace = try scratchWorkspace([
+                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow, "server/package.json": server,
+            ])
+            defer { try? FileManager.default.removeItem(at: workspace.root) }
+            return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
+        }
+        #expect(try messages(workflowRef: revision, tarballCommit: "bf26f74") == nil)
+        #expect(try messages(workflowRef: revision, tarballCommit: revision) == nil)
+        #expect(
+            try messages(workflowRef: "v0.6.0", tarballCommit: "3a9e7aa") == [
+                "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.6.0 but Package.resolved pins DylKit at bf26f74; "
+                    + "use @\(revision)",
+                "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on the "
+                    + "-pr.<number>.bf26f74 tarball its PR's prerelease job uploaded",
+            ])
+        let untagged = try messages(workflowRef: revision, tarballCommit: nil)
+        #expect(untagged?.first?.hasPrefix("@dylkit/web is 0.6.0-pr.22 ") == true)
     }
 
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {

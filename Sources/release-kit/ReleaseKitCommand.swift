@@ -114,12 +114,19 @@ extension ReleaseKitCommand {
 
     struct Publish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.")
+            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.",
+            discussion: """
+                With --dry-run, after version, bundle, sign and appcast, it makes publish's checks and lists the \
+                uploads, and tags, pushes and uploads nothing, so the whole release runs locally.
+                """)
 
         @OptionGroup var options: RootOption
+        @Flag(help: "Check and list what publish would tag and upload, without tagging, pushing or uploading.")
+        var dryRun = false
 
         func run() async throws {
-            try await ReleasePipeline(workspace: try options.workspace()).publish()
+            let pathnames = try await ReleasePipeline(workspace: try options.workspace()).publish(dryRun: dryRun)
+            if dryRun { for pathname in pathnames { print(pathname) } }
         }
     }
 

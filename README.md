@@ -99,6 +99,8 @@ Each app releases to its own public Vercel Blob store, `[release] assets` in `Dy
 
 The appcast holds only the newest build, so Sparkle offers it to every install however far behind, with the last ten versions' notes and a link to `/releases` for the rest. That page shows every release as a card, from `history.json`; the home page shows the newest three and links to it. For an app with releases from before it, run `swift run release-kit history --appcast <older appcast.xml> --github <owner/name>` once with `GITHUB_TOKEN` set, check `build/release/history.json`, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`. `adopt-dylkit` has the setup steps.
 
+To rehearse a release on macOS, run `swift run release-kit version --pr <number>`, then `bundle`, `sign`, `appcast` and `publish --dry-run`. Run locally, `version` reads the PR's `# Release info` with the `origin` remote and `gh`'s login, or takes `--type`. `appcast` signs with the app's Sparkle key and reads the published feeds. `publish --dry-run` makes publish's checks and lists the tag and every upload, and tags, pushes and uploads nothing. `bundle` and `sign` need Xcode, so on Linux only `version`, `check` and `notes` run.
+
 ### Dock tile plug-in
 
 An `NSDockTilePlugIn` draws the app's Dock icon while the app is quit. Put its principal class in a target of its own, give the class an Objective-C name with `@objc(SampleDockTilePlugIn)`, and ship the target as a dynamic library product:
@@ -132,7 +134,7 @@ For cloud agents and teammates, add `dgattey/dyl-kit` to the team's plugin marke
 swift build && swift test         # Tests/Fixtures/SampleApp stands in for an app
 swift run dyl-lint Sources
 cd web && pnpm install && pnpm test
-scripts/release-e2e.sh            # version, bundle, sign, appcast and check SampleApp with a throwaway Ed key
+scripts/release-e2e.sh            # version, bundle, sign, appcast and publish --dry-run SampleApp with a throwaway Ed key
 ```
 
 CI runs the same on every PR. Docs-only changes skip CI.
@@ -145,4 +147,13 @@ Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# R
 
 ### Running a PR in an app before it releases
 
-CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>` and uploads it to `releases/pr-<number>/` in the same store, without tagging anything. Its run summary names the three pins that select that commit: `revision: "<sha>"` in `Package.swift`, `app.yml@<sha>` in `dylkit.yml`, and the tarball URL in `server/package.json`. With a revision pin, `dylkit_version` has no version to compare, so it doesn't flag them. Move all three to the release once it ships.
+CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>`, uploads it to `releases/pr-<number>/` in the same store without tagging anything, and fails unless the URL then serves it. It runs after the `swift` and `web` jobs, a few minutes after the push, and a newer push cancels the older commit's run, so only commits CI finished get a tarball. Its run summary names the three pins that select that commit:
+
+```swift
+.package(
+    url: "https://github.com/dgattey/dyl-kit",
+    revision: "<sha>"
+)
+```
+
+plus `uses: dgattey/dyl-kit/.github/workflows/app.yml@<sha>` in `dylkit.yml` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all three to the release once it ships.

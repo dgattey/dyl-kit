@@ -233,7 +233,8 @@ public struct ReleasePipeline: Sendable {
     /// `ReleaseRepo.publish`), unless that would offer an older build than the published feeds.
     ///
     /// - Blocking: runs git.
-    public func publish() async throws {
+    @discardableResult
+    public func publish(dryRun: Bool = false) async throws -> [String] {
         let state = try state()
         let latest = [stagedHistory, stagedAppcast, stagedReleaseJSON]
         let icons = SiteIcons.all.map { stagedIcons.appending(path: $0.name) }
@@ -244,7 +245,7 @@ public struct ReleasePipeline: Sendable {
             throw ToolError("no \(file.path); run `release-kit bundle` first")
         }
         try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
-        try await repo.publish([archiveURL(state)], icons: icons, latest: latest, assets: assets)
+        return try await repo.publish([archiveURL(state)], icons: icons, latest: latest, assets: assets, dryRun: dryRun)
     }
 
     // MARK: Helpers

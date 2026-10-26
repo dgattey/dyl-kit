@@ -84,27 +84,32 @@ public struct ReleaseRepo: Sendable {
 
     /// Tags HEAD `v<version>` (lightweight) unless that tag already points at it, pushes the tag, and uploads the
     /// release's `files`, the site's `icons` and the store root's `latest` to the Blob store at `assets` (see
-    /// `BlobStore.publish`), returning their URLs. Re-running after a partial publish finishes it.
+    /// `BlobStore.publish`), returning their URLs. Re-running after a partial publish finishes it. With `dryRun`, it
+    /// makes the same checks and returns the pathnames it would upload to, and tags, pushes and uploads nothing.
     ///
     /// - Blocking: runs git.
     @discardableResult
     public func publish(
-        _ files: [URL], icons: [URL] = [], latest: [URL] = [], assets: String? = nil
+        _ files: [URL], icons: [URL] = [], latest: [URL] = [], assets: String? = nil, dryRun: Bool = false
     ) async throws -> [String] {
         let state = try state()
         for file in files + icons + latest where !FileManager.default.fileExists(atPath: file.path) {
             throw ToolError("no \(file.path) to publish")
         }
-        let store = try BlobStore(environment: environment, transport: transport)
+        let store = dryRun ? nil : try BlobStore(environment: environment, transport: transport)
         let head = try Shell.capture(["git", "rev-parse", "HEAD"], cwd: root)
         let tagged = try Shell.capture(
             ["git", "rev-parse", "--quiet", "--verify", "refs/tags/\(state.tag)^{commit}"], cwd: root,
             allowFailure: true)
-        if tagged.isEmpty {
-            try Shell.run(["git", "tag", state.tag], cwd: root)
-        } else if tagged != head {
+        if !tagged.isEmpty, tagged != head {
             throw ToolError("\(state.tag) already tags \(tagged), not HEAD (\(head))")
         }
+        guard let store else {
+            let count = files.count + icons.count + latest.count
+            Log.step("dry run: would tag HEAD \(state.tag), push it, and upload \(count) files")
+            return BlobStore.uploads(tag: state.tag, files: files, icons: icons, latest: latest).map(\.1)
+        }
+        if tagged.isEmpty { try Shell.run(["git", "tag", state.tag], cwd: root) }
         try Shell.run(["git", "push", "origin", "refs/tags/\(state.tag)"], cwd: root)
         return try await store.publish(tag: state.tag, files: files, icons: icons, latest: latest, assets: assets)
     }
@@ -169,7 +174,8 @@ public struct ReleaseRepo: Sendable {
             return nil
         }
         do {
-            let body = try await GitHub(environment: environment, transport: transport).pullRequestBody(number: number)
+            let github = try GitHub(environment: GitHub.filling(environment, from: root), transport: transport)
+            let body = try await github.pullRequestBody(number: number)
             return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : body
         } catch {
             Log.warn("couldn't read PR #\(number) from GitHub (\(error)); \(fallback)")

@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@dylkit/web':
-        specifier: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz
-        version: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz(next@15.5.28(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
+        specifier: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz
+        version: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz(next@15.5.28(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
       next:
         specifier: ^15.3.0
         version: 15.5.28(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -191,9 +191,9 @@ importers:
 
 packages:
 
-  '@dylkit/web@https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz':
-    resolution: {integrity: sha512-nKu6xyXN8dd0rJCuF0tO6ewNonTxqPhkboCvW9yPPxG69XmTLVRKwFGK8rFqxJAfwsa/hXu1cLGVXBLNWNinWQ==, tarball: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz}
-    version: 0.3.0
+  '@dylkit/web@https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz':
+    resolution: {integrity: sha512-WldbVVcw8QhJq25mLxm/w7+D2Mw7vnymzFqHDx11cr0clFmLKqvLEkj4+A4Hgje3P50+xAd0DDwzKHnz3DjLVw==, tarball: https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz}
+    version: 0.6.0
     engines: {node: '>=22.18'}
     peerDependencies:
       next: '>=15.3.0'
@@ -539,7 +539,7 @@ packages:
 
 snapshots:
 
-  '@dylkit/web@https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.0/dylkit-web-0.3.0.tgz(next@15.5.28(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)':
+  '@dylkit/web@https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz(next@15.5.28(@types/node@24.19.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)':
     dependencies:
       smol-toml: 1.9.1
     optionalDependencies:

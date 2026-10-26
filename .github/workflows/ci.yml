@@ -104,8 +104,14 @@ jobs:
             -H "x-allow-overwrite: 1" \
             "https://vercel.com/api/blob/?pathname=releases/pr-$PR_NUMBER/dylkit-web-$version.tgz" | jq -r .url)"
           echo "$url"
-          printf '%s\n' "### Run PR #$PR_NUMBER in an app" "" \
-            "- \`Package.swift\`: \`.package(url: \"https://github.com/dgattey/dyl-kit\", revision: \"$SHA\")\`" \
+          # The pins go out only once the public URL serves the tarball.
+          for attempt in 1 2 3 4 5 6; do
+            curl -fsSI "$url" >/dev/null && break
+            [[ $attempt == 6 ]] && { echo "::error::$url doesn't serve the tarball"; exit 1; }
+            sleep 10
+          done
+          printf '%s\n' "### Run PR #$PR_NUMBER in an app" "" "\`Package.swift\`:" "" '```swift' ".package(" \
+            "    url: \"https://github.com/dgattey/dyl-kit\"," "    revision: \"$SHA\"" ")" '```' "" \
             "- \`.github/workflows/dylkit.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/app.yml@$SHA\`" \
             "- \`server/package.json\`: \`\"@dylkit/web\": \"$url\"\`" >>"$GITHUB_STEP_SUMMARY"
 
@@ -116,6 +122,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # Apps copy SampleApp's DylKit pins, so they name the newest release; after a release, the next PR bumps them.
+      - name: SampleApp pins the newest DylKit release
+        run: |
+          latest="$(git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/v||' | sort -V | tail -1)"
+          app=Tests/Fixtures/SampleApp
+          url="https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v$latest/dylkit-web-$latest.tgz"
+          grep -qF "\"@dylkit/web\": \"$url\"" "$app/server/package.json" ||
+            { echo "::error::$app/server/package.json must depend on $url"; exit 1; }
+          grep -qF "app.yml@v$latest" "$app/.github/workflows/dylkit.yml" ||
+            { echo "::error::$app/.github/workflows/dylkit.yml must call app.yml@v$latest"; exit 1; }
       - name: actionlint
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12

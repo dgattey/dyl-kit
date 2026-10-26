@@ -29,11 +29,14 @@ struct BlobStore: Sendable {
     func publish(
         tag: String, files: [URL], icons: [URL] = [], latest: [URL], assets: String?
     ) async throws -> [String] {
-        try await upload(
-            files.map { ($0, "releases/\(tag)/\($0.lastPathComponent)") }
-                + icons.map { ($0, "icons/\($0.lastPathComponent)") }
-                + latest.map { ($0, $0.lastPathComponent) },
-            assets: assets)
+        try await upload(Self.uploads(tag: tag, files: files, icons: icons, latest: latest), assets: assets)
+    }
+
+    /// Each file and the pathname `publish` uploads it to, in upload order.
+    static func uploads(tag: String, files: [URL], icons: [URL], latest: [URL]) -> [(URL, String)] {
+        files.map { ($0, "releases/\(tag)/\($0.lastPathComponent)") }
+            + icons.map { ($0, "icons/\($0.lastPathComponent)") }
+            + latest.map { ($0, $0.lastPathComponent) }
     }
 
     /// Uploads `files` to the store root on their own, such as a backfilled `history.json`.

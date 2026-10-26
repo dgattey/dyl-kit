@@ -20,6 +20,7 @@ public struct Bundler: Sendable {
     )
         throws -> URL
     {
+        try HostPlatform.requireMacOS("bundling \(workspace.manifest.app.name)")
         let manifest = workspace.manifest
         let product = manifest.build.product
         let fileManager = FileManager.default

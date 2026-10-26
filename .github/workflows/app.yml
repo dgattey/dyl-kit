@@ -25,7 +25,9 @@ on:
 
 jobs:
   release-info:
-    # Edits only matter when they change the body: its Release info box or its Release notes.
+    # Edits only matter when they change the body: its Release info box or its Release notes. Its name follows
+    # `if:` for the reason verify's does.
+    name: ${{ github.event.action != 'closed' && (github.event.action != 'edited' || github.event.changes.body) && 'release-info' || 'release-info (not run for this event)' }}
     if: >-
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
       (github.event.action != 'edited' || github.event.changes.body)
@@ -33,7 +35,8 @@ jobs:
     concurrency:
       group: release-info-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    # Pinned for the image's preinstalled swiftc, which the notes check compiles with.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Read the PR body
@@ -110,9 +113,8 @@ jobs:
     # Editing or closing a PR reruns this workflow on the same commit, where verify is skipped. A skipped check run
     # named `verify` would replace that commit's real result, failure included, and rulesets count skipped as passing.
     # GitHub names a skipped job's check after this expression's raw text, so only a run that verifies is `verify`.
-    name: >-
-      ${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) && 'verify' ||
-        'verify (not run for this event)' }}
+    # One line, since a folded second line would put a newline in that raw text.
+    name: ${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) && 'verify' || 'verify (not run for this event)' }}
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     concurrency:

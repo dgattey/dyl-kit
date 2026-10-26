@@ -16,7 +16,7 @@ A shared framework for Mac and iOS apps: the release pipeline, the dev loop, lin
 
 The skills hold the how-to: `adopt-dylkit` covers adoption and upgrades (the Blob store and secrets, `DylApp.toml`, the files copied once from `Tests/Fixtures/SampleApp/`, the site's pnpm setup), `apple-dev-loop` covers building, testing, screenshots and the checks, and `apple-release` covers releasing, in CI and by hand. The plugin's `changelog-release-notes` rule says how to write each PR's `# Release notes`, which the PR check enforces.
 
-An app depends on DylKit twice, and pins it three times to the same version:
+An app depends on DylKit twice, and pins it in four places to the same version:
 
 ```swift
 // Package.swift
@@ -31,9 +31,11 @@ An app depends on DylKit twice, and pins it three times to the same version:
 ```yaml
 # .github/workflows/dylkit.yml
 uses: dgattey/dyl-kit/.github/workflows/app.yml@v<version>
+# .github/workflows/release-info.yml
+uses: dgattey/dyl-kit/.github/workflows/release-info.yml@v<version>
 ```
 
-`dylkit_version` fails when the tarball or the workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those three lines and the lockfiles; nothing is generated or synced.
+`dylkit_version` fails when the tarball or a workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those four lines and the lockfiles; nothing is generated or synced.
 
 ## Download site
 
@@ -125,11 +127,11 @@ SampleApp depends on DylKit with `.package(path: "../../..")`, and SwiftPM names
 
 ## Releasing DylKit
 
-Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. When PRs merge while a release runs, GitHub cancels all but the newest one's run, so a release also ships any earlier merges without a tag, with the largest of their bumps and all of their notes; apps release the same way. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and the workflow ref together. DylKit's own PRs run the same `app.yml` Release info and Release notes checks apps call, and follow the same `rules/changelog-release-notes.mdc`, which `.cursor/rules/` links to.
+Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. When PRs merge while a release runs, GitHub cancels all but the newest one's run, so a release also ships any earlier merges without a tag, with the largest of their bumps and all of their notes; apps release the same way. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and both workflow refs together. DylKit's own PRs run the same `release-info.yml` Release info and Release notes check apps call, and follow the same `rules/changelog-release-notes.mdc`, which `.cursor/rules/` links to.
 
 ### Running a PR in an app before it releases
 
-CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>`, uploads it to `releases/pr-<number>/` in the same store without tagging anything, and fails unless the URL then serves it. It runs after the `swift` and `web` jobs, a few minutes after the push, and a newer push cancels the older commit's run, so only commits CI finished get a tarball. Its run summary names the three pins that select that commit:
+CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>`, uploads it to `releases/pr-<number>/` in the same store without tagging anything, and fails unless the URL then serves it. It runs after the `swift` and `web` jobs, a few minutes after the push, and a newer push cancels the older commit's run, so only commits CI finished get a tarball. Its run summary names the four pins that select that commit:
 
 ```swift
 .package(
@@ -138,4 +140,4 @@ CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last t
 )
 ```
 
-plus `uses: dgattey/dyl-kit/.github/workflows/app.yml@<sha>` in `dylkit.yml` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all three to the release once it ships.
+plus `@<sha>` on both workflows' `uses:` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all four to the release once it ships.

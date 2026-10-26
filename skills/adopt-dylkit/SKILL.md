@@ -1,6 +1,6 @@
 ---
 name: adopt-dylkit
-description: Adopt DylKit in an app, start to finish. Covers the Vercel Blob store and secrets, the three DylKit pins and the files copied once, DylApp.toml, the site's switch to `@dylkit/web`, the first release to Blob, and later upgrades.
+description: Adopt DylKit in an app, start to finish. Covers the Vercel Blob store and secrets, the four DylKit pins and the files copied once, DylApp.toml, the site's switch to `@dylkit/web`, the first release to Blob, and later upgrades.
 ---
 
 # Adopt DylKit
@@ -48,7 +48,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 ## The adoption PR
 
 1. Pin the release in `Package.swift`, `.package(url: "https://github.com/dgattey/dyl-kit", from: "<version>")`, then `swift package update dyl-kit`.
-2. Copy `.github/workflows/dylkit.yml` and `.github/pull_request_template.md` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set `dylkit.yml`'s `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. `dylkit.yml` runs DylKit's PR checks, including `swift run devkit verify` on macOS, and the release, so delete any release, PR-check or verify workflow it replaces. The rule for writing release notes comes with the DylKit plugin, so the app keeps no copy. `mise.toml` pins `swiftlint = "0.65.1"` under `[tools]`, like SampleApp's, and `.swiftlint.yml`, if the app has one, holds only its own `included` paths and rules with no `parent_config`.
+2. Copy `.github/workflows/dylkit.yml`, `.github/workflows/release-info.yml` and `.github/pull_request_template.md` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set both workflows' `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. `dylkit.yml` runs `dylkit / verify` (`swift run devkit verify` on macOS) and the release, on `pull_request` types `opened`, `reopened`, `synchronize` and `closed`. Never add `edited`: GitHub grades the commit by its newest run, so an edit's run would replace verify's result, and `dylkit_version` fails it. `release-info.yml` runs `dylkit / release-info` on `opened`, `edited`, `reopened` and `synchronize`, so it checks the PR body on every edit. Delete any release, PR-check or verify workflow they replace. The rule for writing release notes comes with the DylKit plugin, so the app keeps no copy. `mise.toml` pins `swiftlint = "0.65.1"` under `[tools]`, like SampleApp's, and `.swiftlint.yml`, if the app has one, holds only its own `included` paths and rules with no `parent_config`.
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
 4. Install the site with pnpm. `site_package_manager` in the checks fails a site whose `server/package.json` or repo-root `package.json` doesn't hold DylKit's exact pnpm pin, and a site without `pnpm-lock.yaml`. The failure names the pin.
    1. In `server/`, copy `packageManager`, the `preinstall` script, `pnpm-workspace.yaml` and `.node-version` from DylKit's `Tests/Fixtures/SampleApp/server/` at that tag. `.node-version` matches the Vercel project's Node 24, and a `mise.toml` that pins `node` pins that same version.
@@ -82,17 +82,19 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 6. An app with an `NSDockTilePlugIn`: keep its dynamic library product and set `[build] dock-tile-plugin` to that product and the plug-in's principal class. Delete the script steps that copied and signed the `.docktileplugin`, and the `NSDockTilePlugIn` key in the old `Info.plist`. The plug-in must find the app's preferences from its own bundle identifier, as DylKit's README says, so a dev build never reads the installed release's.
    - Check: `swift run devkit build`, then `codesign --verify --deep --strict "build/<App> Dev.app"` succeeds and `build/<App> Dev.app/Contents/PlugIns/` holds the plug-in.
 7. Verify on the Mac: `swift run devkit checks` and `swift run release-kit check` report 0 errors, and `swift run devkit capture` shows the app.
-8. Open the PR from the template with exactly one Release info box checked and plain-English `# Release notes`, as the plugin's release-notes rule says. When it merges, the `dylkit` run tags `v<version>` and uploads to the store.
+8. Point the default branch's ruleset at DylKit's checks, since a check the old workflows reported never arrives and blocks the PR. Its `required_status_checks` rule requires `dylkit / verify` and `dylkit / release-info`, each with `integration_id` 15368 (GitHub Actions), plus any other check a workflow the app keeps still reports, with `strict_required_status_checks_policy: false`.
+   - Check: `required_checks` in `swift run devkit checks` warns about nothing.
+9. Open the PR from the template with exactly one Release info box checked and plain-English `# Release notes`, as the plugin's release-notes rule says. When it merges, the `dylkit` run tags `v<version>` and uploads to the store.
    - Check: `git ls-remote --tags origin v<version>` prints the tag, `curl -fsSL <assets>/release.json` shows that version, and `curl -fsSL <site>/appcast.xml` matches `curl -fsSL <assets>/appcast.xml`.
-9. Backfill the releases from before DylKit into `history.json`: `swift run release-kit history --appcast <each older appcast.xml> --github <owner/name>` with `GITHUB_TOKEN` set, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`.
+10. Backfill the releases from before DylKit into `history.json`: `swift run release-kit history --appcast <each older appcast.xml> --github <owner/name>` with `GITHUB_TOKEN` set, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`.
    - Check: `<site>/releases` lists every version.
 
 ## Upgrading DylKit
 
-One PR moves the three pins to the same version, with their lockfiles:
+One PR moves the four pins to the same version, with their lockfiles:
 
 1. `Package.swift`'s `from:`, then `swift package update dyl-kit` for `Package.resolved`.
 2. The `@dylkit/web` tarball in `server/package.json`, then `pnpm install` in `server/` for `pnpm-lock.yaml`.
-3. The `@v<version>` in `.github/workflows/dylkit.yml`.
+3. The `@v<version>` in `.github/workflows/dylkit.yml` and `.github/workflows/release-info.yml`.
 4. Whatever the checks then report, so the app matches this guide. The files copied once from SampleApp stay the app's; compare them with SampleApp's at the new tag.
    - Check: `swift run devkit checks` reports 0 errors; `dylkit_version` names any pin that differs from `Package.resolved`.

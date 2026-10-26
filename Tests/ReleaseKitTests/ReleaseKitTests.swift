@@ -507,7 +507,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let appFiles = [
             "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
             "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/tsconfig.json", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
-            ".github/workflows/dylkit.yml",
+            ".github/workflows/dylkit.yml", ".github/workflows/release-info.yml",
         ]
         for path in appFiles {
             let destination = root.appending(path: path)
@@ -729,23 +729,25 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
-    /// Editing or closing a PR reruns app.yml on the same commit, skipping verify, and release-info too unless the
-    /// body changed. GitHub names a skipped job's check after its raw `name:` text, so each is named plainly only when
-    /// it runs; otherwise the skipped check replaces the commit's real result, failure included, and rulesets count
-    /// skipped as passing. The name stays on one line so that raw text has no newline.
-    @Test func editingAPRNeverReplacesACheckResult() throws {
-        let workflow = try String(
-            contentsOf: packageRoot.appending(path: ".github/workflows/app.yml"), encoding: .utf8)
-        let runs = [
-            "verify": #"contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)"#,
-            "release-info": "github.event.action != 'closed' && (github.event.action != 'edited' || "
-                + "github.event.changes.body)",
-        ]
-        for (job, condition) in runs {
-            let pattern = try Regex("(?ms)^  \(job):\n.*?^    name: (.*?)\n")
-            let name = try #require(workflow.firstMatch(of: pattern)?.output[1].substring.map(String.init), "\(job)")
-            #expect(name == "${{ \(condition) && '\(job)' || '\(job) (not run for this event)' }}", "\(job)")
+    /// GitHub grades a commit by each workflow's newest run and counts a skipped check as passing. So an edit never
+    /// reruns app.yml, whose run would have no verify; release-info, in its own workflow, checks every edit; and verify
+    /// runs on every push, passing on ubuntu when there's nothing to verify, so a ruleset that requires it never waits.
+    @Test func noRunReplacesARequiredCheckWithASkip() throws {
+        func text(_ path: String, in root: URL = packageRoot) throws -> String {
+            try String(contentsOf: root.appending(path: path), encoding: .utf8)
         }
+        let app = try text(".github/workflows/app.yml")
+        let releaseInfo = try text(".github/workflows/release-info.yml")
+        #expect(try text(".github/workflows/dylkit.yml", in: appRoot).contains(
+            "types: [opened, reopened, synchronize, closed]"))
+        #expect(try text(".github/workflows/release-info.yml", in: appRoot).contains(
+            "types: [opened, edited, reopened, synchronize]"))
+        #expect(!app.contains(/(?m)^  release-info:/))
+        #expect(!releaseInfo.contains(/(?m)^    (if|name):/))
+        let verify = try #require(app.firstMatch(of: /(?ms)^  verify:\n(.*?)\n    steps:/)).1
+        #expect(!verify.contains("name:"))
+        #expect(!(try #require(verify.firstMatch(of: /(?s)if:(.*?)\n    concurrency:/)).1.contains("outputs")))
+        #expect(verify.contains("runs-on: ${{ needs.changes.outputs.verify == 'true' && 'macos-26' || 'ubuntu-latest' }}"))
     }
 
     /// Sites install with pnpm; without its pin and lockfile Vercel installs with npm.
@@ -836,6 +838,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             try messages(#"{ "version": "\#(next)" }"#) == [
                 "calls dgattey/dyl-kit/.github/workflows/app.yml@v\(pinned) but Package.resolved pins DylKit \(next); "
                     + "use @v\(next)",
+                "calls dgattey/dyl-kit/.github/workflows/release-info.yml@v\(pinned) but Package.resolved pins DylKit "
+                    + "\(next); use @v\(next)",
                 "@dylkit/web is \(pinned) but Package.resolved pins DylKit \(next); depend on "
                     + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v\(next)/"
                     + "dylkit-web-\(next).tgz\"",
@@ -845,6 +849,23 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
                 "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
                     + "DylKit's SampleApp"
             ])
+        let caller = try String(contentsOf: appRoot.appending(path: ".github/workflows/dylkit.yml"), encoding: .utf8)
+        let edited = [
+            "runs dgattey/dyl-kit/.github/workflows/app.yml on edited PRs, where the edit's run replaces verify's "
+                + "result; drop `edited`, which dgattey/dyl-kit/.github/workflows/release-info.yml checks"
+        ]
+        let flowTypes = "types: [opened, reopened, synchronize, closed]"
+        func withTypes(_ types: String) throws -> [String]? {
+            try messages(
+                #"{ "version": "\#(pinned)" }"#, [".github/workflows/dylkit.yml": caller.replacing(flowTypes, with: types)])
+        }
+        for types in [
+            "types: [opened, edited, reopened]", "types:\n      - opened\n      - edited # body edits\n      - closed",
+            "types: edited", "types:\n      - 'edited'",
+        ] {
+            #expect(try withTypes(types) == edited, "\(types)")
+        }
+        #expect(try withTypes("types:\n      - opened\n      - reopened\n      # - edited\n      - closed") == nil)
     }
 
     /// While an app runs a DylKit PR, SwiftPM pins a commit, and the workflow and tarball must name that commit too.
@@ -853,12 +874,15 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let tarball = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-22/dylkit-web-0.6.0-pr.22"
         func messages(workflowRef: String, tarballCommit: String?, url: String? = nil) throws -> [String]? {
             let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": { "revision": "\#(revision)" } }] }"#
-            let workflow = "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/app.yml@\(workflowRef)\n"
+            func workflow(_ name: String) -> String {
+                "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/\(name).yml@\(workflowRef)\n"
+            }
             let dependency = url ?? tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz"
             let server = try String(contentsOf: appRoot.appending(path: "server/package.json"), encoding: .utf8)
                 .replacing(/"@dylkit\/web": "[^"]*"/, with: "\"@dylkit/web\": \"\(dependency)\"")
             let workspace = try scratchWorkspace([
-                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow, "server/package.json": server,
+                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow("app"),
+                ".github/workflows/release-info.yml": workflow("release-info"), "server/package.json": server,
             ])
             defer { try? FileManager.default.removeItem(at: workspace.root) }
             return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
@@ -869,6 +893,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             try messages(workflowRef: "v0.6.0", tarballCommit: "3a9e7aa") == [
                 "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.6.0 but Package.resolved pins DylKit at bf26f74; "
                     + "use @\(revision)",
+                "calls dgattey/dyl-kit/.github/workflows/release-info.yml@v0.6.0 but Package.resolved pins DylKit at "
+                    + "bf26f74; use @\(revision)",
                 "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on "
                     + "\"\(tarball).bf26f74.tgz\", which its PR's prerelease job uploaded",
             ])
@@ -881,6 +907,79 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             ])
         let untagged = try messages(workflowRef: revision, tarballCommit: nil)
         #expect(untagged?.first?.hasPrefix("@dylkit/web is 0.6.0-pr.22 ") == true)
+    }
+
+    private func warnings(_ report: CheckReport, _ rule: String) -> [String] {
+        report.findings.filter { $0.severity == .warning && $0.rule == rule }.map(\.message)
+    }
+
+    /// The default branch's ruleset must require DylKit's two checks and nothing no workflow reports.
+    @Test func requiredChecksMatchWhatTheWorkflowsReport() throws {
+        let lint = """
+            name: lint
+            on: [pull_request]
+            jobs:
+              format:
+                name: 🎨 Format
+                runs-on: ubuntu-latest
+                steps: [{ run: 'true' }]
+              test:
+                strategy: { matrix: { os: [macos, ubuntu] } }
+                name: Test ${{ matrix.os }}
+                runs-on: ubuntu-latest
+                steps: [{ run: 'true' }]
+              site:
+                uses: ./.github/workflows/site.yml
+            """
+        let site = "on: { workflow_call: {} }\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: [{ run: ls }]\n"
+        let workspace = try scratchWorkspace([".github/workflows/lint.yml": lint, ".github/workflows/site.yml": site])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        func found(_ rules: BranchRules) -> [String] {
+            warnings(ReleaseChecks(workspace: workspace).run(rules: rules), "required_checks")
+        }
+        let dylKit = [
+            RequiredCheck(context: "dylkit / verify", integrationId: 15368),
+            RequiredCheck(context: "dylkit / release-info", integrationId: 15368),
+        ]
+        let reported = ["🎨 Format", "Test macos", "site / build"].map { RequiredCheck(context: $0) }
+        #expect(found(.read(branch: "main", required: dylKit + reported)).isEmpty)
+        let vercel = RequiredCheck(context: "Vercel", integrationId: 8329)
+        #expect(found(.read(branch: "main", required: dylKit + [vercel])).isEmpty)
+        #expect(
+            found(.read(branch: "main", required: ["🔨 Build", "📦 Bump version"].map { RequiredCheck(context: $0) }))
+                == [
+                    "main's rules require `🔨 Build`, which no workflow reports, so no PR can merge; remove it from the ruleset",
+                    "main's rules require `📦 Bump version`, which no workflow reports, so no PR can merge; remove it from the "
+                        + "ruleset",
+                    "main's rules don't require `dylkit / verify`, so a PR that fails it can still merge; require it, with "
+                        + "GitHub Actions as its source",
+                    "main's rules don't require `dylkit / release-info`, so a PR that fails it can still merge; require it, "
+                        + "with GitHub Actions as its source",
+                ])
+        #expect(
+            found(.unreadable("GitHub answered HTTP 403"))
+                == ["couldn't read the default branch's rules, so their required checks went unchecked: GitHub answered HTTP 403"])
+        #expect(!ReleaseChecks(workspace: workspace).run().checked.contains("required_checks"))
+        #expect(errors(ReleaseChecks(workspace: workspace).run(rules: .unreadable("offline"))).isEmpty)
+    }
+
+    /// The check names DylKit's reusable workflows report are the jobs in its own files.
+    @Test func dylKitJobsAreTheReusableWorkflowsJobs() throws {
+        for (file, jobs) in CheckNames.dylKitJobs {
+            let path = ".github/workflows/\(file)"
+            let text = try String(contentsOf: packageRoot.appending(path: path), encoding: .utf8)
+            #expect(try Workflow(path: path, text: text).jobs.map(\.title).sorted() == jobs.sorted(), "\(file)")
+        }
+    }
+
+    /// `on:` stays a string under `.basic` composing rather than YAML 1.1's boolean.
+    @Test func workflowTriggersParseInEveryShape() throws {
+        #expect(try Workflow(path: "a", text: "on: push\njobs: {}").triggers == ["push": nil])
+        #expect(try Workflow(path: "a", text: "on: [push, pull_request]\njobs: {}").types(of: "pull_request") == nil)
+        let mapping = try Workflow(path: "a", text: "on:\n  pull_request:\n    types:\n      - opened\n  workflow_dispatch:\n")
+        #expect(mapping.types(of: "pull_request") == ["opened"])
+        #expect(mapping.triggers.keys.sorted() == ["pull_request", "workflow_dispatch"])
+        #expect(throws: WorkflowError.self) { try Workflow(path: "a", text: "- just\n- a list\n") }
     }
 
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {

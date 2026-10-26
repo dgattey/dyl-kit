@@ -93,6 +93,34 @@ struct GitHub: Sendable {
         return all
     }
 
+    private struct Repository: Decodable {
+        var defaultBranch: String
+    }
+
+    private struct Rule: Decodable {
+        struct Parameters: Decodable {
+            var requiredStatusChecks: [RequiredCheck]?
+        }
+        var type: String
+        var parameters: Parameters?
+    }
+
+    func defaultBranch() async throws -> String {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(Repository.self, from: try await get("/repos/\(repo)")).defaultBranch
+    }
+
+    /// The status checks every active ruleset on `branch` requires. Classic branch protection isn't readable with
+    /// the default Actions token, so it isn't included.
+    func requiredChecks(branch: String) async throws -> [RequiredCheck] {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let escaped = branch.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? branch
+        return try decoder.decode([Rule].self, from: try await get("/repos/\(repo)/rules/branches/\(escaped)"))
+            .filter { $0.type == "required_status_checks" }.flatMap { $0.parameters?.requiredStatusChecks ?? [] }
+    }
+
     private func get(_ path: String) async throws -> Data {
         let url = api + path
         guard let parsed = URL(string: url) else { throw ToolError("\(url) isn't a URL") }

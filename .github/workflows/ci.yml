@@ -71,7 +71,7 @@ jobs:
           pnpm build
 
   # A PR's own @dylkit/web, so apps can run the PR end to end before it releases. Each commit gets its own tarball, which
-  # never moves and is never tagged; the run's summary names the three pins that select that commit.
+  # never moves and is never tagged; the run's summary names the four pins that select that commit.
   prerelease:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [swift, web]
@@ -113,6 +113,7 @@ jobs:
           printf '%s\n' "### Run PR #$PR_NUMBER in an app" "" "\`Package.swift\`:" "" '```swift' ".package(" \
             "    url: \"https://github.com/dgattey/dyl-kit\"," "    revision: \"$SHA\"" ")" '```' "" \
             "- \`.github/workflows/dylkit.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/app.yml@$SHA\`" \
+            "- \`.github/workflows/release-info.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/release-info.yml@$SHA\`" \
             "- \`server/package.json\`: \`\"@dylkit/web\": \"$url\"\`" >>"$GITHUB_STEP_SUMMARY"
 
   # DylKit's workflows, the reusable one apps call included, and SampleApp's copies of the files apps adopt once.

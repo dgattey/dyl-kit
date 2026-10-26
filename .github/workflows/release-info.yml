@@ -1,0 +1,52 @@
+# Each DylKit app's check of its PR body. Apps call it from .github/workflows/release-info.yml at the DylKit version
+# they pin, on pull_request (opened, edited, reopened, synchronize), with pull-requests: read. Its own workflow, apart
+# from app.yml, because GitHub grades a commit by each workflow's newest run: an edit that reran app.yml would replace
+# verify's result with a run that has no verify. Every edit checks the body again, since a skipped check counts as
+# passing. Tests/Fixtures/SampleApp/.github/workflows/release-info.yml is that caller.
+name: release-info
+
+on:
+  workflow_call:
+
+jobs:
+  release-info:
+    # Keyed by the calling workflow too, so a second caller's run can't cancel this one and leave it cancelled.
+    concurrency:
+      group: release-info-${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    # Pinned for the image's preinstalled swiftc, which the notes check compiles with.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read the PR body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' >"$RUNNER_TEMP/body.md"
+      - name: Check exactly one Release info box
+        run: |
+          checked="$(grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' "$RUNNER_TEMP/body.md" || true)"
+          if [ "$checked" != "1" ]; then
+            echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
+            exit 1
+          fi
+          echo "Release info OK"
+      # DylKit at the version the app pins, which is this workflow's own commit.
+      - uses: actions/checkout@v7
+        if: ${{ !cancelled() }}
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .dylkit
+          sparse-checkout: |
+            Sources/ReleaseNotes
+            scripts/check-release-notes.swift
+          sparse-checkout-cone-mode: false
+      # Compiling the one module with swiftc skips resolving DylKit's package, so this takes well under a minute.
+      - name: Check the Release notes
+        if: ${{ !cancelled() }}
+        run: |
+          swiftc -parse-as-library -swift-version 6 .dylkit/Sources/ReleaseNotes/*.swift \
+            .dylkit/scripts/check-release-notes.swift -o "$RUNNER_TEMP/check-release-notes"
+          "$RUNNER_TEMP/check-release-notes" <"$RUNNER_TEMP/body.md"

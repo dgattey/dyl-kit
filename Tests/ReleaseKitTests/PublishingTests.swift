@@ -494,3 +494,44 @@ private func item(_ version: String, build: Int) -> String {
         }
     }
 }
+
+@Suite struct BranchRulesTests {
+    private let environment = ["GITHUB_REPOSITORY": "dgattey/sample", "GITHUB_TOKEN": "token"]
+
+    @Test func readsTheDefaultBranchsRequiredChecks() async throws {
+        let transport = FakeTransport { request in
+            switch request.url?.path {
+            case "/repos/dgattey/sample": (200, #"{ "default_branch": "trunk" }"#)
+            case "/repos/dgattey/sample/rules/branches/trunk":
+                (
+                    200,
+                    #"""
+                    [{ "type": "deletion" },
+                     { "type": "required_status_checks", "parameters": { "strict_required_status_checks_policy": false,
+                       "required_status_checks": [{ "context": "dylkit / verify", "integration_id": 15368 },
+                                                  { "context": "Vercel" }] } }]
+                    """#
+                )
+            default: (404, #"{ "message": "Not Found" }"#)
+            }
+        }
+        let rules = await BranchRules.fetch(root: packageRoot, environment: environment, transport: transport)
+        #expect(
+            rules
+                == .read(
+                    branch: "trunk",
+                    required: [
+                        RequiredCheck(context: "dylkit / verify", integrationId: 15368), RequiredCheck(context: "Vercel"),
+                    ]))
+    }
+
+    @Test func aTokenThatCantReadIsUnreadableNotAFailure() async throws {
+        let transport = FakeTransport { _ in (403, #"{ "message": "Resource not accessible by integration" }"#) }
+        let rules = await BranchRules.fetch(root: packageRoot, environment: environment, transport: transport)
+        #expect(
+            rules
+                == .unreadable(
+                    "GitHub answered HTTP 403 to GET https://api.github.com/repos/dgattey/sample: Resource not accessible "
+                        + "by integration"))
+    }
+}

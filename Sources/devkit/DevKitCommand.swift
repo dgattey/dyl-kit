@@ -109,21 +109,21 @@ extension DevKitCommand {
         }
     }
 
-    struct Checks: ParsableCommand {
+    struct Checks: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Manifest, SwiftLint (tier 1), dyl-lint (tier 2) and release checks (tier 3).")
 
-        func run() throws {
-            guard DevKitCore.Checks(workspace: try Workspace.locate()).run() else { throw ExitCode.failure }
+        func run() async throws {
+            guard await DevKitCore.Checks(workspace: try Workspace.locate()).run() else { throw ExitCode.failure }
         }
     }
 
-    struct Verify: ParsableCommand {
+    struct Verify: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "What macOS CI runs on every PR: checks, build and tests.")
 
-        func run() throws {
-            try DevKitCore.Checks(workspace: try Workspace.locate()).verify()
+        func run() async throws {
+            try await DevKitCore.Checks(workspace: try Workspace.locate()).verify()
         }
     }
 }

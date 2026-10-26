@@ -109,7 +109,7 @@ extension ReleaseKitCommand {
                 Log.step("Info.plist, live → staged:")
                 for line in diff { FileHandle.standardError.write(Data("  \(line)\n".utf8)) }
             } else {
-                report = ReleaseChecks(workspace: workspace).run()
+                report = ReleaseChecks(workspace: workspace).run(rules: await BranchRules.fetch(root: workspace.root))
             }
             report.print()
             if !report.passed { throw ExitCode.failure }

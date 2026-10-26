@@ -17,6 +17,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+        .package(url: "https://github.com/jpsim/Yams", from: "6.2.0"),
     ],
     targets: [
         // Runtime helpers shared by the app and the tools.
@@ -46,7 +47,12 @@ let package = Package(
         .executableTarget(name: "dyl-lint", dependencies: ["DylLintRules"]),
         // Foundation only: app PR checks compile it with swiftc, without resolving this package.
         .target(name: "ReleaseNotes"),
-        .target(name: "ReleaseKit", dependencies: ["DylCore", "DylManifest", "DylToolSupport", "ReleaseNotes"]),
+        .target(
+            name: "ReleaseKit",
+            dependencies: [
+                "DylCore", "DylManifest", "DylToolSupport", "ReleaseNotes", .product(name: "Yams", package: "Yams"),
+            ]
+        ),
         .executableTarget(
             name: "release-kit",
             dependencies: [

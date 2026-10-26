@@ -21,8 +21,15 @@ public struct CheckReport: Sendable {
 
     public var passed: Bool { !findings.contains { $0.severity == .error } }
 
-    public func print() {
+    /// On GitHub Actions each finding is also an annotation, so a warning shows on the PR rather than only in the log.
+    public func print(environment: [String: String] = ProcessInfo.processInfo.environment) {
         for finding in findings { FileHandle.standardError.write(Data("\(finding)\n".utf8)) }
+        if environment["GITHUB_ACTIONS"] == "true" {
+            for finding in findings {
+                let file = finding.file.map { "file=\($0)," } ?? ""
+                Swift.print("::\(finding.severity.rawValue) \(file)title=\(finding.rule)::\(finding.message)")
+            }
+        }
         let errors = findings.filter { $0.severity == .error }.count
         Log.step("\(checked.count) checks, \(errors) errors, \(findings.count - errors) warnings")
     }
@@ -49,8 +56,9 @@ public struct ReleaseChecks: Sendable {
         public var published: [AppcastItem]
     }
 
+    /// - Parameter rules: the default branch's rules, to check what they require against what the workflows report.
     /// - Blocking: reads repo files.
-    public func run(staged: StagedRelease? = nil) -> CheckReport {
+    public func run(staged: StagedRelease? = nil, rules: BranchRules? = nil) -> CheckReport {
         var report = CheckReport()
         func check(_ rule: String, _ body: (inout [CheckFinding]) -> Void) {
             report.checked.append(rule)
@@ -69,6 +77,9 @@ public struct ReleaseChecks: Sendable {
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("release_notes", checkReleaseNotesFiles)
+        if let rules {
+            check("required_checks") { checkRequiredChecks(rules, &$0) }
+        }
         if let staged {
             check("staged_release") { checkStaged(staged, into: &$0) }
         }
@@ -83,6 +94,10 @@ public struct ReleaseChecks: Sendable {
 
     private func error(_ rule: String, _ file: String?, _ message: String) -> CheckFinding {
         CheckFinding(rule: rule, severity: .error, file: file, message: message)
+    }
+
+    private func warning(_ rule: String, _ file: String?, _ message: String) -> CheckFinding {
+        CheckFinding(rule: rule, severity: .warning, file: file, message: message)
     }
 
     private var publicKey: String? {
@@ -172,6 +187,18 @@ public struct ReleaseChecks: Sendable {
         return names.sorted().filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.compactMap { name in
             let path = "\(directory)/\(name)"
             return read(path).map { Source(path: path, text: $0) }
+        }
+    }
+
+    /// Every workflow that parses; one that doesn't is a warning under `rule`, since GitHub won't run it either.
+    private func parsedWorkflows(_ rule: String, _ findings: inout [CheckFinding]) -> [Workflow] {
+        workflows.compactMap { source in
+            do {
+                return try Workflow(path: source.path, text: source.text)
+            } catch {
+                findings.append(warning(rule, source.path, "doesn't parse as YAML: \(error)"))
+                return nil
+            }
         }
     }
 
@@ -317,20 +344,32 @@ public struct ReleaseChecks: Sendable {
         var pins: [Pin]
     }
 
-    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different
-    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs `app.yml@<sha>` and
-    /// the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch pin has no
-    /// one commit to compare.
+    /// SwiftPM, the site's package.json and the app's two workflows each pin DylKit, so they can drift onto different
+    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs each workflow at
+    /// `@<sha>` and the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch
+    /// pin has no one commit to compare. The app workflow must not run on `edited`, where GitHub would grade the commit
+    /// by a run without verify.
     private func checkPinsMatch(_ findings: inout [CheckFinding]) {
-        let callers = workflows.compactMap { workflow in
-            workflow.text.firstMatch(of: /uses:\s*dgattey\/dyl-kit\/\.github\/workflows\/app\.yml@([^\s#]+)/)
-                .map { (path: workflow.path, ref: String($0.1)) }
+        let callers = workflows.flatMap { workflow in
+            workflow.text.matches(of: /uses:\s*(dgattey\/dyl-kit\/\.github\/workflows\/[\w-]+\.yml)@([^\s#]+)/)
+                .map { (path: workflow.path, called: String($0.1), ref: String($0.2)) }
         }
-        if callers.isEmpty {
+        for (called, copy) in [(Self.appWorkflow, "dylkit.yml"), (Self.releaseInfoWorkflow, "release-info.yml")]
+        where !callers.contains(where: { $0.called == called }) {
             findings.append(
                 error(
                     "dylkit_version", ".github/workflows",
-                    "nothing calls \(Self.appWorkflow); copy .github/workflows/dylkit.yml from DylKit's SampleApp"))
+                    "nothing calls \(called); copy .github/workflows/\(copy) from DylKit's SampleApp"))
+        }
+        let pullRequestEvents = ["pull_request", "pull_request_target"]
+        for workflow in parsedWorkflows("dylkit_version", &findings) where workflow.calls(Self.appWorkflow)
+            && pullRequestEvents.contains(where: { workflow.types(of: $0)?.contains("edited") == true })
+        {
+            findings.append(
+                error(
+                    "dylkit_version", workflow.path,
+                    "runs \(Self.appWorkflow) on edited PRs, where the edit's run replaces verify's result; drop "
+                        + "`edited`, which \(Self.releaseInfoWorkflow) checks"))
         }
         guard
             let state = read("Package.resolved")
@@ -346,7 +385,7 @@ public struct ReleaseChecks: Sendable {
                 findings.append(
                     error(
                         "dylkit_version", caller.path,
-                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
+                        "calls \(caller.called)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
                             + "use @v\(pinned)"))
             }
             guard let tarball, tarball.version != pinned else { return }
@@ -362,7 +401,7 @@ public struct ReleaseChecks: Sendable {
                 findings.append(
                     error(
                         "dylkit_version", caller.path,
-                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
+                        "calls \(caller.called)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
                             + "use @\(revision)"))
             }
             guard let tarball else { return }
@@ -388,8 +427,53 @@ public struct ReleaseChecks: Sendable {
         "pnpm@12.9.1+sha512.06b055fff5cd20dc12781de173ced3310ce0951bf2ec620211a16045d5444d5c93a663210764ef29a653a610459"
         + "ba0368f0e74f84d80c54723cf95aae7bc0d6d"
 
-    /// The reusable workflow that checks each app's PRs and releases its merges.
+    /// The reusable workflow that verifies each app's PRs and releases its merges.
     static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
+
+    /// The reusable workflow that checks each app's PR body, on every edit.
+    static let releaseInfoWorkflow = "dgattey/dyl-kit/.github/workflows/release-info.yml"
+
+    /// A ruleset that requires a check no workflow reports blocks every PR, and one that doesn't require verify or
+    /// release-info lets a failing PR merge. Warnings, since the rules come from the API: a token that can't read
+    /// them, or a check another app reports, mustn't fail verify.
+    private func checkRequiredChecks(_ rules: BranchRules, _ findings: inout [CheckFinding]) {
+        let rule = "required_checks"
+        let (branch, required): (String, [RequiredCheck])
+        switch rules {
+        case .unreadable(let reason):
+            findings.append(warning(rule, nil, "couldn't read the default branch's rules, so their required checks "
+                + "went unchecked: \(reason)"))
+            return
+        case .read(let name, let checks):
+            (branch, required) = (name, checks)
+        }
+        var unparsed: [CheckFinding] = []  // dylkit_version reports them
+        let parsed = parsedWorkflows(rule, &unparsed)
+        let names = CheckNames(workflows: parsed) { path in parsed.first { $0.path == path } }
+        for check in required where !names.produces(check.context)
+            && (check.integrationId.map { $0 == RequiredCheck.actionsIntegration } ?? true)
+        {
+            findings.append(
+                warning(
+                    rule, nil,
+                    "\(branch)'s rules require `\(check.context)`, which no workflow reports, so no PR can merge; "
+                        + "remove it from the ruleset"))
+        }
+        let expected = parsed.flatMap { workflow in
+            workflow.jobs.compactMap { job -> String? in
+                if job.uses?.hasPrefix(Self.appWorkflow + "@") == true { return "\(job.title) / verify" }
+                if job.uses?.hasPrefix(Self.releaseInfoWorkflow + "@") == true { return "\(job.title) / release-info" }
+                return nil
+            }
+        }
+        for context in expected where !required.contains(where: { $0.context == context }) {
+            findings.append(
+                warning(
+                    rule, nil,
+                    "\(branch)'s rules don't require `\(context)`, so a PR that fails it can still merge; require "
+                        + "it, with GitHub Actions as its source"))
+        }
+    }
 
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {

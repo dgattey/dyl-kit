@@ -1,0 +1,13 @@
+name: release-info
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dylkit:
+    uses: dgattey/dyl-kit/.github/workflows/release-info.yml@v0.6.1

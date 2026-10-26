@@ -17,13 +17,14 @@ public struct Checks: Sendable {
     }
 
     /// - Blocking: runs SwiftLint and reads every source file.
-    public func run() -> Bool { failures().isEmpty }
+    public func run() async -> Bool { failures(rules: await BranchRules.fetch(root: workspace.root)).isEmpty }
 
     /// Runs every tier, printing as it goes, and returns one line per failure: a tier that failed, or a release
     /// check's error.
     ///
+    /// - Parameter rules: the default branch's rules, which the release checks compare with the workflows.
     /// - Blocking: runs SwiftLint and reads every source file.
-    func failures() -> [String] {
+    func failures(rules: BranchRules? = nil) -> [String] {
         var found: [String] = []
         Log.step("manifest: \(DylAppManifest.fileName) OK")
 
@@ -47,7 +48,7 @@ public struct Checks: Sendable {
             "dyl-lint: \(files.count) files, \(lint.errorCount) errors, \(lint.warningCount) warnings, "
                 + "\(lint.allowedCount) lint:allow")
 
-        let release = ReleaseChecks(workspace: workspace).run()
+        let release = ReleaseChecks(workspace: workspace).run(rules: rules)
         release.print()
         found += release.findings.filter { $0.severity == .error }.map(\.description)
 
@@ -129,8 +130,8 @@ public struct Checks: Sendable {
     /// job.
     ///
     /// - Blocking: runs `swift`.
-    public func verify() throws {
-        var problems = failures()
+    public func verify() async throws {
+        var problems = failures(rules: await BranchRules.fetch(root: workspace.root))
         if try Shell.run(["swift", "build"], cwd: workspace.root, allowFailure: true) != 0 {
             problems.append("swift build failed")
         } else if try Shell.run(["swift", "test"], cwd: workspace.root, allowFailure: true) != 0 {

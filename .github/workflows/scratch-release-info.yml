@@ -1,0 +1,15 @@
+# Scratch caller for testing release-info.yml against a required-check ruleset on this branch; delete with the branch.
+name: release-info
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches: [dgattey/checks-base-ceba]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dylkit:
+    uses: dgattey/dyl-kit/.github/workflows/release-info.yml@6b6d608f2fc5efc3b30684238c3c948eb6dda3d8

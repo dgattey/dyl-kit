@@ -1,0 +1,16 @@
+# Scratch caller for testing app.yml against a required-check ruleset on this branch; delete with the branch.
+name: dylkit
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    branches: [dgattey/checks-base-ceba]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  dylkit:
+    uses: dgattey/dyl-kit/.github/workflows/app.yml@6b6d608f2fc5efc3b30684238c3c948eb6dda3d8
+    secrets: inherit

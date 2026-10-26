@@ -16,7 +16,7 @@ A shared framework for Mac and iOS apps: the release pipeline, the dev loop, lin
 
 The skills hold the how-to: `adopt-dylkit` covers adoption and upgrades (the Blob store and secrets, `DylApp.toml`, the files copied once from `Tests/Fixtures/SampleApp/`, the site's pnpm setup), `apple-dev-loop` covers building, testing, screenshots and the checks, and `apple-release` covers releasing, in CI and by hand. The plugin's `changelog-release-notes` rule says how to write each PR's `# Release notes`, which the PR check enforces.
 
-An app depends on DylKit twice, and pins it three times to the same version:
+An app depends on DylKit twice, and pins it in four places to the same version:
 
 ```swift
 // Package.swift
@@ -31,9 +31,11 @@ An app depends on DylKit twice, and pins it three times to the same version:
 ```yaml
 # .github/workflows/dylkit.yml
 uses: dgattey/dyl-kit/.github/workflows/app.yml@v<version>
+# .github/workflows/release-info.yml
+uses: dgattey/dyl-kit/.github/workflows/release-info.yml@v<version>
 ```
 
-`dylkit_version` fails when the tarball or the workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those three lines and the lockfiles; nothing is generated or synced.
+`dylkit_version` fails when the tarball or a workflow ref isn't the DylKit version in `Package.resolved`. A bump changes those four lines and the lockfiles; nothing is generated or synced.
 
 ## Download site
 
@@ -138,4 +140,4 @@ CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last t
 )
 ```
 
-plus `uses: dgattey/dyl-kit/.github/workflows/app.yml@<sha>` in `dylkit.yml` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all three to the release once it ships.
+plus `@<sha>` on both workflows' `uses:` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all four to the release once it ships.

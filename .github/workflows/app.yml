@@ -97,8 +97,11 @@ jobs:
         if: needs.changes.outputs.verify == 'true'
         with:
           install_args: swiftlint
+      # The token reads the default branch's rules, which the checks compare with the workflows.
       - name: Verify
         if: needs.changes.outputs.verify == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: swift run devkit verify
 
   release:

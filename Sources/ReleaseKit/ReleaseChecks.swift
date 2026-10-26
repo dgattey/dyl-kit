@@ -368,11 +368,17 @@ public struct ReleaseChecks: Sendable {
             guard let tarball else { return }
             let commit = tarball.version.firstMatch(of: /-pr\.\d+\.([0-9a-f]{7,40})$/).map { String($0.1) }
             guard commit.map({ !revision.hasPrefix($0) }) ?? true else { return }
+            let expected = tarball.url.firstMatch(of: /^(.*\/releases\/)/).map { match in
+                let number = tarball.version.firstMatch(of: /-pr\.(\d+)/).map { String($0.1) } ?? "<number>"
+                let base = tarball.version.replacing(/-pr\.\d+(\.[0-9a-f]+)?$/, with: "")
+                return "\(match.1)pr-\(number)/dylkit-web-\(base)-pr.\(number).\(short).tgz"
+            }
             findings.append(
                 error(
                     "dylkit_version", tarball.file,
-                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on the "
-                        + "-pr.<number>.\(short) tarball its PR's prerelease job uploaded"))
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on "
+                        + (expected.map { "\"\($0)\", " } ?? "the -pr.<number>.\(short) tarball ")
+                        + "which its PR's prerelease job uploaded"))
         }
     }
 

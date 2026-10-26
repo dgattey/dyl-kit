@@ -832,13 +832,12 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
     @Test func aRevisionPinNeedsThatCommitsWorkflowAndTarball() throws {
         let revision = "bf26f74" + String(repeating: "0", count: 33)
         let tarball = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-22/dylkit-web-0.6.0-pr.22"
-        func messages(workflowRef: String, tarballCommit: String?) throws -> [String]? {
+        func messages(workflowRef: String, tarballCommit: String?, url: String? = nil) throws -> [String]? {
             let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": { "revision": "\#(revision)" } }] }"#
             let workflow = "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/app.yml@\(workflowRef)\n"
+            let dependency = url ?? tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz"
             let server = try String(contentsOf: appRoot.appending(path: "server/package.json"), encoding: .utf8)
-                .replacing(
-                    /"@dylkit\/web": "[^"]*"/,
-                    with: "\"@dylkit/web\": \"\(tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz")\"")
+                .replacing(/"@dylkit\/web": "[^"]*"/, with: "\"@dylkit/web\": \"\(dependency)\"")
             let workspace = try scratchWorkspace([
                 "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow, "server/package.json": server,
             ])
@@ -851,8 +850,15 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             try messages(workflowRef: "v0.6.0", tarballCommit: "3a9e7aa") == [
                 "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.6.0 but Package.resolved pins DylKit at bf26f74; "
                     + "use @\(revision)",
-                "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on the "
-                    + "-pr.<number>.bf26f74 tarball its PR's prerelease job uploaded",
+                "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on "
+                    + "\"\(tarball).bf26f74.tgz\", which its PR's prerelease job uploaded",
+            ])
+        let release = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.6.0/dylkit-web-0.6.0.tgz"
+        #expect(
+            try messages(workflowRef: revision, tarballCommit: nil, url: release) == [
+                "@dylkit/web is 0.6.0 but Package.resolved pins DylKit at bf26f74; depend on "
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-<number>/"
+                    + "dylkit-web-0.6.0-pr.<number>.bf26f74.tgz\", which its PR's prerelease job uploaded"
             ])
         let untagged = try messages(workflowRef: revision, tarballCommit: nil)
         #expect(untagged?.first?.hasPrefix("@dylkit/web is 0.6.0-pr.22 ") == true)

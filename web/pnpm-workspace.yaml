@@ -1,0 +1,10 @@
+# pnpm reads .npmrc for auth and registries only, so these live here.
+engineStrict: true
+saveExact: true
+
+# next is an optional peer the apps' sites bring; the tests only import its types, which Node strips.
+autoInstallPeers: false
+
+# Anything not listed here is blocked from running install scripts, and pnpm fails the install rather than warning.
+allowBuilds:
+  esbuild: true

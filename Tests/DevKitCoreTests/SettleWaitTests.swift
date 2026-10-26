@@ -51,7 +51,8 @@ import UniformTypeIdentifiers
         var frames = 0
         let output = Self.output()
         defer { try? FileManager.default.removeItem(at: output) }
-        let wait = SettleWait(timeout: .seconds(5), minimum: .milliseconds(200), interval: .milliseconds(20))
+        // Past the timeout it keeps fewer than three frames, and a busy macOS runner has stalled over 5s here.
+        let wait = SettleWait(timeout: .seconds(60), minimum: .milliseconds(200), interval: .milliseconds(20))
         let start = ContinuousClock.now
         try await wait.capture(to: output) { frame in
             try Self.writePNG(gray: 1, to: frame)

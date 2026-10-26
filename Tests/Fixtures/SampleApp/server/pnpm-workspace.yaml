@@ -1,0 +1,3 @@
+# pnpm reads .npmrc for auth and registries only, so these live here.
+engineStrict: true
+saveExact: true

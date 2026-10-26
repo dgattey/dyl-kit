@@ -142,3 +142,7 @@ SampleApp depends on DylKit with `.package(path: "../../..")`, and SwiftPM names
 ## Releasing DylKit
 
 Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. When PRs merge while a release runs, GitHub cancels all but the newest one's run, so a release also ships any earlier merges without a tag, with the largest of their bumps and all of their notes; apps release the same way. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and the workflow ref together. DylKit's own PRs run the same `app.yml` Release info and Release notes checks apps call, and follow the same `.cursor/rules/changelog-release-notes.mdc`.
+
+### Running a PR in an app before it releases
+
+CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>` and uploads it to `releases/pr-<number>/` in the same store, without tagging anything. Its run summary names the three pins that select that commit: `revision: "<sha>"` in `Package.swift`, `app.yml@<sha>` in `dylkit.yml`, and the tarball URL in `server/package.json`. With a revision pin, `dylkit_version` has no version to compare, so it doesn't flag them. Move all three to the release once it ships.

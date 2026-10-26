@@ -2,7 +2,7 @@ name: dylkit
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize, closed]
+    types: [opened, reopened, synchronize, closed]
   workflow_dispatch:
     inputs:
       release_type:

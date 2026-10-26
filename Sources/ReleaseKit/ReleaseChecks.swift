@@ -317,20 +317,30 @@ public struct ReleaseChecks: Sendable {
         var pins: [Pin]
     }
 
-    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different
-    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs `app.yml@<sha>` and
-    /// the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch pin has no
-    /// one commit to compare.
+    /// SwiftPM, the site's package.json and the app's two workflows each pin DylKit, so they can drift onto different
+    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs each workflow at
+    /// `@<sha>` and the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch
+    /// pin has no one commit to compare. The app workflow must not run on `edited`, where GitHub would grade the commit
+    /// by a run without verify.
     private func checkPinsMatch(_ findings: inout [CheckFinding]) {
-        let callers = workflows.compactMap { workflow in
-            workflow.text.firstMatch(of: /uses:\s*dgattey\/dyl-kit\/\.github\/workflows\/app\.yml@([^\s#]+)/)
-                .map { (path: workflow.path, ref: String($0.1)) }
+        let callers = workflows.flatMap { workflow in
+            workflow.text.matches(of: /uses:\s*(dgattey\/dyl-kit\/\.github\/workflows\/[\w-]+\.yml)@([^\s#]+)/)
+                .map { (path: workflow.path, called: String($0.1), ref: String($0.2)) }
         }
-        if callers.isEmpty {
+        for (called, copy) in [(Self.appWorkflow, "dylkit.yml"), (Self.releaseInfoWorkflow, "release-info.yml")]
+        where !callers.contains(where: { $0.called == called }) {
             findings.append(
                 error(
                     "dylkit_version", ".github/workflows",
-                    "nothing calls \(Self.appWorkflow); copy .github/workflows/dylkit.yml from DylKit's SampleApp"))
+                    "nothing calls \(called); copy .github/workflows/\(copy) from DylKit's SampleApp"))
+        }
+        for workflow in workflows
+        where workflow.text.contains(Self.appWorkflow) && workflow.text.contains(/types:\s*\[[^\]]*\bedited\b/) {
+            findings.append(
+                error(
+                    "dylkit_version", workflow.path,
+                    "runs \(Self.appWorkflow) on edited PRs, where the edit's run replaces verify's result; drop "
+                        + "`edited`, which \(Self.releaseInfoWorkflow) checks"))
         }
         guard
             let state = read("Package.resolved")
@@ -346,7 +356,7 @@ public struct ReleaseChecks: Sendable {
                 findings.append(
                     error(
                         "dylkit_version", caller.path,
-                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
+                        "calls \(caller.called)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
                             + "use @v\(pinned)"))
             }
             guard let tarball, tarball.version != pinned else { return }
@@ -362,7 +372,7 @@ public struct ReleaseChecks: Sendable {
                 findings.append(
                     error(
                         "dylkit_version", caller.path,
-                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
+                        "calls \(caller.called)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
                             + "use @\(revision)"))
             }
             guard let tarball else { return }
@@ -388,8 +398,11 @@ public struct ReleaseChecks: Sendable {
         "pnpm@12.9.1+sha512.06b055fff5cd20dc12781de173ced3310ce0951bf2ec620211a16045d5444d5c93a663210764ef29a653a610459"
         + "ba0368f0e74f84d80c54723cf95aae7bc0d6d"
 
-    /// The reusable workflow that checks each app's PRs and releases its merges.
+    /// The reusable workflow that verifies each app's PRs and releases its merges.
     static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
+
+    /// The reusable workflow that checks each app's PR body, on every edit.
+    static let releaseInfoWorkflow = "dgattey/dyl-kit/.github/workflows/release-info.yml"
 
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {

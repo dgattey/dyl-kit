@@ -1,7 +1,9 @@
-# Each DylKit app's PR checks and release. Apps call it from .github/workflows/dylkit.yml at the DylKit version they pin,
-# on pull_request (opened, edited, reopened, synchronize, closed) and workflow_dispatch, with contents: write and
+# Each DylKit app's verify check and release. Apps call it from .github/workflows/dylkit.yml at the DylKit version they
+# pin, on pull_request (opened, reopened, synchronize, closed) and workflow_dispatch, with contents: write and
 # pull-requests: read, and `secrets: inherit`, which carries the app's SPARKLE_ED_PRIVATE_KEY_BASE64 and
-# BLOB_READ_WRITE_TOKEN across repos. Tests/Fixtures/SampleApp/.github/workflows/dylkit.yml is that caller.
+# BLOB_READ_WRITE_TOKEN across repos. Never on `edited`: GitHub grades a commit by this workflow's newest run, so an
+# edit's run, which has no verify, would replace verify's result. release-info.yml checks edits.
+# Tests/Fixtures/SampleApp/.github/workflows/dylkit.yml is that caller.
 name: app
 
 on:
@@ -12,11 +14,6 @@ on:
         required: false
         default: auto
         type: string
-      verify:
-        description: 'Run `devkit verify` on each push to a PR; DylKit itself, which has no app, turns it off'
-        required: false
-        default: true
-        type: boolean
     secrets:
       SPARKLE_ED_PRIVATE_KEY_BASE64:
         required: false
@@ -24,62 +21,14 @@ on:
         required: false
 
 jobs:
-  release-info:
-    # Edits only matter when they change the body: its Release info box or its Release notes. Its name follows
-    # `if:` for the reason verify's does.
-    name: ${{ github.event.action != 'closed' && (github.event.action != 'edited' || github.event.changes.body) && 'release-info' || 'release-info (not run for this event)' }}
-    if: >-
-      github.event_name == 'pull_request' && github.event.action != 'closed' &&
-      (github.event.action != 'edited' || github.event.changes.body)
-    # Job-level so skipped edit runs don't cancel an in-flight check.
-    concurrency:
-      group: release-info-${{ github.repository }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
-    # Pinned for the image's preinstalled swiftc, which the notes check compiles with.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Read the PR body
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        # The event's body is a snapshot from when it fired, so a re-run would re-check stale text.
-        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body // ""' >"$RUNNER_TEMP/body.md"
-      - name: Check exactly one Release info box
-        run: |
-          checked="$(grep -ciE '^[[:space:]]*-[[:space:]]*\[x\][[:space:]]*(Major|Minor|Patch)\b' "$RUNNER_TEMP/body.md" || true)"
-          if [ "$checked" != "1" ]; then
-            echo "::error::Check exactly one Release info box (Major, Minor or Patch); found ${checked}."
-            exit 1
-          fi
-          echo "Release info OK"
-      # DylKit at the version the app pins, which is this workflow's own commit.
-      - uses: actions/checkout@v7
-        if: ${{ !cancelled() }}
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .dylkit
-          sparse-checkout: |
-            Sources/ReleaseNotes
-            scripts/check-release-notes.swift
-          sparse-checkout-cone-mode: false
-      # Compiling the one module with swiftc skips resolving DylKit's package, so this takes well under a minute.
-      - name: Check the Release notes
-        if: ${{ !cancelled() }}
-        run: |
-          swiftc -parse-as-library -swift-version 6 .dylkit/Sources/ReleaseNotes/*.swift \
-            .dylkit/scripts/check-release-notes.swift -o "$RUNNER_TEMP/check-release-notes"
-          "$RUNNER_TEMP/check-release-notes" <"$RUNNER_TEMP/body.md"
-
   # Which jobs a PR's files call for, judged on every file the PR changes, not the latest push alone, so a docs-only
-  # push to a PR that touches code still runs verify. A PR that only touches docs, the site or agent rules skips verify,
-  # and a merge to the default branch that only touches docs, the site, tests or CI ships no new app, so it doesn't
-  # release.
+  # push to a PR that touches code still verifies. A PR that only touches docs, the site or agent rules has nothing to
+  # verify, and a merge to the default branch that only touches docs, the site, tests or CI ships no new app, so it
+  # doesn't release.
   changes:
     if: >-
       github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' &&
-        ((inputs.verify && contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)) ||
+        (contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) ||
           (github.event.pull_request.merged == true &&
             github.event.pull_request.base.ref == github.event.repository.default_branch)))
     runs-on: ubuntu-latest
@@ -108,34 +57,48 @@ jobs:
             echo "Only docs, the site, tests or CI changed; nothing to release."
           fi
 
-  # What a PR must pass on macOS: `devkit verify` runs the checks, builds, then runs all tests.
+  # What a PR must pass: `devkit verify` on macOS runs the checks, builds, then runs all tests. It reports on every push
+  # so a ruleset can require it, passing on ubuntu in seconds when there's nothing to verify, rather than skipping,
+  # which a ruleset would wait on. It fails when `changes` couldn't tell.
   verify:
-    # Editing or closing a PR reruns this workflow on the same commit, where verify is skipped. A skipped check run
-    # named `verify` would replace that commit's real result, failure included, and rulesets count skipped as passing.
-    # GitHub names a skipped job's check after this expression's raw text, so only a run that verifies is `verify`.
-    # One line, since a folded second line would put a newline in that raw text.
-    name: ${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) && 'verify' || 'verify (not run for this event)' }}
     needs: changes
-    if: needs.changes.outputs.verify == 'true'
+    if: >-
+      !cancelled() && github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)
     concurrency:
       group: verify-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    runs-on: macos-26
+    runs-on: ${{ needs.changes.outputs.verify == 'true' && 'macos-26' || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
+      - name: Nothing to verify
+        if: needs.changes.outputs.verify != 'true'
+        env:
+          CHANGES: ${{ needs.changes.result }}
+        run: |
+          if [ "$CHANGES" != success ]; then
+            echo "::error::The changes job ended $CHANGES, so nothing decided whether to verify."
+            exit 1
+          fi
+          echo "Only docs, the site or agent rules changed; nothing to verify."
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.verify == 'true'
       - name: Select Xcode
+        if: needs.changes.outputs.verify == 'true'
         run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
       - uses: actions/cache@v6
+        if: needs.changes.outputs.verify == 'true'
         with:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: swiftpm-${{ runner.os }}-
       # The SwiftLint version the app's mise.toml pins, which `devkit checks` requires.
       - uses: jdx/mise-action@v5
+        if: needs.changes.outputs.verify == 'true'
         with:
           install_args: swiftlint
       - name: Verify
+        if: needs.changes.outputs.verify == 'true'
         run: swift run devkit verify
 
   release:

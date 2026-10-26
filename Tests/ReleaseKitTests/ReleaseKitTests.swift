@@ -507,7 +507,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let appFiles = [
             "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
             "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/tsconfig.json", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
-            ".github/workflows/dylkit.yml",
+            ".github/workflows/dylkit.yml", ".github/workflows/release-info.yml",
         ]
         for path in appFiles {
             let destination = root.appending(path: path)
@@ -729,23 +729,25 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
-    /// Editing or closing a PR reruns app.yml on the same commit, skipping verify, and release-info too unless the
-    /// body changed. GitHub names a skipped job's check after its raw `name:` text, so each is named plainly only when
-    /// it runs; otherwise the skipped check replaces the commit's real result, failure included, and rulesets count
-    /// skipped as passing. The name stays on one line so that raw text has no newline.
-    @Test func editingAPRNeverReplacesACheckResult() throws {
-        let workflow = try String(
-            contentsOf: packageRoot.appending(path: ".github/workflows/app.yml"), encoding: .utf8)
-        let runs = [
-            "verify": #"contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)"#,
-            "release-info": "github.event.action != 'closed' && (github.event.action != 'edited' || "
-                + "github.event.changes.body)",
-        ]
-        for (job, condition) in runs {
-            let pattern = try Regex("(?ms)^  \(job):\n.*?^    name: (.*?)\n")
-            let name = try #require(workflow.firstMatch(of: pattern)?.output[1].substring.map(String.init), "\(job)")
-            #expect(name == "${{ \(condition) && '\(job)' || '\(job) (not run for this event)' }}", "\(job)")
+    /// GitHub grades a commit by each workflow's newest run and counts a skipped check as passing. So an edit never
+    /// reruns app.yml, whose run would have no verify; release-info, in its own workflow, checks every edit; and verify
+    /// runs on every push, passing on ubuntu when there's nothing to verify, so a ruleset that requires it never waits.
+    @Test func noRunReplacesARequiredCheckWithASkip() throws {
+        func text(_ path: String, in root: URL = packageRoot) throws -> String {
+            try String(contentsOf: root.appending(path: path), encoding: .utf8)
         }
+        let app = try text(".github/workflows/app.yml")
+        let releaseInfo = try text(".github/workflows/release-info.yml")
+        #expect(try text(".github/workflows/dylkit.yml", in: appRoot).contains(
+            "types: [opened, reopened, synchronize, closed]"))
+        #expect(try text(".github/workflows/release-info.yml", in: appRoot).contains(
+            "types: [opened, edited, reopened, synchronize]"))
+        #expect(!app.contains(/(?m)^  release-info:/))
+        #expect(!releaseInfo.contains(/(?m)^    (if|name):/))
+        let verify = try #require(app.firstMatch(of: /(?ms)^  verify:\n(.*?)\n    steps:/)).1
+        #expect(!verify.contains("name:"))
+        #expect(!(try #require(verify.firstMatch(of: /(?s)if:(.*?)\n    concurrency:/)).1.contains("outputs")))
+        #expect(verify.contains("runs-on: ${{ needs.changes.outputs.verify == 'true' && 'macos-26' || 'ubuntu-latest' }}"))
     }
 
     /// Sites install with pnpm; without its pin and lockfile Vercel installs with npm.
@@ -836,6 +838,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             try messages(#"{ "version": "\#(next)" }"#) == [
                 "calls dgattey/dyl-kit/.github/workflows/app.yml@v\(pinned) but Package.resolved pins DylKit \(next); "
                     + "use @v\(next)",
+                "calls dgattey/dyl-kit/.github/workflows/release-info.yml@v\(pinned) but Package.resolved pins DylKit "
+                    + "\(next); use @v\(next)",
                 "@dylkit/web is \(pinned) but Package.resolved pins DylKit \(next); depend on "
                     + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v\(next)/"
                     + "dylkit-web-\(next).tgz\"",
@@ -845,6 +849,15 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
                 "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
                     + "DylKit's SampleApp"
             ])
+        let caller = try String(contentsOf: appRoot.appending(path: ".github/workflows/dylkit.yml"), encoding: .utf8)
+        #expect(
+            try messages(
+                #"{ "version": "\#(pinned)" }"#,
+                [".github/workflows/dylkit.yml": caller.replacing("[opened, reopened", with: "[opened, edited, reopened")]
+            ) == [
+                "runs dgattey/dyl-kit/.github/workflows/app.yml on edited PRs, where the edit's run replaces verify's "
+                    + "result; drop `edited`, which dgattey/dyl-kit/.github/workflows/release-info.yml checks"
+            ])
     }
 
     /// While an app runs a DylKit PR, SwiftPM pins a commit, and the workflow and tarball must name that commit too.
@@ -853,12 +866,15 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let tarball = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-22/dylkit-web-0.6.0-pr.22"
         func messages(workflowRef: String, tarballCommit: String?, url: String? = nil) throws -> [String]? {
             let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": { "revision": "\#(revision)" } }] }"#
-            let workflow = "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/app.yml@\(workflowRef)\n"
+            func workflow(_ name: String) -> String {
+                "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/\(name).yml@\(workflowRef)\n"
+            }
             let dependency = url ?? tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz"
             let server = try String(contentsOf: appRoot.appending(path: "server/package.json"), encoding: .utf8)
                 .replacing(/"@dylkit\/web": "[^"]*"/, with: "\"@dylkit/web\": \"\(dependency)\"")
             let workspace = try scratchWorkspace([
-                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow, "server/package.json": server,
+                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow("app"),
+                ".github/workflows/release-info.yml": workflow("release-info"), "server/package.json": server,
             ])
             defer { try? FileManager.default.removeItem(at: workspace.root) }
             return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
@@ -869,6 +885,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             try messages(workflowRef: "v0.6.0", tarballCommit: "3a9e7aa") == [
                 "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.6.0 but Package.resolved pins DylKit at bf26f74; "
                     + "use @\(revision)",
+                "calls dgattey/dyl-kit/.github/workflows/release-info.yml@v0.6.0 but Package.resolved pins DylKit at "
+                    + "bf26f74; use @\(revision)",
                 "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on "
                     + "\"\(tarball).bf26f74.tgz\", which its PR's prerelease job uploaded",
             ])

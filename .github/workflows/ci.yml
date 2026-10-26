@@ -113,6 +113,7 @@ jobs:
           printf '%s\n' "### Run PR #$PR_NUMBER in an app" "" "\`Package.swift\`:" "" '```swift' ".package(" \
             "    url: \"https://github.com/dgattey/dyl-kit\"," "    revision: \"$SHA\"" ")" '```' "" \
             "- \`.github/workflows/dylkit.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/app.yml@$SHA\`" \
+            "- \`.github/workflows/release-info.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/release-info.yml@$SHA\`" \
             "- \`server/package.json\`: \`\"@dylkit/web\": \"$url\"\`" >>"$GITHUB_STEP_SUMMARY"
 
   # DylKit's workflows, the reusable one apps call included, and SampleApp's copies of the files apps adopt once.

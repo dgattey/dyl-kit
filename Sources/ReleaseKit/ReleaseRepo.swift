@@ -162,9 +162,11 @@ public struct ReleaseRepo: Sendable {
         return landed.isEmpty ? "HEAD^" : landed
     }
 
-    /// Paths that never release on their own, as app.yml's `changes` job decides.
+    /// Paths that never release on their own, as app.yml's `changes` job decides, except the workflows apps call,
+    /// which DylKit ships.
     private static func neverReleases(_ path: Substring) -> Bool {
-        path.wholeMatch(of: #/.*\.md|(docs|server|Tests|\.github|\.cursor)\/.*/#) != nil
+        path.wholeMatch(of: #/\.github\/workflows\/(app|release-info)\.yml/#) == nil
+            && path.wholeMatch(of: #/.*\.md|(docs|server|Tests|\.github|\.cursor)\/.*/#) != nil
     }
 
     private func pullRequestBody(_ number: Int?) async -> String? {

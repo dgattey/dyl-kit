@@ -4,7 +4,8 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
-    paths-ignore: ['**.md', '.github/**', 'Tests/**']
+    # The workflows apps call ship like code; the rest of .github, docs and tests don't release.
+    paths: ['**', '!**.md', '!.github/**', '.github/workflows/app.yml', '.github/workflows/release-info.yml', '!Tests/**']
   workflow_dispatch:
     inputs:
       release_type:

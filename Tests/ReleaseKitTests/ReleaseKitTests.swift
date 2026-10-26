@@ -729,16 +729,23 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
-    /// Editing or closing a PR reruns app.yml on the same commit with verify skipped. GitHub names a skipped job's
-    /// check after its raw `name:` text, so only a job that runs may be named plain `verify`; otherwise the skipped
-    /// check replaces the commit's real result, failure included, and rulesets count skipped as passing.
-    @Test func editingAPRNeverReplacesVerifysResult() throws {
+    /// Editing or closing a PR reruns app.yml on the same commit, skipping verify, and release-info too unless the
+    /// body changed. GitHub names a skipped job's check after its raw `name:` text, so each is named plainly only when
+    /// it runs; otherwise the skipped check replaces the commit's real result, failure included, and rulesets count
+    /// skipped as passing. The name stays on one line so that raw text has no newline.
+    @Test func editingAPRNeverReplacesACheckResult() throws {
         let workflow = try String(
             contentsOf: packageRoot.appending(path: ".github/workflows/app.yml"), encoding: .utf8)
-        let name = try #require(workflow.firstMatch(of: /(?ms)^  verify:\n.*?^    name: >-\n(.*?)\n    needs:/)).1
-            .replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
-        #expect(name.hasPrefix(#"${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)"#))
-        #expect(name.hasSuffix("&& 'verify' || 'verify (not run for this event)' }}"))
+        let runs = [
+            "verify": #"contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)"#,
+            "release-info": "github.event.action != 'closed' && (github.event.action != 'edited' || "
+                + "github.event.changes.body)",
+        ]
+        for (job, condition) in runs {
+            let pattern = try Regex("(?ms)^  \(job):\n.*?^    name: (.*?)\n")
+            let name = try #require(workflow.firstMatch(of: pattern)?.output[1].substring.map(String.init), "\(job)")
+            #expect(name == "${{ \(condition) && '\(job)' || '\(job) (not run for this event)' }}", "\(job)")
+        }
     }
 
     /// Sites install with pnpm; without its pin and lockfile Vercel installs with npm.

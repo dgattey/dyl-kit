@@ -104,8 +104,8 @@ public struct ReleaseChecks: Sendable {
             findings.append(
                 error(
                     "sparkle_public_key", file,
-                    "missing; after `swift build`, run `\(tool)` to give the app its own key, then `\(tool) -p > \(file)` "
-                        + "(adopt-dylkit step 2)"))
+                    "missing; after `swift build`, run `\(tool)` to give the app its own key, then "
+                        + "`\(tool) -p > \(file)` (adopt-dylkit step 2)"))
             return
         }
         if Data(base64Encoded: key)?.count != 32 {

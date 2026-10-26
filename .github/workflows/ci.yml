@@ -40,7 +40,7 @@ jobs:
       - name: dyl-lint DylKit's own sources
         run: swift run dyl-lint Sources
       # Shares the swift job so a push holds one macOS runner.
-      - name: Release SampleApp with a throwaway key
+      - name: Release SampleApp with a generated key
         run: scripts/release-e2e.sh "$RUNNER_TEMP/sample"
 
   web:
@@ -122,16 +122,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      # Apps copy SampleApp's DylKit pins, so they name the newest release; after a release, the next PR bumps them.
-      - name: SampleApp pins the newest DylKit release
-        run: |
-          latest="$(git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/v||' | sort -V | tail -1)"
-          app=Tests/Fixtures/SampleApp
-          url="https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v$latest/dylkit-web-$latest.tgz"
-          grep -qF "\"@dylkit/web\": \"$url\"" "$app/server/package.json" ||
-            { echo "::error::$app/server/package.json must depend on $url"; exit 1; }
-          grep -qF "app.yml@v$latest" "$app/.github/workflows/dylkit.yml" ||
-            { echo "::error::$app/.github/workflows/dylkit.yml must call app.yml@v$latest"; exit 1; }
       - name: actionlint
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12

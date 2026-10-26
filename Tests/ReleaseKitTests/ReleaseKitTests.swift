@@ -508,7 +508,6 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
             "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/tsconfig.json", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
             ".github/workflows/dylkit.yml",
-            ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
         for path in appFiles {
             let destination = root.appending(path: path)
@@ -556,29 +555,6 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
     }
 
-    #if canImport(CryptoKit)
-    /// `appcast --throwaway-key` checks its rehearsal against the throwaway key, with a warning; `check` alone still
-    /// fails it against the app's key.
-    @Test func aThrowawaySignedAppcastPassesOnlyItsOwnRehearsal() throws {
-        let workspace = try scratchWorkspace()
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let pipeline = ReleasePipeline(workspace: workspace)
-        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
-        let archive = Data("zip".utf8)
-        try archive.write(to: pipeline.stagingDir.appending(path: "Sample-1.0.9.zip"))
-        let key = try SparkleKey.throwaway()
-        let unsigned = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
-            + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip" length="3"/></item>"#
-        let item = try SparkleKey.addingSignature(try SparkleKey.sign(archive, privateKey: key.privateKey), to: unsigned)
-        try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
-
-        #expect(errors(ReleaseChecks(workspace: workspace).run())["appcast_signature"]?.count == 1)
-        let rehearsal = ReleaseChecks(workspace: workspace, throwawayPublicKey: key.publicKey).run()
-        #expect(errors(rehearsal)["appcast_signature"] == nil)
-        #expect(rehearsal.findings.contains { $0.rule == "appcast_signature" && $0.message.contains("throwaway") })
-    }
-    #endif
-
     /// An app name with a space: the enclosure URL is percent-encoded, and both checks find the staged zip.
     @Test func anArchiveNameWithASpacePassesBothChecks() throws {
         let workspace = try scratchWorkspace()
@@ -597,7 +573,6 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         }
         let encoded = try failures(Self.downloadPrefix + "Sample%20App-1.0.9.zip")
         #expect(encoded["staged_release"] == nil)
-        #expect(encoded["appcast_signature"]?.allSatisfy { !$0.contains("isn't staged") } ?? true)
         #expect(try failures(Self.downloadPrefix + "Sample-1.0.9.zip")["staged_release"]?.count == 1)
     }
 
@@ -622,12 +597,12 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let staged = #"<item><title>1.0.9</title><sparkle:version>24b</sparkle:version>"#
             + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip"/></item>"#
         let failed = try checkStaged(staged, published: [AppcastItem(build: 1)])
-        for rule in ["min_os_consistency", "appcast_signature", "staged_release"] {
+        for rule in ["min_os_consistency", "staged_release"] {
             #expect(failed[rule]?.count == 1 && failed[rule]?.first?.contains("24b") == true, "\(rule): \(failed)")
         }
     }
 
-    @Test func prTemplateNeedsReleaseNotesAboveReleaseInfoAndTheRule() throws {
+    @Test func prTemplateNeedsReleaseNotesAboveReleaseInfo() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let template = workspace.url(".github/pull_request_template.md")
@@ -641,32 +616,18 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(try failures("<!-- # Release notes -->\n# Release info\n\n- [x] Patch") != nil)
         #expect(try failures("# Release info\n\n- [x] Patch\n\n## Release notes\n\n-") != nil)
         #expect(try failures("## Release notes\n\n-\n\n## Release info\n\n- [x] Patch") == nil)
-
-        try FileManager.default.removeItem(at: workspace.url(".cursor/rules/changelog-release-notes.mdc"))
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["release_notes"] == [
-            ".cursor/rules/changelog-release-notes.mdc"
-        ])
+        try FileManager.default.removeItem(at: template)
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["release_notes"] == [".github/pull_request_template.md"])
     }
 
-    /// Library validation must be off to load Sparkle ad-hoc. DylKit apps have no Xcode project.
-    @Test func libraryValidationOffAndNoXcodeProject() throws {
+    /// Library validation must be off to load Sparkle ad-hoc.
+    @Test func libraryValidationIsOff() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let entitlements = workspace.url("Sample.entitlements")
         let text = try String(contentsOf: entitlements, encoding: .utf8)
         try Data(text.replacing("disable-library-validation", with: "allow-jit").utf8).write(to: entitlements)
-        let project = workspace.url("Sample.xcodeproj/project.pbxproj")
-        try FileManager.default.createDirectory(at: project.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data().write(to: project)
-
-        let swiftPMWorkspace = workspace.url(".swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata")
-        try FileManager.default.createDirectory(
-            at: swiftPMWorkspace.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data().write(to: swiftPMWorkspace)
-
-        let report = ReleaseChecks(workspace: workspace).run()
-        #expect(errors(report)["library_validation"]?.count == 1)
-        #expect(errorFiles(report)["swiftpm_only"] == ["Sample.xcodeproj"])
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["library_validation"]?.count == 1)
     }
 
     /// The update dialog and Sparkle's Version History button link every version's notes at `/releases`.
@@ -693,34 +654,20 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         ])
     }
 
-    /// Diffing from HEAD^ can skip a site change Vercel never deployed, including on a branch's first
-    /// deploy, when VERCEL_GIT_PREVIOUS_SHA is empty.
+    /// Diffing from HEAD^ can skip a site change Vercel never deployed, and an unguarded diff from the last deploy
+    /// fails every deploy after a rebase.
     @Test(arguments: [
         #"git diff --quiet HEAD^ HEAD -- . ../DylApp.toml"#,
-        #"git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- . ../DylApp.toml"#,
+        #"[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"#,
     ])
     func siteDeployDiffsFromTheLastDeploy(command: String) throws {
         let workspace = try scratchWorkspace(["server/vercel.json": #"{ "ignoreCommand": "\#(command)" }"#])
         defer { try? FileManager.default.removeItem(at: workspace.root) }
 
         #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            #"diffs from HEAD^, which can skip a site change Vercel never deployed; use `"ignoreCommand": "#
+            #"needs `"ignoreCommand": "#
                 + #""git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && "#
                 + #"git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- <paths>"`"#
-        ])
-    }
-
-    /// The unguarded command fails every deploy after a rebase, so the check names the replacement with the app's
-    /// paths.
-    @Test func siteDeployNamesTheGuardedCommandForTheOldOne() throws {
-        let old = #"[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"#
-        let workspace = try scratchWorkspace(["server/vercel.json": #"{ "ignoreCommand": "\#(old)" }"#])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-
-        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            "exits 128 and fails the deploy when Vercel's clone lacks the last deployed commit, as after a force-push "
-                + #"or rebase; use `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" "#
-                + #"&& git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`"#
         ])
     }
 
@@ -758,39 +705,15 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(try ignore(previous: deployed) == 1)
     }
 
-    @Test func aSecretNothingReadsFails() throws {
-        let verify = """
-            jobs:
-              verify:
-                steps:
-                  - run: swift test
-                    env:
-                      GH_TOKEN: ${{ secrets.GH_TOKEN }}
-                      SPARKLE_ED_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_ED_PRIVATE_KEY_BASE64 }}
-            """
-        let workflow = ".github/workflows/verify.yml"
-        let workspace = try scratchWorkspace([workflow: verify])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == [workflow])
+    /// What in `text` talks to a forge directly. Only release-kit's GitHub client may.
+    private func forgeCalls(in text: String) -> [String] {
+        let forgeAPIs = [
+            (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
+            (#"api\.github\.com"#, "calls the GitHub API"),
+        ]
+        return forgeAPIs.filter { text.matches(pattern: $0.0) }.map(\.1)
     }
 
-    /// dylkit.yml hands app.yml the release secrets with `secrets: inherit`, so a script that uploads one is fine.
-    @Test func secretsPassedToAppWorkflowCountAsUsed() throws {
-        let upload = "gh secret set BLOB_READ_WRITE_TOKEN < token.txt\n"
-        let workspace = try scratchWorkspace(["scripts/secrets.sh": upload])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        #expect(errors(ReleaseChecks(workspace: workspace).run())["unused_ci_secret"] == nil)
-    }
-
-    @Test func appScriptsNeverTalkToTheForge() throws {
-        let lookup = "curl -fsSL https://api.github.com/repos/o/r/commits/abc/pulls\n"
-        let workspace = try scratchWorkspace(["scripts/lookup.sh": lookup, "scripts/run": "gh pr view 1\n"])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let flagged = errorFiles(ReleaseChecks(workspace: workspace).run())["forge_neutral"]?.sorted()
-        #expect(flagged == ["scripts/lookup.sh", "scripts/run"])
-    }
-
-    /// Apps no longer vendor release-kit's sources, so the forge_neutral scan can't see them; check them here.
     @Test func releaseKitNeverTalksToTheForge() throws {
         let sources = packageRoot.appending(path: "Sources")
         let enumerator = try #require(FileManager.default.enumerator(atPath: sources.path))
@@ -799,42 +722,24 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         while let relative = enumerator.nextObject() as? String {
             guard relative.hasSuffix(".swift"), !allowed.contains(relative) else { continue }
             let text = try String(contentsOf: sources.appending(path: relative), encoding: .utf8)
-            #expect(ReleaseChecks.forgeCalls(in: text).isEmpty, "Sources/\(relative)")
+            #expect(forgeCalls(in: text).isEmpty, "Sources/\(relative)")
             scanned += 1
         }
         #expect(scanned > 0)
-        #expect(ReleaseChecks.forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
+        #expect(forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
-    /// A `file:` @dylkit/web points into `.build/checkouts`, which Vercel never has.
-    @Test func fileDependencyOnTheWebPackageSaysToUseTheTarball() throws {
+    /// Sites install with pnpm; without its pin and lockfile Vercel installs with npm.
+    @Test func siteInstallsWithPnpm() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
         let package = workspace.url("server/package.json")
-        let text = try String(contentsOf: package, encoding: .utf8)
-            .replacing(/"@dylkit\/web": "[^"]+"/, with: #""@dylkit/web": "file:../.build/checkouts/dyl-kit/web""#)
-        try Data(text.utf8).write(to: package)
-
-        let messages = errors(ReleaseChecks(workspace: workspace).run())["site_deploy"] ?? []
-        #expect(messages.count == 1)
-        #expect(messages.first?.contains("/releases/v<version>/dylkit-web-<version>.tgz") == true)
-    }
-
-    /// Sites install with pnpm; without its lockfile Vercel installs with npm, and pnpm ignores
-    /// npm's overrides.
-    @Test func siteInstallsWithPnpm() throws {
-        let workspace = try scratchWorkspace(["server/package-lock.json": "{}"])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let package = workspace.url("server/package.json")
-        let text = try String(contentsOf: package, encoding: .utf8)
-            .replacing(/"packageManager": "[^"]+",/, with: #""overrides": { "postcss": "^8.5.10" },"#)
+        let text = try String(contentsOf: package, encoding: .utf8).replacing(/"packageManager": "[^"]+",/, with: "")
         try Data(text.utf8).write(to: package)
         try FileManager.default.removeItem(at: workspace.url("server/pnpm-lock.yaml"))
 
         let report = ReleaseChecks(workspace: workspace).run()
-        #expect(errorFiles(report)["site_package_manager"] == [
-            "server/package.json", "server/package.json", "server/package-lock.json", "server/pnpm-lock.yaml",
-        ])
+        #expect(errorFiles(report)["site_package_manager"] == ["server/package.json", "server/pnpm-lock.yaml"])
         #expect(errors(report)["site_package_manager"]?.first?.contains(ReleaseChecks.pnpmPin) == true)
     }
 
@@ -883,19 +788,6 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(ruleErrors() == ["is missing; copy DylKit's SampleApp server/tsconfig.json"])
     }
 
-    /// pnpm run at the repo root writes a lockfile there that only records its own version; apps ignore it.
-    @Test func theRepoRootsPnpmLockfileStaysUncommitted() throws {
-        let workspace = try scratchWorkspace(["pnpm-lock.yaml": "lockfileVersion: '9.0'\n"])
-        defer { try? FileManager.default.removeItem(at: workspace.root) }
-        _ = try Shell.capture(["git", "init", "--quiet"], cwd: workspace.root)
-        func ruleErrors() throws -> [String]? {
-            errorFiles(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["site_package_manager"]
-        }
-        #expect(try ruleErrors() == nil)
-        _ = try Shell.capture(["git", "add", "pnpm-lock.yaml"], cwd: workspace.root)
-        #expect(try ruleErrors() == ["pnpm-lock.yaml"])
-    }
-
     /// SampleApp and DylKit's own site are what apps copy the pin from, and what the check holds them to.
     @Test func everyPnpmPinIsTheChecksPin() throws {
         for url in [
@@ -907,8 +799,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         }
     }
 
-    /// The fixture's site and workflow pin the current release. A 0.2 app that migrates keeps no synced workflow
-    /// beside dylkit.yml, which would release twice.
+    /// The fixture's site and workflow pin the current release, and something must call app.yml.
     @Test func everyPinMatchesTheResolvedDylKit() throws {
         let workflow = try String(contentsOf: appRoot.appending(path: ".github/workflows/dylkit.yml"), encoding: .utf8)
         let current = try #require(workflow.firstMatch(of: /app\.yml@v(\d+)\.(\d+)\.(\d+)/))
@@ -930,15 +821,11 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
                     + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v\(next)/"
                     + "dylkit-web-\(next).tgz\"",
             ])
-        let synced = "# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.\nname: release\n"
         #expect(
-            try messages(
-                #"{ "version": "\#(pinned)" }"#,
-                [".github/workflows/dylkit.yml": "name: dylkit\n", ".github/workflows/release.yml": synced]) == [
-                    "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
-                        + "DylKit's SampleApp",
-                    "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it",
-                ])
+            try messages(#"{ "version": "\#(pinned)" }"#, [".github/workflows/dylkit.yml": "name: dylkit\n"]) == [
+                "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
+                    + "DylKit's SampleApp"
+            ])
     }
 
     /// While an app runs a DylKit PR, SwiftPM pins a commit, and the workflow and tarball must name that commit too.

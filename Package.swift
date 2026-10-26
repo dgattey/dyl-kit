@@ -9,7 +9,6 @@ let package = Package(
         .library(name: "DylManifest", targets: ["DylManifest"]),
         .library(name: "DylUpdates", targets: ["DylUpdates"]),
         .library(name: "DylUI", targets: ["DylUI"]),
-        .library(name: "DylTestSupport", targets: ["DylTestSupport"]),
         .executable(name: "dyl-lint", targets: ["dyl-lint"]),
         .executable(name: "devkit", targets: ["devkit"]),
         .executable(name: "release-kit", targets: ["release-kit"]),
@@ -18,7 +17,6 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-syntax", from: "602.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
-        .package(url: "https://github.com/nalexn/ViewInspector", from: "0.10.0"),
     ],
     targets: [
         // Runtime helpers shared by the app and the tools.
@@ -34,12 +32,6 @@ let package = Package(
 
         // The palette, main window and Settings shell, shared by every app's SwiftUI.
         .target(name: "DylUI", dependencies: ["DylCore", "DylUpdates"]),
-
-        // For apps' test targets: ViewInspector and a scratch support folder.
-        .target(
-            name: "DylTestSupport",
-            dependencies: ["DylCore", .product(name: "ViewInspector", package: "ViewInspector")]
-        ),
 
         // Host tooling.
         .target(name: "DylManifest"),
@@ -78,7 +70,6 @@ let package = Package(
 
         .testTarget(name: "DylManifestTests", dependencies: ["DylManifest"]),
         .testTarget(name: "DylUpdatesTests", dependencies: ["DylCore", "DylUpdates"]),
-        .testTarget(name: "DylTestSupportTests", dependencies: ["DylCore", "DylTestSupport"]),
         .testTarget(name: "DevKitCoreTests", dependencies: ["DevKitCore", "DylCore", "DylManifest"]),
         .testTarget(name: "DylLintRulesTests", dependencies: ["DylLintRules"]),
         .testTarget(

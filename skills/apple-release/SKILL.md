@@ -24,19 +24,19 @@ Use this when CI can't run, for example when Actions minutes run out. Run it on 
 swift run release-kit version --type minor     # or --pr <n> to read the merged PR's checkbox
 swift run release-kit bundle
 swift run release-kit sign
-swift run release-kit appcast                  # signs with the first key that matches SUPublicEDKey, see below
+swift run release-kit appcast                  # signs with the app's Keychain key, see below
 swift run release-kit check --live
 swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN; --dry-run uploads nothing
 ```
 
-`appcast` tries `--ed-key-file`, else `SPARKLE_ED_PRIVATE_KEY_BASE64`, else `.cert/sparkle_ed.key`, `sparkle_private.key`, `~/.config/<slug>/sparkle_ed.key` (the slug is the app name, lowercase and hyphenated), then the login Keychain account named after the bundle ID. It signs the archive with each and uses the first whose signature `SUPublicEDKey` verifies, before `generate_appcast` runs; when none does, it lists what each location held. It looks a Keychain account up by its attributes first and skips it when it has no item, so a missing key never raises a Keychain prompt. Each app keeps its own key, so `appcast` never reads or signs from Sparkle's default `ed25519` account, which every app on the Mac shares; when nothing matches, it only says whether that account holds a key. If it's the app's, move it into the app's own account with `generate_keys -x <file>`, then `generate_keys --account <bundle-id> -f <file>`, and delete the file. To rehearse without the app's key, run `appcast --throwaway-key`, then `publish --dry-run`. A real `publish` re-verifies the appcast against `SUPublicEDKey` and refuses it.
+`appcast` signs with `--ed-key-file`, else `SPARKLE_ED_PRIVATE_KEY_BASE64`, else the login Keychain account named after the bundle ID. Before `generate_appcast` runs, it signs the archive with that key and checks the signature against `SUPublicEDKey`, and says what the key's location held when it doesn't match. It looks the Keychain account up by its attributes first and stops when it has no item, so a missing key never raises a Keychain prompt. Each app keeps its own key, so `appcast` never reads or signs from Sparkle's default `ed25519` account, which every app on the Mac shares. Move a key kept anywhere else into the app's account once: `generate_keys -x <file>` exports one from `ed25519`, then `generate_keys --account <bundle-id> -f <file>` imports it; delete the file afterwards. A rehearsal runs the same steps through `publish --dry-run` with the app's key, and `publish` re-verifies the appcast against `SUPublicEDKey` either way.
 
 `swift run release-kit notes --body-file <pr-body.md>` previews the cumulative notes without releasing, and `--check` runs the PR check's Release notes rules on that body instead. Don't open the staged app to check it: it has the installed app's bundle ID. Run `swift run release-kit check --live` instead.
 
 ## Invariants
 
 - The bump and notes come from the PR body, which needs exactly one checked box. No repo merge setting is involved. If neither the PR body nor the merge commit message checks exactly one box, `version` fails; rerun the workflow by hand with an explicit `release_type`.
-- Only release-kit calls a forge (`forge_neutral` enforces it), and only to read the PR body.
+- Only release-kit calls a forge, and only to read the PR body.
 - The published feeds are the site's feed and the Blob store's latest. The store decides whether anything has shipped, since `publish` uploads its feed last and the site only proxies it. Only the store's 404 means nothing has shipped. Then the tags plan the release, and a site that can't serve a feed is skipped: a host that doesn't resolve before the first deploy, or the route's 503. Once the store has a feed, any other error from either feed fails the step, as does a feed without an integer `sparkle:version` on every item.
 - Build numbers only go up: the commit count, raised above every published `sparkle:version`. `publish` and `check --live` refuse a staged build older than either published feed.
 - Each version in the cumulative notes is a `<section data-sparkle-version="BUILD">`. Sparkle 2.5+ marks the section matching the running `CFBundleVersion`, and the notes' `<style>` hides it and everything older. So notes must stay HTML, and stamps must be the exact `CFBundleVersion` string.

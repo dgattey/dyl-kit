@@ -30,9 +30,6 @@ public struct ReleasePipeline: Sendable {
     var stagedAppcast: URL { stagingDir.appending(path: "appcast.xml") }
     var stagedReleaseJSON: URL { stagingDir.appending(path: "release.json") }
     public var stagedHistory: URL { stagingDir.appending(path: "history.json") }
-    /// `appcast --throwaway-key`'s key and its public half, which only `publish --dry-run` accepts.
-    var throwawayKeyFile: URL { stagingDir.appending(path: "throwaway-ed.key") }
-    var throwawayPublicKeyFile: URL { stagingDir.appending(path: "throwaway-ed.pub") }
     var stagedIcons: URL { stagingDir.appending(path: "icons") }
     private var stageDir: URL { stagingDir.appending(path: "stage") }
 
@@ -199,51 +196,25 @@ public struct ReleasePipeline: Sendable {
     /// Finds the Sparkle key that matches the staged app's `SUPublicEDKey` (see `resolveEdKey`), writes the notes, runs
     /// Sparkle's `generate_appcast` with enclosures on the Blob store, fails closed unless the new signature verifies,
     /// runs the release checks against the published feeds, then writes `release.json` and `history.json` beside the
-    /// appcast. With `throwaway`, it signs with a fresh key instead, for a rehearsal that `publish` then refuses.
+    /// appcast.
     ///
     /// - Blocking: runs Sparkle's tools and writes into `build/release/`.
     @discardableResult
-    public func appcast(explicitKey: String? = nil, throwaway: Bool = false) async throws -> URL {
+    public func appcast(explicitKey: String? = nil) async throws -> URL {
         let state = try state()
         let archive = archiveURL(state)
         guard FileManager.default.fileExists(atPath: archive.path) else {
             throw ToolError("no archive at \(archive.path); run `release-kit sign` first")
         }
-        try? FileManager.default.removeItem(at: throwawayKeyFile)
-        try? FileManager.default.removeItem(at: throwawayPublicKeyFile)
-        var succeeded = false
-        defer {
-            try? FileManager.default.removeItem(at: throwawayKeyFile)
-            if !succeeded { try? FileManager.default.removeItem(at: throwawayPublicKeyFile) }
-        }
-        let trusted: String
-        let key: SparkleKey.Location
-        var throwawayKey: String?
-        if throwaway {
-            let pair = try SparkleKey.throwaway()
-            throwawayKey = pair.privateKey
-            try Data(pair.privateKey.utf8).write(to: throwawayKeyFile)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: throwawayKeyFile.path)
-            try Data(pair.publicKey.utf8).write(to: throwawayPublicKeyFile)
-            trusted = pair.publicKey
-            key = .file(throwawayKeyFile, label: "a throwaway key")
-        } else {
-            trusted = try stagedPublicKey()
-            key = try resolveEdKey(explicit: explicitKey, archive: archive, publicKey: trusted)
-        }
+        let trusted = try stagedPublicKey()
+        let key = try resolveEdKey(explicit: explicitKey, archive: archive, publicKey: trusted)
         let published = try await publishedFeeds()
         let notes = releaseNotes(state: state, history: published)
         try Data((notes + "\n").utf8).write(
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
-        let appcast = try generateAppcast(key: key, quiet: throwaway, downloadPrefix: downloadPrefix(tag: state.tag))
-        if let throwawayKey {
-            let signature = try SparkleKey.sign(try Data(contentsOf: archive), privateKey: throwawayKey)
-            let signed = try SparkleKey.addingSignature(signature, to: try String(contentsOf: appcast, encoding: .utf8))
-            try Data(signed.utf8).write(to: appcast)
-        }
+        let appcast = try generateAppcast(key: key, downloadPrefix: downloadPrefix(tag: state.tag))
         try verifySignature(appcast: appcast, archive: archive, publicKey: trusted)
-        let checks = ReleaseChecks(workspace: workspace, throwawayPublicKey: throwaway ? trusted : nil)
-        let report = checks.run(staged: stagedRelease(state, published: published))
+        let report = ReleaseChecks(workspace: workspace).run(staged: stagedRelease(state, published: published))
         report.print()
         guard report.passed else { throw ToolError("release checks failed") }
         guard let item = try Appcast.items(at: appcast).newest else { throw ToolError("\(appcast.path) has no items") }
@@ -252,7 +223,6 @@ public struct ReleasePipeline: Sendable {
         let history = try await ReleaseHistory.published(latestHistoryURL, transport: transport)
         try ReleaseHistory.next(published: history, staged: item, feeds: published).write(to: stagedHistory)
         Log.step("wrote \(stagedHistory.path)")
-        succeeded = true
         return appcast
     }
 
@@ -279,7 +249,7 @@ public struct ReleasePipeline: Sendable {
             throw ToolError("no \(file.path); run `release-kit bundle` first")
         }
         try Self.refuseRegression(staged: try Appcast.items(at: stagedAppcast), published: try await publishedFeeds())
-        try checkStagedSignature(archive: archiveURL(state), dryRun: dryRun)
+        try checkStagedSignature(archive: archiveURL(state))
         return try await repo.publish([archiveURL(state)], icons: icons, latest: latest, assets: assets, dryRun: dryRun)
     }
 
@@ -357,8 +327,7 @@ public struct ReleasePipeline: Sendable {
             .publish(root: [stagedHistory], assets: assets)
     }
 
-    /// `quiet` holds back `generate_appcast`'s output, for a throwaway key whose mismatch warning is expected.
-    private func generateAppcast(key: SparkleKey.Location, quiet: Bool, downloadPrefix: String) throws -> URL {
+    private func generateAppcast(key: SparkleKey.Location, downloadPrefix: String) throws -> URL {
         let tool = workspace.sparkleTool("generate_appcast")
         guard FileManager.default.isExecutableFile(atPath: tool.path) else {
             throw ToolError("\(tool.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
@@ -377,7 +346,7 @@ public struct ReleasePipeline: Sendable {
                 tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", downloadPrefix,
                 "--link", workspace.manifest.release.siteUrl, "--full-release-notes-url", allReleasesURL,
             ] + key.arguments + [feed.path]
-        if quiet { try Shell.runQuietly(arguments) } else { try Shell.run(arguments) }
+        try Shell.run(arguments)
         try? FileManager.default.removeItem(at: stagedAppcast)
         try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: stagedAppcast)
         try? FileManager.default.removeItem(at: feed)
@@ -404,22 +373,14 @@ public struct ReleasePipeline: Sendable {
         }
     }
 
-    /// Fails unless the staged appcast verifies against the staged app's `SUPublicEDKey`. A dry run also accepts
-    /// `appcast --throwaway-key`'s key, and says a real publish wouldn't.
+    /// Fails unless the staged appcast verifies against the staged app's `SUPublicEDKey`.
     ///
     /// - Blocking: reads the staged files.
-    private func checkStagedSignature(archive: URL, dryRun: Bool) throws {
+    private func checkStagedSignature(archive: URL) throws {
         let item = try Appcast.items(at: stagedAppcast).newest
-        let data = try Data(contentsOf: archive)
-        let outcome = EdSignature.check(item, archive: data, publicKey: try stagedPublicKey())
+        let outcome = EdSignature.check(item, archive: try Data(contentsOf: archive), publicKey: try stagedPublicKey())
         if outcome == .unverifiable { throw ToolError("can't verify edSignature on this platform; release from macOS") }
         guard case .invalid(let reason) = outcome else { return }
-        if dryRun, let throwaway = try? String(contentsOf: throwawayPublicKeyFile, encoding: .utf8),
-            EdSignature.check(item, archive: data, publicKey: throwaway) == .valid
-        {
-            Log.warn("the appcast is signed with `appcast --throwaway-key`'s key; a real publish refuses it")
-            return
-        }
         throw ToolError(
             "\(stagedAppcast.path) doesn't verify against the app's SUPublicEDKey (\(reason)); run "
                 + "`release-kit appcast` with the app's Sparkle key")
@@ -429,8 +390,8 @@ public struct ReleasePipeline: Sendable {
     public static let edKeyVariable = "SPARKLE_ED_PRIVATE_KEY_BASE64"
 
     /// The Sparkle key whose signature verifies against `publicKey`: an explicit file, or
-    /// `SPARKLE_ED_PRIVATE_KEY_BASE64` (CI), or else the first match among `SparkleKey.candidates`. It signs `archive`
-    /// with each to check, and throws, listing every location, when none matches.
+    /// `SPARKLE_ED_PRIVATE_KEY_BASE64` (CI), or else the Keychain account named after the bundle ID. It signs `archive`
+    /// to check, and throws when the key doesn't match.
     ///
     /// - Blocking: runs sign_update and may write a temporary key file.
     func resolveEdKey(explicit: String?, archive: URL, publicKey: String) throws -> SparkleKey.Location {
@@ -438,23 +399,20 @@ public struct ReleasePipeline: Sendable {
         guard FileManager.default.isExecutableFile(atPath: signUpdate.path) else {
             throw ToolError("\(signUpdate.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
         }
-        let candidates: [SparkleKey.Location]
-        let searched = explicit == nil && ProcessInfo.processInfo.environment[Self.edKeyVariable] == nil
+        let location: SparkleKey.Location
         if let path = explicit {
-            candidates = [.file(URL(fileURLWithPath: path), label: "--ed-key-file \(path)")]
+            location = .file(URL(fileURLWithPath: path), label: "--ed-key-file \(path)")
         } else if let encoded = ProcessInfo.processInfo.environment[Self.edKeyVariable] {
             let file = FileManager.default.temporaryDirectory.appending(path: "dylkit-sparkle-\(UUID().uuidString).key")
             try Self.edKeyFile(fromSecret: encoded).write(to: file)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-            candidates = [.file(file, label: Self.edKeyVariable)]
+            location = .file(file, label: Self.edKeyVariable)
         } else {
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            candidates = SparkleKey.candidates(workspace: workspace, home: home)
+            location = .keychain(account: workspace.manifest.app.bundleId)
         }
-        return try SparkleKey.resolve(
-            candidates, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId,
-            sharedHoldsKey: searched ? { try SparkleKey.keychainHasItem(account: SparkleKey.sharedAccount) } : nil
-        ) { try SparkleKey.probe($0, signUpdate: signUpdate, archive: archive, publicKey: publicKey) }
+        return try SparkleKey.resolve(location, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId) {
+            try SparkleKey.probe($0, signUpdate: signUpdate, archive: archive, publicKey: publicKey)
+        }
     }
 
     /// `sign_update --ed-key-file` reads the base64 text that `generate_keys -x` exports. The CI secret holds either

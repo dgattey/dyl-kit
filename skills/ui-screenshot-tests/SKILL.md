@@ -5,17 +5,9 @@ description: Verify UI changes with background screenshots of the real app in bo
 
 # UI screenshot tests
 
-1. Pick the screen and size through launch flags instead of clicking: `--initial-view <name>`, using a name the app defines (omit it for the home screen), and `--window-size 1280x800`.
-2. Capture both appearances:
-
-```bash
-swift run devkit capture --appearance light
-swift run devkit capture --appearance dark --no-build
-swift run devkit ios --run --capture --appearance dark
-```
-
-3. Open each PNG and check it against the request: layout, truncation, highlight color, empty states, and both appearances. A capture you didn't look at isn't verification.
-4. Copy the ones worth sharing to uniquely versioned filenames and put them in the PR description.
+1. Capture the screen in light and dark with `apple-dev-loop`'s capture commands, picking it with `--initial-view <name>` and the size with `--window-size` instead of clicking. Capture the iOS Simulator too when the change reaches iOS.
+2. Open each PNG and check it against the request: layout, truncation, highlight color, empty states, and both appearances. A capture you didn't look at isn't verification.
+3. Copy the ones worth sharing to uniquely versioned filenames and put them in the PR description.
 
 Captures launch `build/<App> Dev.app` in the background under its own `.dev` bundle ID, so they're safe on a Mac where the release is installed (see `apple-dev-loop`). A screen that needs a click, keystroke or menu to reach (Settings, a sheet) gets an `--initial-view` value instead. DylUI's `SettingsView` opens on one page for `settings/<page>`, the page's title lowercased with dashes for spaces, such as `settings/credits`.
 

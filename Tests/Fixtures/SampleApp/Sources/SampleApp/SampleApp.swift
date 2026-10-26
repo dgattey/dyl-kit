@@ -19,7 +19,6 @@ struct SampleApp: App {
 /// `[site] accent` in DylApp.toml.
 struct SamplePalette: ThemePalette {
     var accent = Color(light: Color(hex: 0x9a5f12), dark: Color(hex: 0xe2a547))
-    var surfaceTint: Color { accent.opacity(0.08) }
     var wash: Color { accent.opacity(0.12) }
 }
 
@@ -81,15 +80,28 @@ enum SampleSettings {
     }
 }
 
+private struct Credit {
+    let name: String
+    let subtitle: String
+    let link: String
+}
+
 private struct CreditsSection: View {
+    private static let credits = [
+        Credit(name: "DylKit", subtitle: "Release pipeline, dev loop and Settings", link: "https://github.com/dgattey/dyl-kit"),
+        Credit(name: "Sparkle", subtitle: "Automatic software updates for macOS", link: "https://sparkle-project.org"),
+    ]
+
     var body: some View {
         Section("Open Source") {
-            SettingsRow(
-                "DylKit", subtitle: "Release pipeline, dev loop and Settings", systemImage: "hammer.fill",
-                tags: ["MIT"], link: URL(string: "https://github.com/dgattey/dyl-kit"))
-            SettingsRow(
-                "Sparkle", subtitle: "Automatic software updates for macOS", systemImage: "sparkles",
-                color: Color(hex: 0x3d8461), tags: ["MIT"], link: URL(string: "https://sparkle-project.org"))
+            ForEach(Self.credits, id: \.name) { credit in
+                LabeledContent {
+                    Link("MIT", destination: URL(string: credit.link)!)
+                } label: {
+                    Text(credit.name)
+                    Text(credit.subtitle)
+                }
+            }
         }
     }
 }

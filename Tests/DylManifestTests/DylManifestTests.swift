@@ -36,6 +36,15 @@ struct DylAppManifestTests {
         #expect(manifest.ios == nil)
     }
 
+    @Test func readsUsageFromATableHeaderToo() throws {
+        let text = Self.valid.replacingOccurrences(
+            of: "[bundle]\nusage = { NSLocalNetworkUsageDescription = \"Finds things.\" }",
+            with: "[bundle.usage]\nNSLocalNetworkUsageDescription = \"Finds things.\"\nNSCameraUsageDescription = \"Scans.\"")
+        #expect(text != Self.valid)
+        let usage = try DylAppManifest.decode(text).bundle.usage
+        #expect(usage == ["NSLocalNetworkUsageDescription": "Finds things.", "NSCameraUsageDescription": "Scans."])
+    }
+
     @Test func parsesCommentsTrailingCommasAndInlineTables() throws {
         let manifest = try DylAppManifest.decode(
             """

@@ -100,7 +100,12 @@ public struct ReleaseChecks: Sendable {
     private func checkPublicKey(_ findings: inout [CheckFinding]) {
         let file = manifest.release.sparklePublicKey
         guard let key = publicKey else {
-            findings.append(error("sparkle_public_key", file, "missing; run scripts/generate-sparkle-key.sh"))
+            let tool = ".build/artifacts/sparkle/Sparkle/bin/generate_keys --account \(manifest.app.bundleId)"
+            findings.append(
+                error(
+                    "sparkle_public_key", file,
+                    "missing; after `swift build`, run `\(tool)` to give the app its own key, then `\(tool) -p > \(file)` "
+                        + "(adopt-dylkit step 2)"))
             return
         }
         if Data(base64Encoded: key)?.count != 32 {

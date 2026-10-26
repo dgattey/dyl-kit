@@ -43,7 +43,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 ## A new app
 
 1. Write `DylApp.toml`. `Sources/DylManifest/DylAppManifest.swift` in DylKit is the schema and `Tests/Fixtures/SampleApp/DylApp.toml` the smallest example.
-2. Generate the Sparkle key pair once with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account <bundle-id>` after the first `swift build`, so it gets its own login Keychain account instead of Sparkle's `ed25519` one, which every app on the Mac shares. An app whose key is already in `ed25519` moves it: `generate_keys -x <file>`, then `generate_keys --account <bundle-id> -f <file>`. Put the public key it prints in the file `[release] sparkle-public-key` names, run `generate_keys --account <bundle-id> -x sparkle_ed.key`, and have the app's owner paste that file's contents into the `SPARKLE_ED_PRIVATE_KEY_BASE64` secret. Delete the exported file.
+2. Generate the Sparkle key pair once with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account <bundle-id>` after the first `swift build`, so it gets its own login Keychain account instead of Sparkle's `ed25519` one, which every app on the Mac shares. An app whose key is already in `ed25519` moves it: `generate_keys -x <file>`, then `generate_keys --account <bundle-id> -f <file>`. Write its public key to the file `[release] sparkle-public-key` names with `generate_keys --account <bundle-id> -p > <that file>`, run `generate_keys --account <bundle-id> -x sparkle_ed.key`, and have the app's owner paste that file's contents into the `SPARKLE_ED_PRIVATE_KEY_BASE64` secret. Delete the exported file.
 
 ## The adoption PR
 

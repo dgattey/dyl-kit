@@ -51,7 +51,7 @@ jobs:
           fi
           echo "Release info OK"
       # DylKit at the version the app pins, which is this workflow's own commit.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: ${{ !cancelled() }}
         with:
           repository: ${{ job.workflow_repository }}
@@ -69,8 +69,10 @@ jobs:
             .dylkit/scripts/check-release-notes.swift -o "$RUNNER_TEMP/check-release-notes"
           "$RUNNER_TEMP/check-release-notes" <"$RUNNER_TEMP/body.md"
 
-  # Which jobs a PR's files call for. A push that only touches docs, the site or agent rules skips verify, and a merge to
-  # the default branch that only touches docs, the site, tests or CI ships no new app, so it doesn't release.
+  # Which jobs a PR's files call for, judged on every file the PR changes, not the latest push alone, so a docs-only
+  # push to a PR that touches code still runs verify. A PR that only touches docs, the site or agent rules skips verify,
+  # and a merge to the default branch that only touches docs, the site, tests or CI ships no new app, so it doesn't
+  # release.
   changes:
     if: >-
       github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' &&
@@ -107,6 +109,7 @@ jobs:
   verify:
     # Editing or closing a PR reruns this workflow on the same commit, where verify is skipped. A skipped check run
     # named `verify` would replace that commit's real result, failure included, and rulesets count skipped as passing.
+    # GitHub names a skipped job's check after this expression's raw text, so only a run that verifies is `verify`.
     name: >-
       ${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) && 'verify' ||
         'verify (not run for this event)' }}
@@ -118,16 +121,16 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: swiftpm-${{ runner.os }}-
       # The SwiftLint version the app's mise.toml pins, which `devkit checks` requires.
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v5
         with:
           install_args: swiftlint
       - name: Verify
@@ -148,14 +151,14 @@ jobs:
       site: ${{ steps.version.outputs.site }}
       assets: ${{ steps.version.outputs.assets }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
           # Every tag plans the version, and build numbers count commits.
           fetch-depth: 0
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}

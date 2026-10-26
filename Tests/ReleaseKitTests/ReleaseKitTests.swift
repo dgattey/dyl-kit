@@ -729,6 +729,18 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(forgeCalls(in: "gh release create v1") == ["calls the gh CLI"])
     }
 
+    /// Editing or closing a PR reruns app.yml on the same commit with verify skipped. GitHub names a skipped job's
+    /// check after its raw `name:` text, so only a job that runs may be named plain `verify`; otherwise the skipped
+    /// check replaces the commit's real result, failure included, and rulesets count skipped as passing.
+    @Test func editingAPRNeverReplacesVerifysResult() throws {
+        let workflow = try String(
+            contentsOf: packageRoot.appending(path: ".github/workflows/app.yml"), encoding: .utf8)
+        let name = try #require(workflow.firstMatch(of: /(?ms)^  verify:\n.*?^    name: >-\n(.*?)\n    needs:/)).1
+            .replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
+        #expect(name.hasPrefix(#"${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action)"#))
+        #expect(name.hasSuffix("&& 'verify' || 'verify (not run for this event)' }}"))
+    }
+
     /// Sites install with pnpm; without its pin and lockfile Vercel installs with npm.
     @Test func siteInstallsWithPnpm() throws {
         let workspace = try scratchWorkspace()

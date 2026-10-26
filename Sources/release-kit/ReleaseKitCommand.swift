@@ -82,8 +82,8 @@ extension ReleaseKitCommand {
         @Option(
             help: """
                 The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, then the first of the repo's key \
-                files, ~/.config/<slug>/sparkle_ed.key and the Keychain accounts <bundle-id> and ed25519 whose key \
-                matches the app's SUPublicEDKey.
+                files, ~/.config/<slug>/sparkle_ed.key and the Keychain account <bundle-id> whose key matches the \
+                app's SUPublicEDKey. Sparkle's shared ed25519 account is never used.
                 """)
         var edKeyFile: String?
         @Flag(help: "Sign with a fresh throwaway key to rehearse; only publish --dry-run takes the result.")

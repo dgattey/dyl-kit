@@ -5,9 +5,9 @@ import Foundation
 import CryptoKit
 #endif
 
-/// The Sparkle private key `release-kit appcast` signs with. Every candidate is tried against the public key the
-/// staged app trusts before `generate_appcast` runs, because Sparkle's own fallback, the login Keychain's shared
-/// `ed25519` account, holds whichever app's key was generated last on that Mac.
+/// The Sparkle private key `release-kit appcast` signs with. Each app keeps its own key, so release-kit never signs
+/// from Sparkle's default, the login Keychain's `ed25519` account, which holds whichever app's key was generated last
+/// on that Mac. Every candidate is tried against the public key the staged app trusts before `generate_appcast` runs.
 public enum SparkleKey {
     /// Sparkle's default Keychain account, which every app on a Mac shares.
     static let sharedAccount = "ed25519"
@@ -41,7 +41,7 @@ public enum SparkleKey {
     }
 
     /// Where an app's key may be, in the order they're tried: the repo's key files, the per-user file under the app's
-    /// slug, the Keychain account named after the bundle ID, then Sparkle's shared default.
+    /// slug, then the Keychain account named after the bundle ID.
     static func candidates(workspace: Workspace, home: URL) -> [Location] {
         let manifest = workspace.manifest
         let perUser = ".config/\(manifest.app.slug)/sparkle_ed.key"
@@ -50,14 +50,15 @@ public enum SparkleKey {
             .file(workspace.url("sparkle_private.key"), label: "sparkle_private.key"),
             .file(home.appending(path: perUser), label: "~/\(perUser)"),
             .keychain(account: manifest.app.bundleId),
-            .keychain(account: sharedAccount),
         ]
     }
 
     /// The first of `candidates` whose key signs for `publicKey`. Throws, listing what each location held, when none
-    /// does.
+    /// does. With `diagnoseShared`, that list also says what Sparkle's shared account holds, which is never signed
+    /// from, and how to move the app's key out of it.
     static func resolve(
-        _ candidates: [Location], publicKey: String, bundleId: String, probe: (Location) throws -> Probe
+        _ candidates: [Location], publicKey: String, bundleId: String, diagnoseShared: Bool,
+        probe: (Location) throws -> Probe
     ) throws -> Location {
         var checked: [String] = []
         for location in candidates {
@@ -67,6 +68,18 @@ public enum SparkleKey {
                 return location
             case .differs: checked.append("\(location.label): a different key, not this app's")
             case .unavailable(let reason): checked.append("\(location.label): \(reason)")
+            }
+        }
+        if diagnoseShared {
+            let shared = Location.keychain(account: sharedAccount)
+            switch try probe(shared) {
+            case .matches:
+                checked.append(
+                    "\(shared.label): this app's key, which release-kit never signs from; move it with "
+                        + "`generate_keys -x <file>`, `generate_keys --account \(bundleId) -f <file>`, "
+                        + "then delete <file>")
+            case .differs: checked.append("\(shared.label): another app's key, never used")
+            case .unavailable(let reason): checked.append("\(shared.label): \(reason), never used")
             }
         }
         throw ToolError(

@@ -434,6 +434,7 @@ public struct ReleasePipeline: Sendable {
             throw ToolError("\(signUpdate.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
         }
         let candidates: [SparkleKey.Location]
+        let searched = explicit == nil && ProcessInfo.processInfo.environment[Self.edKeyVariable] == nil
         if let path = explicit {
             candidates = [.file(URL(fileURLWithPath: path), label: "--ed-key-file \(path)")]
         } else if let encoded = ProcessInfo.processInfo.environment[Self.edKeyVariable] {
@@ -445,9 +446,9 @@ public struct ReleasePipeline: Sendable {
             let home = FileManager.default.homeDirectoryForCurrentUser
             candidates = SparkleKey.candidates(workspace: workspace, home: home)
         }
-        return try SparkleKey.resolve(candidates, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId) {
-            try SparkleKey.probe($0, signUpdate: signUpdate, archive: archive, publicKey: publicKey)
-        }
+        return try SparkleKey.resolve(
+            candidates, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId, diagnoseShared: searched
+        ) { try SparkleKey.probe($0, signUpdate: signUpdate, archive: archive, publicKey: publicKey) }
     }
 
     /// `sign_update --ed-key-file` reads the base64 text that `generate_keys -x` exports. The CI secret holds either

@@ -105,6 +105,11 @@ jobs:
 
   # What a PR must pass on macOS: `devkit verify` runs the checks, builds, then runs all tests.
   verify:
+    # Editing or closing a PR reruns this workflow on the same commit, where verify is skipped. A skipped check run
+    # named `verify` would replace that commit's real result, failure included, and rulesets count skipped as passing.
+    name: >-
+      ${{ contains(fromJSON('["opened", "reopened", "synchronize"]'), github.event.action) && 'verify' ||
+        'verify (not run for this event)' }}
     needs: changes
     if: needs.changes.outputs.verify == 'true'
     concurrency:

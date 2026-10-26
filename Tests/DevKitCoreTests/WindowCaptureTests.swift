@@ -5,7 +5,7 @@ import Testing
 @Suite struct WindowCaptureTests {
     private typealias Window = WindowCapture.ListedWindow
 
-    /// Dylan's Mac: a full-screen app had focus, so the background launch put the window on the desktop Space.
+    /// A full-screen app had focus, so the background launch put the window on the desktop Space.
     @Test func aWindowOnAnotherSpaceIsCaptured() {
         let offSpace = Window(id: 10029, onScreen: false, shown: true, area: 1280 * 840)
         #expect(WindowCapture.mainWindow(in: [offSpace]) == 10029)

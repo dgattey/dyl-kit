@@ -1,6 +1,6 @@
 ---
 name: apple-dev-loop
-description: The one guide to setting up, building, testing, launching, screenshotting and checking a DylKit app (Sconeos, Saga, Gattey Photos) on macOS or the iOS Simulator, without touching the installed release or stealing focus. Use for any local build, test run, visual check, or light/dark comparison.
+description: The one guide to setting up, building, testing, launching, screenshotting and checking a DylKit app on macOS or the iOS Simulator, without touching the installed release or stealing focus. Use for any local build, test run, visual check, or light/dark comparison.
 ---
 
 # Apple dev loop
@@ -39,7 +39,7 @@ Run everything from the app repo through `swift run devkit …`, which builds `d
 
 ## Hard rules
 
-- Only `build/` is ours. Never copy into, launch, kill or overwrite `/Applications/<App>.app` unless Dylan asks for a one-time install. `relaunch` only stops the process whose path is under `build/`.
+- Only `build/` is ours. Never copy into, launch, kill or overwrite `/Applications/<App>.app` unless the user asks for a one-time install. `relaunch` only stops the process whose path is under `build/`.
 - Dev builds are their own app: `<App> Dev`, bundle ID `<bundle-id>.dev`, URL schemes with a `-dev` suffix, and no Sparkle keys, so the updater stays off. `relaunch` and `capture` never share the installed app's preferences, Sparkle state, container, Keychain items or logs. Never launch anything that carries the release bundle ID, such as the staged release in `build/release/stage/`; compare it as below instead. An OAuth or URL callback reaches a dev build only if the provider also allows the `-dev` scheme. Otherwise call that flow unverified in dev.
 - Launch with `open -g` only, capture with `screencapture -l <window>`, and run the simulator headless with `simctl`. Never use `osascript` (AppleScript `activate`, System Events keystrokes or menu clicks), `open` without `-g`, the app binary run directly, `open -a Simulator`, or a capture that raises a window. A screen you can't reach by a launch flag isn't verified on his Mac. Add an `--initial-view` for it or say it's unverified.
 - devkit launches set `DYLKIT_BACKGROUND=1`. `LaunchOverrides.current.staysInBackground` reads it, and the app must never activate or raise a window under it. `DylUpdates` activates only in an installed release.

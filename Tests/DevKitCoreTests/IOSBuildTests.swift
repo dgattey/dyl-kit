@@ -6,7 +6,7 @@ import Testing
 
 @Suite struct IOSBuildTests {
     @Test func findsTheSchemeForTheProduct() throws {
-        #expect(try IOSBuild.scheme(for: "Sconeos", in: ["SconeDomain", "SconeKit-Package", "Sconeos"]) == "Sconeos")
+        #expect(try IOSBuild.scheme(for: "Demo", in: ["DemoDomain", "DemoKit-Package", "Demo"]) == "Demo")
         #expect(try IOSBuild.scheme(for: "Sample", in: ["SampleApp"]) == "SampleApp")
         #expect(try IOSBuild.scheme(for: "Sample", in: ["SampleApp", "Sample-Package"]) == "SampleApp")
         #expect(throws: (any Error).self) { try IOSBuild.scheme(for: "Sample", in: ["One", "Two"]) }
@@ -21,7 +21,7 @@ import Testing
         #expect(IOSBuild.devBundleId(try DylAppManifest.decode(withoutIOSId)) == "com.dylkit.Sample.dev")
     }
 
-    /// Sudylko at v0.3.0: under `swift run`, Xcode 27 linked the simulator product against the macOS SDK.
+    /// Under `swift run`, Xcode 27 linked the simulator product against the macOS SDK.
     @Test func theSimulatorBuildNeverInheritsTheMacOSSDKRoot() {
         let arguments = IOSBuild.xcodebuildArguments(
             scheme: "SampleApp", derivedData: URL(fileURLWithPath: "/tmp/dd"), linkerFlags: ["-Xlinker", "x"])

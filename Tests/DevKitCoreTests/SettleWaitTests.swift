@@ -29,7 +29,7 @@ import UniformTypeIdentifiers
     private static let quick = SettleWait(
         timeout: .seconds(60), minimum: .seconds(5), interval: .milliseconds(1), stableFrames: 3)
 
-    /// Photos: `devkit ios capture` caught the launch spinner. Frames that keep changing aren't captured until they stop.
+    /// `devkit ios capture` once caught the launch spinner. Frames that keep changing aren't captured until they stop.
     @Test func waitsForTheSpinnerToStop() async throws {
         let spinner: [CGFloat] = [0.1, 0.4, 0.7, 0.4, 0.9, 0.9, 0.9, 0.9]
         var index = 0
@@ -73,7 +73,7 @@ import UniformTypeIdentifiers
         #expect(FileManager.default.fileExists(atPath: output.path))
     }
 
-    /// Sconeos: frames 0 to 18 captured, then frame 19 failed and failed the run.
+    /// Frames 0 to 18 captured, then frame 19 failed, which mustn't fail the run.
     @Test func keepsTheLastGoodFrameWhenTheWindowGoesAway() async throws {
         let good = (1...3).map { _ in Self.output() }
         defer { good.forEach { try? FileManager.default.removeItem(at: $0) } }

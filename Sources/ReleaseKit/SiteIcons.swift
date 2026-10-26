@@ -36,7 +36,7 @@ public struct SiteIcons: Sendable {
     }
 
     /// Every icon the site serves at `/icons/<name>`. A new row is live there after the next release.
-    /// dylangattey.com reads `icon.png` (1024) and `apple-touch-icon.png` (180), so keep those two.
+    /// Other sites can embed `icon.png` (1024) and `apple-touch-icon.png` (180), so keep those two.
     public static let all: [Icon] = [
         Icon(stem: "icon", source: .macOS(.light), format: .png(pixels: 1024)),
         Icon(stem: "icon-256", source: .macOS(.light), format: .png(pixels: 256)),

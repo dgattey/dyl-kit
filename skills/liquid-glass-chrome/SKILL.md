@@ -13,8 +13,8 @@ DylUI gives every app the same structure and behavior. The look is the app's. Th
 - iOS: `TabView`, `NavigationStack`, `List`, `.toolbar`. Share views across platforms; split only where the platform idiom differs.
 - Sidebar pages switch instantly, without fade transitions, and the sidebar collapses.
 - Float the window toolbar over content with `.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)` on macOS.
-- Don't put `.backgroundExtensionEffect()` on a split view's detail column. On macOS 26 it clips the detail to the safe area, leaving a solid band under the toolbar, and mirrors the detail's content into the sidebar (Saga #43).
-- Settings is `SettingsWindow`: one instance, ⌘, focuses it when it's open, and it never reopens at launch. No window lookups by title (Saga #48). Its default `SettingsView` is a sidebar of badged pages over grouped cards tinted by the palette's `surfaceTint`, and `SettingsRow` is its icon, title, tags and link row. Pass your own content for another layout, drawing About and Updates from `AppAbout.main` and `AppUpdater.shared`.
+- Don't put `.backgroundExtensionEffect()` on a split view's detail column. On macOS 26 it clips the detail to the safe area, leaving a solid band under the toolbar, and mirrors the detail's content into the sidebar.
+- Settings is `SettingsWindow`: one instance, ⌘, focuses it when it's open, and it never reopens at launch. No window lookups by title. Its default `SettingsView` is a sidebar of badged pages over grouped cards tinted by the palette's `surfaceTint`, and `SettingsRow` is its icon, title, tags and link row. Pass your own content for another layout, drawing About and Updates from `AppAbout.main` and `AppUpdater.shared`.
 
 ## Material and color
 

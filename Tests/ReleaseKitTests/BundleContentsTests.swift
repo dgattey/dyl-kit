@@ -118,7 +118,7 @@ import CryptoKit
     }
 }
 
-/// `check --live` over hand-built snapshots: a matching update passes, and each way Saga's releases broke fails.
+/// `check --live` over hand-built snapshots: a matching update passes, and each way a real app's releases broke fails.
 @Suite struct LiveComparisonTests {
     #if canImport(CryptoKit)
     private let key = Curve25519.Signing.PrivateKey()
@@ -172,7 +172,7 @@ import CryptoKit
         #expect(rules(try comparison()).isEmpty)
     }
 
-    /// Saga's feed moved off github.com; the staged app must point where DylApp.toml says.
+    /// An app's feed moved off github.com; the staged app must point where DylApp.toml says.
     @Test func feedMoveIsCaught() throws {
         let moved = try comparison { _, staged in staged.info["SUFeedURL"] = .string("https://github.com/o/r/appcast.xml") }
         #expect(rules(moved) == ["live_feed_url"])

@@ -20,7 +20,7 @@ struct DylAppManifestTests {
 
         [release]
         sparkle-public-key = "key.txt"
-        site-url = "https://demo.gattey.com"
+        site-url = "https://demo.example.com"
         artifacts-dir = "server/public"
         check-interval = 3600
         assets = "https://store.public.blob.vercel-storage.com"
@@ -29,7 +29,7 @@ struct DylAppManifestTests {
     @Test func decodesKebabKeysAndKeepsUsageKeys() throws {
         let manifest = try DylAppManifest.decode(Self.valid)
         #expect(manifest.app.bundleId == "com.example.Demo")
-        #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
+        #expect(manifest.release.feedURL == "https://demo.example.com/appcast.xml")
         #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
         #expect(manifest.release.checkInterval == 3600)
         #expect(manifest.bundle.usage?["NSLocalNetworkUsageDescription"] == "Finds things.")
@@ -41,18 +41,18 @@ struct DylAppManifestTests {
             """
             # comment
             [app]
-            name = "Sconeos" # trailing
-            bundle-id = "com.example.Sconeos"
+            name = "Demo" # trailing
+            bundle-id = "com.example.Demo"
             platforms = { macos = "14.0", ios = "17.0" }
             category = "public.app-category.utilities"
 
             [build]
-            product = "Sconeos"
+            product = "Demo"
             entitlements = "Demo.entitlements"
 
             [release]
             sparkle-public-key = "key.txt"
-            site-url = "https://demo.gattey.com/"
+            site-url = "https://demo.example.com/"
             artifacts-dir = "server/public"
             check-interval = 3600
             assets = "https://store.public.blob.vercel-storage.com/"
@@ -65,11 +65,11 @@ struct DylAppManifestTests {
                 { src = "b.png", alt = "B" }, # trailing comma
             ]
             """)
-        #expect(manifest.app.name == "Sconeos")
+        #expect(manifest.app.name == "Demo")
         #expect(manifest.app.platforms.ios == "17.0")
         #expect(manifest.release.checkInterval == 3600)
-        #expect(manifest.release.siteUrl == "https://demo.gattey.com")
-        #expect(manifest.release.feedURL == "https://demo.gattey.com/appcast.xml")
+        #expect(manifest.release.siteUrl == "https://demo.example.com")
+        #expect(manifest.release.feedURL == "https://demo.example.com/appcast.xml")
         #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
     }
 

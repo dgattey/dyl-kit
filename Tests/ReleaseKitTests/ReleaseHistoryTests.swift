@@ -58,7 +58,7 @@ private func published(_ history: ReleaseHistory) throws -> ReleaseHistory {
         #expect(try published(ReleaseHistory.next(published: twice, staged: retry, feeds: [])) == twice)
     }
 
-    /// Gattey Photos' appcasts before 1.1.6 had no notes; their releases still belong in the history.
+    /// Appcasts written before an app adopted DylKit can have no notes; their releases still belong in the history.
     @Test func anItemWithoutNotesIsStillARelease() throws {
         let entries = ReleaseHistory.entries(from: try stagedItem("1.0.3", build: 7, day: 5))
         #expect(entries == [Entry(version: "1.0.3", build: 7, publishedAt: try date("2026-10-05T12:00:00Z"))])
@@ -108,10 +108,10 @@ private func published(_ history: ReleaseHistory) throws -> ReleaseHistory {
     }
 }
 
-/// Dylan asked whether a Mac more than ten releases behind still sees what's latest. This publishes twenty releases
+/// A Mac more than ten releases behind must still see what's latest. This publishes twenty releases
 /// through the real notes, appcast and history code, then looks at them as an install of the fifth would.
 @Suite struct OldClientTests {
-    private let site = "https://dylkitsample.gattey.com"
+    private let site = "https://sample.example.com"
 
     private struct Release {
         var feed: [AppcastItem]

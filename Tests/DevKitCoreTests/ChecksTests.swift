@@ -5,11 +5,11 @@ import Testing
 @testable import DevKitCore
 
 @Suite struct ChecksTests {
-    /// Saga: a `.package(path:)` DylKit has no `.build/checkouts/dyl-kit`, so the shared config comes from SwiftPM.
+    /// A `.package(path:)` DylKit has no `.build/checkouts/dyl-kit`, so the shared config comes from SwiftPM.
     @Test func findsDylKitAnywhereInTheDependencyTree() {
         let json = """
-            {"identity": "saga", "path": "/r/saga", "dependencies": [
-              {"identity": "sparkle", "path": "/r/saga/.build/checkouts/Sparkle", "dependencies": []},
+            {"identity": "app", "path": "/r/app", "dependencies": [
+              {"identity": "sparkle", "path": "/r/app/.build/checkouts/Sparkle", "dependencies": []},
               {"identity": "helpers", "path": "/r/helpers", "dependencies": [
                 {"identity": "dyl-kit", "path": "/Users/d/repos/dyl-kit", "dependencies": []}
               ]}
@@ -19,7 +19,7 @@ import Testing
         #expect(Checks.dylKitPath(dependenciesJSON: #"{"identity": "x", "path": "/x", "dependencies": []}"#) == nil)
     }
 
-    /// Photos: with no `included:`, SwiftLint walked `.build` and failed on about 275 hits in Sparkle's sources.
+    /// With no `included:`, SwiftLint walked `.build` and failed on about 275 hits in Sparkle's sources.
     @Test(.enabled(if: Shell.which("swiftlint") != nil))
     func appWithoutIncludedSkipsBuildFolders() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-swiftlint-\(UUID().uuidString)")

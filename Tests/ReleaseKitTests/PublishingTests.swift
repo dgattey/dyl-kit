@@ -109,7 +109,7 @@ private func item(_ version: String, build: Int) -> String {
         }
     }
 
-    /// Agent checkouts fetch only their branch, so their tags stop at an old release (scone-os showed 1.1.0 with 1.2.0
+    /// Agent checkouts fetch only their branch, so their tags stop at an old release (1.1.0 with 1.2.0
     /// out). Dev builds take the feeds' version, and the tags when the feeds can't be read.
     @Test func shippedVersionReadsTheFeedsThenTheTags() async throws {
         let root = try Self.minorMerge(after: "v1.1.0")
@@ -123,7 +123,7 @@ private func item(_ version: String, build: Int) -> String {
         #expect(try await shippedVersion(FakeTransport { _ in throw URLError(.notConnectedToInternet) }) == "1.1.0")
     }
 
-    /// Sudylko #5: tagged v1.0.0 with nothing published, then a Minor merge. Before the site's first deploy its host
+    /// An app tagged v1.0.0 with nothing published, then a Minor merge. Before the site's first deploy its host
     /// doesn't resolve; once deployed, its route answers 503 until the store has a feed. The store's 404 says nothing
     /// has shipped either way, so the tags plan 1.1.0.
     @Test(arguments: [nil, 503] as [Int?])
@@ -246,7 +246,7 @@ private func item(_ version: String, build: Int) -> String {
         #expect(await !transport.calls.contains { $0.hasSuffix("/pulls/14") })
     }
 
-    /// sudylko#5: planning on a PR branch warned about each of its 15 commits since the last tag.
+    /// Planning on a PR branch once warned about each of its 15 commits since the last tag.
     @Test func aPullRequestBranchFoldsInOnlyWhatLandedOnTheDefaultBranch() async throws {
         let scratch = FileManager.default.temporaryDirectory.appending(path: "dylkit-fold-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
@@ -368,7 +368,7 @@ private func item(_ version: String, build: Int) -> String {
         #expect(iconRequest.value(forHTTPHeaderField: "x-content-type") == "image/png")
     }
 
-    /// Saga's token in Photos' release would otherwise replace Saga's latest feed with Photos'.
+    /// One app's token in another app's release would otherwise replace the first app's latest feed with the second's.
     @Test func aTokenForAnotherStoreStopsBeforeTheLatestFiles() async throws {
         let files = try stagedFiles()
         defer { try? FileManager.default.removeItem(at: files[0].deletingLastPathComponent()) }

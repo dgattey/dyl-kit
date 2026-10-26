@@ -125,7 +125,7 @@ enum FormatterAlloc {
 }
 
 /// `session_alloc`: `URLSession.bounded(...)` built per call. Each session opens its own connection pool and never
-/// shares it; keep one per app or service in a `static let` (Gattey Photos #15).
+/// shares it; keep one per app or service in a `static let`.
 enum SessionAlloc {
     static let rule = "session_alloc"
 
@@ -163,7 +163,7 @@ enum SessionAlloc {
 }
 
 /// `delegate_mainactor_hop`: `Task { @MainActor in … }` directly inside a delegate callback. The hop runs later and
-/// races the next callback; Sconeos PR #6 removed six. Use `MainActor.assumeIsolated` when the callback arrives on
+/// races the next callback. Use `MainActor.assumeIsolated` when the callback arrives on
 /// main, or make the conformance `@MainActor`.
 enum DelegateMainActorHop {
     static let rule = "delegate_mainactor_hop"

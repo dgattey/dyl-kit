@@ -300,10 +300,10 @@ public struct ReleaseChecks: Sendable {
 
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
-    /// `file:` packages and, for `@dylkit/web`, DylApp.toml (Saga #45). It diffs from the last deployed commit, so a
+    /// `file:` packages and, for `@dylkit/web`, DylApp.toml. It diffs from the last deployed commit, so a
     /// site change in a skipped commit still deploys with the next one. A branch's first deploy, which has no last
     /// commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
-    /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy (scone-os #22).
+    /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
@@ -312,7 +312,7 @@ public struct ReleaseChecks: Sendable {
         #"git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && "#
         + #"git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
 
-    /// 0.3.0 and 0.3.1's prefix, which fails the deploy when the last deployed commit is gone.
+    /// The unguarded prefix, which fails the deploy when the last deployed commit is gone.
     static let unguardedIgnoreCommandPrefix =
         #"[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
 

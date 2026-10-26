@@ -498,7 +498,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
     private func scratchWorkspace(_ extra: [String: String] = [:]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
-            "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
+            "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
             "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
             ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
@@ -627,7 +627,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["releases_page"] == ["server/app/releases/page.tsx"])
     }
 
-    /// Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
+    /// Vercel's ignoreCommand must still deploy release commits, the root package.json's pnpm pin, and DylApp.toml,
+    /// which withDylKit reads.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -636,7 +637,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            "server/vercel.json", "server/vercel.json",
+            "server/vercel.json", "server/vercel.json", "server/vercel.json",
         ])
     }
 
@@ -783,6 +784,23 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             "server/package.json", "server/package.json", "server/package-lock.json", "server/pnpm-lock.yaml",
         ])
         #expect(errors(report)["site_package_manager"]?.first?.contains("SampleApp server/package.json") == true)
+    }
+
+    /// Vercel's CLI enables corepack from the clone root's package.json, so without the site's pin there it installs
+    /// with its bundled pnpm, which can't read a newer pnpm's lockfile.
+    @Test func theRepoRootPinsTheSitesPnpm() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let root = workspace.url("package.json")
+        try Data(#"{ "private": true, "packageManager": "pnpm@10.0.0" }"#.utf8).write(to: root)
+        let site = try String(contentsOf: workspace.url("server/package.json"), encoding: .utf8)
+        let pin = try #require(site.firstMatch(of: /"packageManager": "([^"]+)"/)?.1)
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
+            #"doesn't pin server/package.json's "packageManager"; set it to "\#(pin)""#
+        ])
+
+        try FileManager.default.removeItem(at: root)
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == ["package.json"])
     }
 
     /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside

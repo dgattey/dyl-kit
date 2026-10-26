@@ -50,11 +50,12 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 1. Pin the release in `Package.swift`, `.package(url: "https://github.com/dgattey/dyl-kit", from: "<version>")`, then `swift package update dyl-kit`.
 2. Copy `.github/workflows/dylkit.yml`, `.github/pull_request_template.md` and `.cursor/rules/changelog-release-notes.mdc` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set `dylkit.yml`'s `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. Delete any release or PR-check workflow they replace. App-owned workflows such as `verify.yml` stay, running `swift run devkit verify`; SampleApp's `verify.yml` is one to copy if the app has none.
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
-4. Install the site with pnpm. `site_package_manager` in the checks fails a site without the pnpm pin or `pnpm-lock.yaml`, with `package-lock.json` or `yarn.lock`, or with npm's `overrides`, which pnpm ignores.
+4. Install the site with pnpm. `site_package_manager` in the checks fails a site without the pnpm pin or `pnpm-lock.yaml`, with `package-lock.json` or `yarn.lock`, with npm's `overrides`, which pnpm ignores, or without the same pin in the repo root's `package.json`.
    1. In `server/`, copy `packageManager`, the `preinstall` script, `pnpm-workspace.yaml` and `.node-version` from DylKit's `Tests/Fixtures/SampleApp/server/` at that tag. `.node-version` matches the Vercel project's Node 24, and a `mise.toml` that pins `node` pins that same version.
-   2. Move any `"overrides"` in `server/package.json` to an `overrides:` map in `server/pnpm-workspace.yaml`. Delete `server/package-lock.json`, any `server/yarn.lock` and any `server/.npmrc` that holds only npm settings.
-   3. Depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved`, then run `pnpm install` in `server/` and commit `pnpm-lock.yaml`. `dylkit_version` names the URL. When pnpm stops with `Ignored build scripts: <package>`, add `<package>: true` under `allowBuilds:` in `pnpm-workspace.yaml` for each dependency whose install script the site needs, and run it again.
-   4. In each workflow that installs the site, set up pnpm and Node from the site's pins:
+   2. At the repo root, add a `package.json` holding only `"private": true` and the same `packageManager` as `server/package.json`, like SampleApp's. Vercel's CLI enables corepack from the clone root's `package.json`, not the Root Directory's, so without it Vercel installs with its own pnpm, which can't read the lockfile. Change both pins together.
+   3. Move any `"overrides"` in `server/package.json` to an `overrides:` map in `server/pnpm-workspace.yaml`. Delete `server/package-lock.json`, any `server/yarn.lock` and any `server/.npmrc` that holds only npm settings.
+   4. Depend on the `@dylkit/web` tarball for the DylKit version in `Package.resolved`, then run `pnpm install` in `server/` and commit `pnpm-lock.yaml`. `dylkit_version` names the URL. When pnpm stops with `Ignored build scripts: <package>`, add `<package>: true` under `allowBuilds:` in `pnpm-workspace.yaml` for each dependency whose install script the site needs, and run it again.
+   5. In each workflow that installs the site, set up pnpm and Node from the site's pins:
 
       ```yaml
       - uses: pnpm/action-setup@v6.1.0
@@ -70,12 +71,12 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
       ```
 
       Scripts run as `pnpm test`, `pnpm <script>` and `pnpm exec <bin>` there and in scripts, docs, skills and rules, never `npm` or `npx`.
-   5. Locally, run `corepack enable pnpm` once, or use any pnpm 10 or later, which switches to the pinned version itself.
+   6. Locally, run `corepack enable pnpm` once, or use any pnpm 10 or later, which switches to the pinned version itself.
    - Check: `pnpm install --frozen-lockfile` passes in `server/`.
 5. Switch the site to `@dylkit/web`.
    1. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/releases/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README.
    - Delete the committed site icons (`app/icon.png`, `apple-icon.png`, `favicon.ico`, `public/app-icon.png`, `apple-icon.png`) and the icon-generator lines that write them. If the icon's light variant vanishes on a light tab, set `favicon = "dark"` under `[site]`.
-   2. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml"`.
+   2. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml ../package.json"`.
    - Check: `pnpm build` and the site's own test scripts pass in `server/`, and the PR's Vercel preview build log says it used the pinned pnpm.
 6. An app with an `NSDockTilePlugIn`: keep its dynamic library product and set `[build] dock-tile-plugin` to that product and the plug-in's principal class. Delete the script steps that copied and signed the `.docktileplugin`, and the `NSDockTilePlugIn` key in the old `Info.plist`. The plug-in must find the app's preferences from its own bundle identifier, as DylKit's README says, so a dev build never reads the installed release's.
    - Check: `swift run devkit build`, then `codesign --verify --deep --strict "build/<App> Dev.app"` succeeds and `build/<App> Dev.app/Contents/PlugIns/` holds the plug-in.

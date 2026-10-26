@@ -301,9 +301,9 @@ public struct ReleaseChecks: Sendable {
 
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
-    /// `file:` packages and, for `@dylkit/web`, DylApp.toml. It diffs from the last deployed commit, so a
-    /// site change in a skipped commit still deploys with the next one. A branch's first deploy, which has no last
-    /// commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
+    /// `file:` packages, the repo root's `package.json` and, for `@dylkit/web`, DylApp.toml. It diffs from the last
+    /// deployed commit, so a site change in a skipped commit still deploys with the next one. A branch's first deploy,
+    /// which has no last commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
     /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
@@ -359,7 +359,7 @@ public struct ReleaseChecks: Sendable {
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
             workspace.url(siteRoot).appending(path: String(path)).standardized.path
         }
-        var needed = [manifest.release.artifactsDir]
+        var needed = [manifest.release.artifactsDir, "package.json"]
         for match in package.matches(of: /"(?!@dylkit\/web")[^"]+"\s*:\s*"file:([^"]+)"/) {
             needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
         }
@@ -374,16 +374,33 @@ public struct ReleaseChecks: Sendable {
 
     /// Sites install with pnpm: `packageManager` pins it and Vercel installs with it from `pnpm-lock.yaml`. Vercel
     /// falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`, so the security pins there
-    /// would stop applying.
+    /// would stop applying. Vercel's CLI enables corepack from the clone root's `package.json`, not the Root
+    /// Directory's, so the repo root holds the same pin; without it Vercel's bundled pnpm can't read the lockfile.
     private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
         let file = "\(siteRoot)/package.json"
         let fields = (try? JSONSerialization.jsonObject(with: Data(package.utf8))) as? [String: Any] ?? [:]
-        if (fields["packageManager"] as? String)?.hasPrefix("pnpm@") != true {
+        let pin = fields["packageManager"] as? String
+        if pin?.hasPrefix("pnpm@") != true {
             findings.append(
                 error(
                     "site_package_manager", file,
                     "doesn't pin pnpm; copy \"packageManager\" from DylKit's SampleApp server/package.json"))
+        }
+        if let root = read("package.json") {
+            let rootFields = (try? JSONSerialization.jsonObject(with: Data(root.utf8))) as? [String: Any] ?? [:]
+            if let pin, pin.hasPrefix("pnpm@"), rootFields["packageManager"] as? String != pin {
+                findings.append(
+                    error(
+                        "site_package_manager", "package.json",
+                        "doesn't pin \(file)'s \"packageManager\"; set it to \"\(pin)\""))
+            }
+        } else {
+            findings.append(
+                error(
+                    "site_package_manager", "package.json",
+                    "is missing, so Vercel's CLI can't find the pnpm pin and installs with its own pnpm; add one "
+                        + "with \"private\": true and \(file)'s \"packageManager\", as in DylKit's SampleApp"))
         }
         if fields["overrides"] != nil {
             findings.append(

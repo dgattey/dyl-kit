@@ -556,6 +556,29 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
     }
 
+    #if canImport(CryptoKit)
+    /// `appcast --throwaway-key` checks its rehearsal against the throwaway key, with a warning; `check` alone still
+    /// fails it against the app's key.
+    @Test func aThrowawaySignedAppcastPassesOnlyItsOwnRehearsal() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let pipeline = ReleasePipeline(workspace: workspace)
+        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
+        let archive = Data("zip".utf8)
+        try archive.write(to: pipeline.stagingDir.appending(path: "Sample-1.0.9.zip"))
+        let key = try SparkleKey.throwaway()
+        let unsigned = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
+            + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip" length="3"/></item>"#
+        let item = try SparkleKey.addingSignature(try SparkleKey.sign(archive, privateKey: key.privateKey), to: unsigned)
+        try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
+
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["appcast_signature"]?.count == 1)
+        let rehearsal = ReleaseChecks(workspace: workspace, throwawayPublicKey: key.publicKey).run()
+        #expect(errors(rehearsal)["appcast_signature"] == nil)
+        #expect(rehearsal.findings.contains { $0.rule == "appcast_signature" && $0.message.contains("throwaway") })
+    }
+    #endif
+
     /// A re-run of a release that went out stages its build and version again; any other build at or below the
     /// published one would undercut it.
     @Test func stagedBuildBeatsThePublishedOneUnlessItsARerun() throws {

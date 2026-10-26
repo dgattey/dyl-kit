@@ -238,10 +238,8 @@ public struct ReleasePipeline: Sendable {
             try FileManager.default.removeItem(at: throwawayKeyFile)
         }
         try verifySignature(appcast: appcast, archive: archive, publicKey: trusted)
-        if throwaway {
-            Log.warn("rehearsal: the appcast is signed with a throwaway key, so only `publish --dry-run` accepts it")
-        }
-        let report = ReleaseChecks(workspace: workspace).run(staged: stagedRelease(state, published: published))
+        let checks = ReleaseChecks(workspace: workspace, throwawayPublicKey: throwaway ? trusted : nil)
+        let report = checks.run(staged: stagedRelease(state, published: published))
         report.print()
         guard report.passed else { throw ToolError("release checks failed") }
         guard let item = try Appcast.items(at: appcast).newest else { throw ToolError("\(appcast.path) has no items") }

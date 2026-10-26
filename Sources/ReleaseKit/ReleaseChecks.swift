@@ -32,8 +32,14 @@ public struct CheckReport: Sendable {
 /// workflows, the staged appcast in `build/release/` and, when given, what's published).
 public struct ReleaseChecks: Sendable {
     public let workspace: Workspace
+    /// The public key of `appcast --throwaway-key`'s key, which the staged appcast is checked against instead, with a
+    /// warning that only `publish --dry-run` accepts it.
+    public var throwawayPublicKey: String?
 
-    public init(workspace: Workspace) { self.workspace = workspace }
+    public init(workspace: Workspace, throwawayPublicKey: String? = nil) {
+        self.workspace = workspace
+        self.throwawayPublicKey = throwawayPublicKey
+    }
 
     private var manifest: DylAppManifest { workspace.manifest }
 
@@ -193,8 +199,13 @@ public struct ReleaseChecks: Sendable {
             findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't staged next to it"))
             return
         }
-        guard let publicKey else { return }
+        guard let publicKey = throwawayPublicKey ?? publicKey else { return }
         switch EdSignature.check(item, archive: data, publicKey: publicKey) {
+        case .valid where throwawayPublicKey != nil:
+            findings.append(
+                CheckFinding(
+                    rule: "appcast_signature", severity: .warning, file: appcastPath,
+                    message: "signed with a throwaway key for a rehearsal; only `publish --dry-run` accepts it"))
         case .valid: break
         case .invalid(let reason): findings.append(error("appcast_signature", appcastPath, "\(name): \(reason)"))
         case .unverifiable:

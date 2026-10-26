@@ -66,12 +66,13 @@ public struct SiteIcons: Sendable {
             let size = String(pixels)
             switch source {
             case .macOS(let rendition):
-                try Shell.run([
+                try Shell.runQuietly([
                     ictool.path, icon.path, "--export-image", "--output-file", output.path, "--platform", "macOS",
                     "--rendition", rendition.rawValue, "--width", size, "--height", size, "--scale", "1",
                 ])
             case .fullBleedIOS:
-                try Shell.run(["sips", "-s", "format", "png", "-z", size, size, fullBleed.path, "--out", output.path])
+                try Shell.runQuietly(
+                    ["sips", "-s", "format", "png", "-z", size, size, fullBleed.path, "--out", output.path])
             }
         }
         for row in Self.all {
@@ -119,7 +120,7 @@ public struct SiteIcons: Sendable {
     /// actool's largest loose iOS icon, 152 px; it never writes a 180 px one, so `sips` resamples this.
     private func compileFullBleed(_ icon: URL, into scratch: URL) throws -> URL {
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        try Shell.run([
+        try Shell.runQuietly([
             "xcrun", "actool", icon.path, "--compile", scratch.path, "--platform", "iphoneos",
             "--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", "17.0",
             "--app-icon", "AppIcon", "--output-partial-info-plist", scratch.appending(path: "partial.plist").path,

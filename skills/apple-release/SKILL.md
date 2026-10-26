@@ -24,10 +24,12 @@ Use this when CI can't run, for example when Actions minutes run out. Run it on 
 swift run release-kit version --type minor     # or --pr <n> to read the merged PR's checkbox
 swift run release-kit bundle
 swift run release-kit sign
-swift run release-kit appcast                  # key: --ed-key-file, .cert/sparkle_ed.key, else the login Keychain
+swift run release-kit appcast                  # signs with the first key that matches SUPublicEDKey, see below
 swift run release-kit check --live
-swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN
+swift run release-kit publish                  # needs BLOB_READ_WRITE_TOKEN; --dry-run uploads nothing
 ```
+
+`appcast` tries `--ed-key-file`, else `SPARKLE_ED_PRIVATE_KEY_BASE64`, else `.cert/sparkle_ed.key`, `sparkle_private.key`, `~/.config/<slug>/sparkle_ed.key` (the slug is the app name, lowercase and hyphenated), the login Keychain account named after the bundle ID, and Sparkle's shared `ed25519` account. It signs the archive with each and uses the first whose signature `SUPublicEDKey` verifies, before `generate_appcast` runs; when none does, it lists what each location held. Sparkle's shared account holds whichever app's key was generated last on that Mac, so store each app's key in its own account: `generate_keys --account <bundle-id> -f <exported key>`. To rehearse without the app's key, run `appcast --throwaway-key`, then `publish --dry-run`. A real `publish` re-verifies the appcast against `SUPublicEDKey` and refuses it.
 
 `swift run release-kit notes --body-file <pr-body.md>` previews the cumulative notes without releasing, and `--check` runs the PR check's Release notes rules on that body instead. Don't open the staged app to check it: it has the installed app's bundle ID. Run `swift run release-kit check --live` instead.
 

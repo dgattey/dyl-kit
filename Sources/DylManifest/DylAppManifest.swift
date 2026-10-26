@@ -14,6 +14,13 @@ public struct DylAppManifest: Equatable, Sendable {
         public var bundleId: String
         public var platforms: Platforms
         public var category: String
+
+        /// The name for paths: lowercase ASCII letters and digits, with a hyphen for each run of anything else.
+        public var slug: String {
+            name.lowercased()
+                .split(whereSeparator: { !($0.isASCII && ($0.isLetter || $0.isNumber)) })
+                .joined(separator: "-")
+        }
     }
 
     public struct Platforms: Equatable, Sendable {

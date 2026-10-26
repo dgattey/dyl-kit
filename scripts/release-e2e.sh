@@ -11,7 +11,8 @@ set -euo pipefail
 kit="$(cd "$(dirname "$0")/.." && pwd)"
 work="${1:-$(mktemp -d)}"
 fail() { echo "::error::$*" >&2; exit 1; }
-# Runs a build, echoing its stderr, and fails if install_name_tool edited a binary after it was signed.
+# Runs a build, echoing its stderr, and fails if install_name_tool edited a binary after it was signed, or if a tool's
+# own output, such as actool's plist or sips's `{}`, got through.
 unsigned_edits() {
   local log status=0
   log="$(mktemp)"
@@ -20,6 +21,9 @@ unsigned_edits() {
   ((status == 0)) || exit "$status"
   if grep -F "invalidate the code signature" "$log" >/dev/null; then
     fail "$(basename "$1") $2 edited a binary after signing it"
+  fi
+  if grep -E '^(<\?xml|<plist|\{\}$)' "$log" >/dev/null; then
+    fail "$(basename "$1") $2 printed a tool's raw output"
   fi
 }
 
@@ -98,6 +102,17 @@ git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qam "Reco
 ! cmp -s "$icons_dir/apple-touch-icon.png" "$scratch/apple-touch-icon.png" || fail "apple-touch-icon.png is stale"
 
 "$release_kit" sign
+
+# Another app's key must stop appcast before generate_appcast writes an appcast the app can't verify.
+keys="$(mktemp -d)"
+openssl genpkey -algorithm ed25519 -out "$keys/other.pem"
+openssl pkey -in "$keys/other.pem" -outform DER | tail -c 32 | base64 >"$keys/other.key"
+if "$release_kit" appcast --ed-key-file "$keys/other.key" 2>"$keys/err"; then
+  fail "appcast signed with a key SUPublicEDKey doesn't match"
+fi
+grep -qF "no Sparkle private key matches" "$keys/err" || fail "appcast with another key said: $(cat "$keys/err")"
+[[ ! -f build/release/appcast.xml ]] || fail "appcast wrote an appcast with another app's key"
+
 "$release_kit" appcast --ed-key-file ed.key
 
 assets="$(sed -n 's/^assets = "\(.*\)"/\1/p' DylApp.toml)"
@@ -112,6 +127,14 @@ grep -qF "/releases" build/release/appcast.xml || fail "the staged appcast doesn
 uploads="$("$release_kit" publish --dry-run)"
 grep -qxF "releases/v$version/Sample-$version.zip" <<<"$uploads" || fail "publish --dry-run lists: $uploads"
 [[ -z "$(git tag -l "v$version")" ]] || fail "publish --dry-run tagged v$version"
+
+# A rehearsal without the app's key runs to publish --dry-run, and a real publish refuses what it signed.
+"$release_kit" appcast --throwaway-key >/dev/null
+"$release_kit" publish --dry-run >/dev/null 2>"$keys/err" || fail "publish --dry-run refused the rehearsal: $(cat "$keys/err")"
+grep -qF "throwaway" "$keys/err" || fail "publish --dry-run didn't say the appcast has a throwaway key"
+if "$release_kit" publish 2>"$keys/err"; then fail "publish shipped an appcast signed with a throwaway key"; fi
+grep -qF "doesn't verify against the app's SUPublicEDKey" "$keys/err" || fail "publish said: $(cat "$keys/err")"
+[[ -z "$(git tag -l "v$version")" ]] || fail "the refused publish tagged v$version"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

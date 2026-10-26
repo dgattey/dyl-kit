@@ -79,12 +79,19 @@ extension ReleaseKitCommand {
             abstract: "Write the notes, appcast and release.json, verify the EdDSA signature, and check the release.")
 
         @OptionGroup var options: RootOption
-        @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, a local key file, or the Keychain.")
+        @Option(
+            help: """
+                The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, then the first of the repo's key \
+                files, ~/.config/<slug>/sparkle_ed.key and the Keychain accounts <bundle-id> and ed25519 whose key \
+                matches the app's SUPublicEDKey.
+                """)
         var edKeyFile: String?
+        @Flag(help: "Sign with a fresh throwaway key to rehearse; only publish --dry-run takes the result.")
+        var throwawayKey = false
 
         func run() async throws {
             let pipeline = ReleasePipeline(workspace: try options.workspace())
-            print(try await pipeline.appcast(edKeyFile: try pipeline.resolveEdKey(explicit: edKeyFile)).path)
+            print(try await pipeline.appcast(explicitKey: edKeyFile, throwaway: throwawayKey).path)
         }
     }
 

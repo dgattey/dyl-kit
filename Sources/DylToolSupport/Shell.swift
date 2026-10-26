@@ -35,6 +35,25 @@ public enum Shell {
         return process.terminationStatus
     }
 
+    /// Runs `arguments` with all of its output held back, for tools that print results nobody reads, such as actool's
+    /// plist or sips's paths. A failure's error carries the output.
+    ///
+    /// - Blocking: waits for the child process.
+    public static func runQuietly(_ arguments: [String], cwd: URL? = nil) throws {
+        let process = makeProcess(arguments, cwd: cwd, environment: [:])
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus != 0 else { return }
+        let report = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        throw ToolError(
+            "`\(arguments.joined(separator: " "))` exited with status \(process.terminationStatus)"
+                + (report.isEmpty ? "" : ":\n\(report)"))
+    }
+
     /// Runs `arguments` and returns its stdout with surrounding whitespace trimmed. Stderr passes through, or is
     /// captured too with `includeStderr`, for tools like `codesign -d` that report on stderr.
     ///

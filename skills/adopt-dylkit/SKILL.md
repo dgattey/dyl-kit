@@ -1,6 +1,6 @@
 ---
 name: adopt-dylkit
-description: Adopt DylKit in an app, start to finish. Covers the Vercel Blob store and secrets, the three DylKit pins and the files copied once, DylApp.toml, the site's switch to `@dylkit/web`, the first release to Blob, and later upgrades.
+description: Adopt DylKit in an app, start to finish. Covers the Vercel Blob store and secrets, the four DylKit pins and the files copied once, DylApp.toml, the site's switch to `@dylkit/web`, the first release to Blob, and later upgrades.
 ---
 
 # Adopt DylKit
@@ -48,7 +48,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 ## The adoption PR
 
 1. Pin the release in `Package.swift`, `.package(url: "https://github.com/dgattey/dyl-kit", from: "<version>")`, then `swift package update dyl-kit`.
-2. Copy `.github/workflows/dylkit.yml`, `.github/workflows/release-info.yml` and `.github/pull_request_template.md` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set both workflows' `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. `dylkit.yml` runs `dylkit / verify` (`swift run devkit verify` on macOS) and the release; it never runs on `edited`, where GitHub would grade the commit by a run without verify. `release-info.yml` runs `dylkit / release-info`, which checks the PR body on every edit. Delete any release, PR-check or verify workflow they replace. The rule for writing release notes comes with the DylKit plugin, so the app keeps no copy. `mise.toml` pins `swiftlint = "0.65.1"` under `[tools]`, like SampleApp's, and `.swiftlint.yml`, if the app has one, holds only its own `included` paths and rules with no `parent_config`.
+2. Copy `.github/workflows/dylkit.yml`, `.github/workflows/release-info.yml` and `.github/pull_request_template.md` from DylKit's `Tests/Fixtures/SampleApp/` at that tag, and set both workflows' `@v<version>` to the pinned version. They're the app's from then on, and no DylKit bump rewrites them. `dylkit.yml` runs `dylkit / verify` (`swift run devkit verify` on macOS) and the release, on `pull_request` types `opened`, `reopened`, `synchronize` and `closed`. Never add `edited`: GitHub grades the commit by its newest run, so an edit's run would replace verify's result, and `dylkit_version` fails it. `release-info.yml` runs `dylkit / release-info` on `opened`, `edited`, `reopened` and `synchronize`, so it checks the PR body on every edit. Delete any release, PR-check or verify workflow they replace. The rule for writing release notes comes with the DylKit plugin, so the app keeps no copy. `mise.toml` pins `swiftlint = "0.65.1"` under `[tools]`, like SampleApp's, and `.swiftlint.yml`, if the app has one, holds only its own `included` paths and rules with no `parent_config`.
 3. In `DylApp.toml`, under `[release]`, set `assets = "https://<store>.public.blob.vercel-storage.com"`.
 4. Install the site with pnpm. `site_package_manager` in the checks fails a site whose `server/package.json` or repo-root `package.json` doesn't hold DylKit's exact pnpm pin, and a site without `pnpm-lock.yaml`. The failure names the pin.
    1. In `server/`, copy `packageManager`, the `preinstall` script, `pnpm-workspace.yaml` and `.node-version` from DylKit's `Tests/Fixtures/SampleApp/server/` at that tag. `.node-version` matches the Vercel project's Node 24, and a `mise.toml` that pins `node` pins that same version.
@@ -91,7 +91,7 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
 
 ## Upgrading DylKit
 
-One PR moves the three pins to the same version, with their lockfiles:
+One PR moves the four pins to the same version, with their lockfiles:
 
 1. `Package.swift`'s `from:`, then `swift package update dyl-kit` for `Package.resolved`.
 2. The `@dylkit/web` tarball in `server/package.json`, then `pnpm install` in `server/` for `pnpm-lock.yaml`.

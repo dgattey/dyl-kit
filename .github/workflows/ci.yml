@@ -71,7 +71,7 @@ jobs:
           pnpm build
 
   # A PR's own @dylkit/web, so apps can run the PR end to end before it releases. Each commit gets its own tarball, which
-  # never moves and is never tagged; the run's summary names the three pins that select that commit.
+  # never moves and is never tagged; the run's summary names the four pins that select that commit.
   prerelease:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [swift, web]

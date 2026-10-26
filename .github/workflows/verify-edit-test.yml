@@ -1,0 +1,14 @@
+# Throwaway: exercises app.yml's verify the way an app's dylkit.yml calls it. Not for merging.
+name: verify-edit-test
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dylkit:
+    uses: ./.github/workflows/app.yml

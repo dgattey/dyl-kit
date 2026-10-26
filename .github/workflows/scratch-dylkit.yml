@@ -12,5 +12,5 @@ permissions:
 
 jobs:
   dylkit:
-    uses: dgattey/dyl-kit/.github/workflows/app.yml@facb7feb389dee1fd20695d6b2a16099fcdbe8e7
+    uses: dgattey/dyl-kit/.github/workflows/app.yml@6d7d48e155a6c5f9d0a40192a48f79f2e0cbda40
     secrets: inherit

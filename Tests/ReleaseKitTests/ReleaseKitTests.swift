@@ -499,7 +499,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
             "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
+            "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/tsconfig.json", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
             ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
@@ -810,6 +810,25 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
             "server/package.json", "package.json",
         ])
+    }
+
+    /// Only bundler resolution type-checks @dylkit/web's subpath exports, and next build writes `node` into a site with
+    /// no tsconfig.json.
+    @Test func theSiteResolvesTheWebPackagesSubpaths() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        func ruleErrors() -> [String]? { errors(ReleaseChecks(workspace: workspace).run())["site_typescript"] }
+        #expect(ruleErrors() == nil)
+        let config = workspace.url("server/tsconfig.json")
+        let text = try String(contentsOf: config, encoding: .utf8)
+        try Data(text.replacingOccurrences(of: #""bundler""#, with: #""node""#).utf8).write(to: config)
+        #expect(
+            ruleErrors() == [
+                #"has "node" moduleResolution; set "moduleResolution": "bundler" so @dylkit/web/app, /config and "#
+                    + "/routes resolve"
+            ])
+        try FileManager.default.removeItem(at: config)
+        #expect(ruleErrors() == ["is missing; copy DylKit's SampleApp server/tsconfig.json"])
     }
 
     /// pnpm run at the repo root writes a lockfile there that only records its own version; apps ignore it.

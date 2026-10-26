@@ -61,6 +61,14 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Test @dylkit/web
         run: pnpm install && pnpm test
+      # What apps' Vercel builds run, against this commit's package instead of the fixture's released one.
+      - name: Build SampleApp's site with this @dylkit/web
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          cp -R ../Tests/Fixtures/SampleApp "$RUNNER_TEMP/app"
+          cd "$RUNNER_TEMP/app/server"
+          pnpm add "@dylkit/web@file:$RUNNER_TEMP/dylkit-web-0.0.0.tgz"
+          pnpm build
 
   # A PR's own @dylkit/web, so apps can run the PR end to end before it releases. Each commit gets its own tarball, which
   # never moves and is never tagged; the run's summary names the three pins that select that commit.

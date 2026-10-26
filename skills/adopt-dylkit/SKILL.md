@@ -74,7 +74,8 @@ One store per app: the newest `appcast.xml` and `release.json` sit at the store 
    6. Locally, run `corepack enable pnpm` once, or use any pnpm 10 or later, which switches to the pinned version itself.
    - Check: `pnpm install --frozen-lockfile` passes in `server/`.
 5. Switch the site to `@dylkit/web`.
-   1. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/releases/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README.
+   1. Wrap `next.config.ts`'s config in `withDylKit` from `@dylkit/web/config`, and make `app/layout.tsx`, `app/page.tsx`, `app/releases/page.tsx`, `app/appcast.xml/route.ts`, `app/download/macos/route.ts` and the four icon routes the one-line re-exports in DylKit's README. SampleApp's `server/` holds each of them.
+   - `server/tsconfig.json` sets `"moduleResolution": "bundler"`, as SampleApp's does; only that resolves `@dylkit/web`'s subpath exports. A site without one gets `node` from `next build`, which fails. `site_typescript` in the checks fails both.
    - Delete the committed site icons (`app/icon.png`, `apple-icon.png`, `favicon.ico`, `public/app-icon.png`, `apple-icon.png`) and the icon-generator lines that write them. If the icon's light variant vanishes on a light tab, set `favicon = "dark"` under `[site]`.
    2. In `server/vercel.json`, set `"ignoreCommand": "git rev-parse --quiet --verify \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . ../DylApp.toml ../package.json"`.
    - Check: `pnpm build` and the site's own test scripts pass in `server/`, and the PR's Vercel preview build log says it used the pinned pnpm.

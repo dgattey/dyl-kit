@@ -67,6 +67,7 @@ public struct ReleaseChecks: Sendable {
         check("site_deploy", checkSiteDeploy)
         check("site_package_manager", checkSitePackageManager)
         check("releases_page", checkReleasesPage)
+        check("site_typescript", checkSiteTypeScript)
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("release_notes", checkReleaseNotesFiles)
@@ -423,6 +424,23 @@ public struct ReleaseChecks: Sendable {
                     "site_package_manager", "\(siteRoot)/pnpm-lock.yaml",
                     "is missing, so Vercel installs with npm; run `pnpm install` in \(siteRoot)"))
         }
+    }
+
+    /// `@dylkit/web` ships TypeScript and exposes its pages and routes as subpath exports, which only `bundler`
+    /// resolution type-checks. A site with no `tsconfig.json` gets one from `next build` with `node` resolution, so it
+    /// fails its first build.
+    private func checkSiteTypeScript(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site, package.contains("\"@dylkit/web\"") else { return }
+        let file = "\(siteRoot)/tsconfig.json"
+        let fix = "set \"moduleResolution\": \"bundler\" so @dylkit/web/app, /config and /routes resolve"
+        guard let config = read(file) else {
+            findings.append(error("site_typescript", file, "is missing; copy DylKit's SampleApp server/tsconfig.json"))
+            return
+        }
+        let resolution = config.firstMatch(of: /"moduleResolution"\s*:\s*"([^"]*)"/).map { String($0.1) }
+        guard resolution?.lowercased() != "bundler" else { return }
+        let current = resolution.map { "\"\($0)\"" } ?? "no"
+        findings.append(error("site_typescript", file, "has \(current) moduleResolution; \(fix)"))
     }
 
     /// Sparkle's full-notes link and the end of every update's notes point at `/releases`, the only place a user more

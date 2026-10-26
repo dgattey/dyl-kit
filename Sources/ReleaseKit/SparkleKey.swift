@@ -99,6 +99,25 @@ public enum SparkleKey {
         }
     }
 
+    /// `privateKey`'s signature on `archive`, base64 as the appcast carries it.
+    static func sign(_ archive: Data, privateKey: String) throws -> String {
+        #if canImport(CryptoKit)
+        guard let seed = Data(base64Encoded: privateKey) else { throw ToolError("the throwaway key isn't base64") }
+        return try Curve25519.Signing.PrivateKey(rawRepresentation: seed).signature(for: archive).base64EncodedString()
+        #else
+        throw ToolError("a throwaway Sparkle key needs CryptoKit; rehearse on macOS")
+        #endif
+    }
+
+    /// `appcast` with `sparkle:edSignature` added to its one enclosure. `generate_appcast` leaves an item unsigned when
+    /// the key doesn't match the app's `SUPublicEDKey`, as a throwaway key never does.
+    static func addingSignature(_ signature: String, to appcast: String) throws -> String {
+        guard appcast.ranges(of: "<enclosure ").count == 1, !appcast.contains("sparkle:edSignature") else {
+            throw ToolError("expected one unsigned enclosure in the rehearsal's appcast")
+        }
+        return appcast.replacing("<enclosure ", with: "<enclosure sparkle:edSignature=\"\(signature)\" ")
+    }
+
     /// A fresh key for rehearsing a release without the app's: the base64 seed `--ed-key-file` reads, and its public
     /// key.
     static func throwaway() throws -> (privateKey: String, publicKey: String) {

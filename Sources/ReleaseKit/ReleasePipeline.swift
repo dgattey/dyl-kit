@@ -213,8 +213,10 @@ public struct ReleasePipeline: Sendable {
         try? FileManager.default.removeItem(at: throwawayPublicKeyFile)
         let trusted: String
         let key: SparkleKey.Location
+        var throwawayKey: String?
         if throwaway {
             let pair = try SparkleKey.throwaway()
+            throwawayKey = pair.privateKey
             try Data(pair.privateKey.utf8).write(to: throwawayKeyFile)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: throwawayKeyFile.path)
             try Data(pair.publicKey.utf8).write(to: throwawayPublicKeyFile)
@@ -228,7 +230,13 @@ public struct ReleasePipeline: Sendable {
         let notes = releaseNotes(state: state, history: published)
         try Data((notes + "\n").utf8).write(
             to: stagingDir.appending(path: "\(workspace.manifest.app.name)-\(state.version).html"))
-        let appcast = try generateAppcast(key: key, downloadPrefix: downloadPrefix(tag: state.tag))
+        let appcast = try generateAppcast(key: key, quiet: throwaway, downloadPrefix: downloadPrefix(tag: state.tag))
+        if let throwawayKey {
+            let signature = try SparkleKey.sign(try Data(contentsOf: archive), privateKey: throwawayKey)
+            let signed = try SparkleKey.addingSignature(signature, to: try String(contentsOf: appcast, encoding: .utf8))
+            try Data(signed.utf8).write(to: appcast)
+            try FileManager.default.removeItem(at: throwawayKeyFile)
+        }
         try verifySignature(appcast: appcast, archive: archive, publicKey: trusted)
         if throwaway {
             Log.warn("rehearsal: the appcast is signed with a throwaway key, so only `publish --dry-run` accepts it")
@@ -346,7 +354,8 @@ public struct ReleasePipeline: Sendable {
             .publish(root: [stagedHistory], assets: assets)
     }
 
-    private func generateAppcast(key: SparkleKey.Location, downloadPrefix: String) throws -> URL {
+    /// `quiet` holds back `generate_appcast`'s output, for a throwaway key whose mismatch warning is expected.
+    private func generateAppcast(key: SparkleKey.Location, quiet: Bool, downloadPrefix: String) throws -> URL {
         let tool = workspace.sparkleTool("generate_appcast")
         guard FileManager.default.isExecutableFile(atPath: tool.path) else {
             throw ToolError("\(tool.path) is missing; run `swift build` so SwiftPM unpacks Sparkle")
@@ -360,11 +369,12 @@ public struct ReleasePipeline: Sendable {
         }
         // The feed holds only this release: Sparkle offers the newest item a Mac can run, whatever build it's on, and
         // shows only that item's notes. Its "Version History" button opens the full-notes link.
-        try Shell.run(
+        let arguments =
             [
                 tool.path, "--embed-release-notes", "--disable-signing-warning", "--download-url-prefix", downloadPrefix,
                 "--link", workspace.manifest.release.siteUrl, "--full-release-notes-url", allReleasesURL,
-            ] + key.arguments + [feed.path])
+            ] + key.arguments + [feed.path]
+        if quiet { try Shell.runQuietly(arguments) } else { try Shell.run(arguments) }
         try? FileManager.default.removeItem(at: stagedAppcast)
         try FileManager.default.moveItem(at: feed.appending(path: "appcast.xml"), to: stagedAppcast)
         try? FileManager.default.removeItem(at: feed)

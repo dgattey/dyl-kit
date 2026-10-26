@@ -64,12 +64,27 @@ import Testing
                 """)
     }
 
+    @Test func aRehearsalSignsItsOneEnclosure() throws {
+        let unsigned = #"<item><enclosure url="https://x/a.zip" length="3" type="application/octet-stream"/></item>"#
+        #expect(
+            try SparkleKey.addingSignature("c2ln", to: unsigned)
+                == #"<item><enclosure sparkle:edSignature="c2ln" url="https://x/a.zip" length="3" "#
+                + #"type="application/octet-stream"/></item>"#)
+        #expect(throws: ToolError.self) { try SparkleKey.addingSignature("c2ln", to: unsigned + unsigned) }
+        #expect(throws: ToolError.self) {
+            try SparkleKey.addingSignature("c2ln", to: try SparkleKey.addingSignature("c2ln", to: unsigned))
+        }
+    }
+
     #if canImport(CryptoKit)
-    @Test func aThrowawayKeyIsASeedAndItsPublicKey() throws {
+    @Test func aThrowawayKeysSignatureVerifiesOnlyAgainstItsOwnPublicKey() throws {
         let pair = try SparkleKey.throwaway()
         #expect(Data(base64Encoded: pair.privateKey)?.count == 32)
-        #expect(Data(base64Encoded: pair.publicKey)?.count == 32)
-        #expect(try SparkleKey.throwaway().privateKey != pair.privateKey)
+        let archive = Data("zip".utf8)
+        let signature = try SparkleKey.sign(archive, privateKey: pair.privateKey)
+        #expect(EdSignature.verify(archive: archive, signature: signature, publicKey: pair.publicKey) == .valid)
+        let other = try SparkleKey.throwaway().publicKey
+        #expect(EdSignature.verify(archive: archive, signature: signature, publicKey: other) != .valid)
     }
     #endif
 }

@@ -196,7 +196,7 @@ public struct ReleaseChecks: Sendable {
     private func checkStagedAppcast(_ findings: inout [CheckFinding]) {
         let appcastPath = relative(stagedAppcast)
         guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.newest else { return }
-        guard let name = item.enclosureURL?.split(separator: "/").last.map(String.init) else {
+        guard let name = item.enclosureFileName else {
             findings.append(error("appcast_signature", appcastPath, "newest item has no enclosure URL"))
             return
         }
@@ -625,7 +625,8 @@ public struct ReleaseChecks: Sendable {
                     "build_number_monotonic", file, "build \(item.build) isn't above the published build \(published.build)"
                 ))
         }
-        let expectedURL = staged.downloadPrefix + staged.archive.lastPathComponent
+        let expectedURL = AppcastItem.enclosureURL(
+            prefix: staged.downloadPrefix, fileName: staged.archive.lastPathComponent)
         if item.enclosureURL != expectedURL {
             findings.append(
                 error("staged_release", file, "enclosure is \(item.enclosureURL ?? "missing"), expected \(expectedURL)")

@@ -211,6 +211,11 @@ public struct ReleasePipeline: Sendable {
         }
         try? FileManager.default.removeItem(at: throwawayKeyFile)
         try? FileManager.default.removeItem(at: throwawayPublicKeyFile)
+        var succeeded = false
+        defer {
+            try? FileManager.default.removeItem(at: throwawayKeyFile)
+            if !succeeded { try? FileManager.default.removeItem(at: throwawayPublicKeyFile) }
+        }
         let trusted: String
         let key: SparkleKey.Location
         var throwawayKey: String?
@@ -235,7 +240,6 @@ public struct ReleasePipeline: Sendable {
             let signature = try SparkleKey.sign(try Data(contentsOf: archive), privateKey: throwawayKey)
             let signed = try SparkleKey.addingSignature(signature, to: try String(contentsOf: appcast, encoding: .utf8))
             try Data(signed.utf8).write(to: appcast)
-            try FileManager.default.removeItem(at: throwawayKeyFile)
         }
         try verifySignature(appcast: appcast, archive: archive, publicKey: trusted)
         let checks = ReleaseChecks(workspace: workspace, throwawayPublicKey: throwaway ? trusted : nil)
@@ -248,6 +252,7 @@ public struct ReleasePipeline: Sendable {
         let history = try await ReleaseHistory.published(latestHistoryURL, transport: transport)
         try ReleaseHistory.next(published: history, staged: item, feeds: published).write(to: stagedHistory)
         Log.step("wrote \(stagedHistory.path)")
+        succeeded = true
         return appcast
     }
 
@@ -447,7 +452,8 @@ public struct ReleasePipeline: Sendable {
             candidates = SparkleKey.candidates(workspace: workspace, home: home)
         }
         return try SparkleKey.resolve(
-            candidates, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId, diagnoseShared: searched
+            candidates, publicKey: publicKey, bundleId: workspace.manifest.app.bundleId,
+            sharedHoldsKey: searched ? { try SparkleKey.keychainHasItem(account: SparkleKey.sharedAccount) } : nil
         ) { try SparkleKey.probe($0, signUpdate: signUpdate, archive: archive, publicKey: publicKey) }
     }
 

@@ -579,6 +579,28 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
     }
     #endif
 
+    /// An app name with a space: the enclosure URL is percent-encoded, and both checks find the staged zip.
+    @Test func anArchiveNameWithASpacePassesBothChecks() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let pipeline = ReleasePipeline(workspace: workspace)
+        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
+        let archive = pipeline.stagingDir.appending(path: "Sample App-1.0.9.zip")
+        try Data("zip".utf8).write(to: archive)
+        func failures(_ url: String) throws -> [String: [String]] {
+            let item = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
+                + #"<enclosure url="\#(url)" length="3"/></item>"#
+            try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
+            let staged = ReleaseChecks.StagedRelease(
+                appcast: pipeline.stagedAppcast, archive: archive, downloadPrefix: Self.downloadPrefix, published: [])
+            return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
+        }
+        let encoded = try failures(Self.downloadPrefix + "Sample%20App-1.0.9.zip")
+        #expect(encoded["staged_release"] == nil)
+        #expect(encoded["appcast_signature"]?.allSatisfy { !$0.contains("isn't staged") } ?? true)
+        #expect(try failures(Self.downloadPrefix + "Sample-1.0.9.zip")["staged_release"]?.count == 1)
+    }
+
     /// A re-run of a release that went out stages its build and version again; any other build at or below the
     /// published one would undercut it.
     @Test func stagedBuildBeatsThePublishedOneUnlessItsARerun() throws {

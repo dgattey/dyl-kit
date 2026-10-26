@@ -11,6 +11,8 @@ import CryptoKit
 public enum SparkleKey {
     /// Sparkle's default Keychain account, which every app on a Mac shares.
     static let sharedAccount = "ed25519"
+    /// The service `generate_keys` files its Keychain items under.
+    static let keychainService = "https://sparkle-project.org"
 
     public enum Location: Equatable, Sendable {
         case file(URL, label: String)
@@ -54,10 +56,10 @@ public enum SparkleKey {
     }
 
     /// The first of `candidates` whose key signs for `publicKey`. Throws, listing what each location held, when none
-    /// does. With `diagnoseShared`, that list also says what Sparkle's shared account holds, which is never signed
-    /// from, and how to move the app's key out of it.
+    /// does. `sharedHoldsKey`, when given, says whether Sparkle's shared account has an item; the list reports that,
+    /// never reading the key, and says how to move the app's key out of it.
     static func resolve(
-        _ candidates: [Location], publicKey: String, bundleId: String, diagnoseShared: Bool,
+        _ candidates: [Location], publicKey: String, bundleId: String, sharedHoldsKey: (() throws -> Bool)?,
         probe: (Location) throws -> Probe
     ) throws -> Location {
         var checked: [String] = []
@@ -70,17 +72,14 @@ public enum SparkleKey {
             case .unavailable(let reason): checked.append("\(location.label): \(reason)")
             }
         }
-        if diagnoseShared {
-            let shared = Location.keychain(account: sharedAccount)
-            switch try probe(shared) {
-            case .matches:
-                checked.append(
-                    "\(shared.label): this app's key, which release-kit never signs from; move it with "
-                        + "`generate_keys -x <file>`, `generate_keys --account \(bundleId) -f <file>`, "
-                        + "then delete <file>")
-            case .differs: checked.append("\(shared.label): another app's key, never used")
-            case .unavailable(let reason): checked.append("\(shared.label): \(reason), never used")
-            }
+        if let sharedHoldsKey {
+            let shared = Location.keychain(account: sharedAccount).label
+            checked.append(
+                try sharedHoldsKey()
+                    ? "\(shared): holds a key, which release-kit never reads or signs from; if it's this app's, move it "
+                        + "with `generate_keys -x <file>`, `generate_keys --account \(bundleId) -f <file>`, then delete "
+                        + "<file>"
+                    : "\(shared): no key")
         }
         throw ToolError(
             (["no Sparkle private key matches the app's SUPublicEDKey \(publicKey). Checked:"]
@@ -91,13 +90,26 @@ public enum SparkleKey {
                 ]).joined(separator: "\n"))
     }
 
+    /// Whether the login Keychain has Sparkle's item for `account`. It reads only the item's attributes, never the
+    /// secret, so it can't raise the access prompt that blocks a headless run when another binary owns the item.
+    ///
+    /// - Blocking: runs security.
+    static func keychainHasItem(account: String) throws -> Bool {
+        try Shell.run(
+            ["security", "find-generic-password", "-s", keychainService, "-a", account], quiet: true,
+            allowFailure: true) == 0
+    }
+
     /// Signs `archive` with `location`'s key through Sparkle's `sign_update` and checks the signature against
-    /// `publicKey`, so any key format Sparkle reads works.
+    /// `publicKey`, so any key format Sparkle reads works. A location with no file or Keychain item is skipped
+    /// without running it.
     ///
     /// - Blocking: runs sign_update, which may read the Keychain.
     static func probe(_ location: Location, signUpdate: URL, archive: URL, publicKey: String) throws -> Probe {
-        if case .file(let url, _) = location, !FileManager.default.fileExists(atPath: url.path) {
-            return .unavailable("no file")
+        switch location {
+        case .file(let url, _) where !FileManager.default.fileExists(atPath: url.path): return .unavailable("no file")
+        case .keychain(let account) where try !keychainHasItem(account: account): return .unavailable("no key")
+        default: break
         }
         let output = try Shell.capture(
             [signUpdate.path] + location.arguments + [archive.path], includeStderr: true, allowFailure: true)

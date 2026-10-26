@@ -29,7 +29,8 @@ import Testing
         ]
         var probed: [SparkleKey.Location] = []
         let chosen = try SparkleKey.resolve(
-            candidates, publicKey: "pub", bundleId: "com.dylkit.Sample", diagnoseShared: true
+            candidates, publicKey: "pub", bundleId: "com.dylkit.Sample",
+            sharedHoldsKey: { Issue.record("looked up the shared account after a match"); return true }
         ) { location in
             probed.append(location)
             switch location {
@@ -41,24 +42,29 @@ import Testing
         #expect(probed == candidates)
     }
 
-    /// The shared account is only read to explain a failure, even when it holds the app's own key.
-    @Test func theSharedAccountsKeyIsDiagnosedNotUsed() throws {
+    /// The shared account is only looked up, never read or probed, to explain a failure: reading another binary's
+    /// item raises a Keychain prompt that blocks a headless run.
+    @Test func theSharedAccountIsLookedUpNotRead() throws {
         let workspace = try Workspace.locate(appRoot.path)
         let candidates = SparkleKey.candidates(workspace: workspace, home: home)
         let error = #expect(throws: ToolError.self) {
-            try SparkleKey.resolve(candidates, publicKey: "pub", bundleId: "com.dylkit.Sample", diagnoseShared: true) {
-                $0 == .keychain(account: SparkleKey.sharedAccount) ? .matches : .unavailable("none")
+            try SparkleKey.resolve(
+                candidates, publicKey: "pub", bundleId: "com.dylkit.Sample", sharedHoldsKey: { true }
+            ) { location in
+                #expect(location != .keychain(account: SparkleKey.sharedAccount))
+                return .unavailable("none")
             }
         }
         #expect(
             error?.description.contains(
-                "Keychain account ed25519 (Sparkle's default, shared by every app on this Mac): this app's key, which "
-                    + "release-kit never signs from; move it with `generate_keys -x <file>`, "
-                    + "`generate_keys --account com.dylkit.Sample -f <file>`, then delete <file>") == true)
+                "Keychain account ed25519 (Sparkle's default, shared by every app on this Mac): holds a key, which "
+                    + "release-kit never reads or signs from; if it's this app's, move it with "
+                    + "`generate_keys -x <file>`, `generate_keys --account com.dylkit.Sample -f <file>`, then delete "
+                    + "<file>") == true)
         let explicit = #expect(throws: ToolError.self) {
             try SparkleKey.resolve(
                 [.file(home.appending(path: "a.key"), label: "--ed-key-file a.key")], publicKey: "pub",
-                bundleId: "com.dylkit.Sample", diagnoseShared: false
+                bundleId: "com.dylkit.Sample", sharedHoldsKey: nil
             ) { _ in .differs }
         }
         #expect(explicit?.description.contains("ed25519") == false)
@@ -68,9 +74,9 @@ import Testing
         let workspace = try Workspace.locate(appRoot.path)
         let candidates = SparkleKey.candidates(workspace: workspace, home: home)
         let error = #expect(throws: ToolError.self) {
-            try SparkleKey.resolve(candidates, publicKey: "pub", bundleId: "com.dylkit.Sample", diagnoseShared: true) {
-                location in
-                if case .keychain(let account) = location, account == SparkleKey.sharedAccount { return .differs }
+            try SparkleKey.resolve(
+                candidates, publicKey: "pub", bundleId: "com.dylkit.Sample", sharedHoldsKey: { false }
+            ) { location in
                 if case .keychain = location { return .unavailable("no key") }
                 return .unavailable("no file")
             }
@@ -82,11 +88,20 @@ import Testing
                   - sparkle_private.key: no file
                   - ~/.config/sample/sparkle_ed.key: no file
                   - Keychain account com.dylkit.Sample: no key
-                  - Keychain account ed25519 (Sparkle's default, shared by every app on this Mac): another app's key, \
-                never used
+                  - Keychain account ed25519 (Sparkle's default, shared by every app on this Mac): no key
                 Store the app's key with Sparkle's `generate_keys --account com.dylkit.Sample -f <exported key>`, pass \
                 --ed-key-file, or rehearse with `release-kit appcast --throwaway-key`.
                 """)
+    }
+
+    /// A Keychain account with no item is skipped on its attributes alone, before sign_update could raise a prompt.
+    @Test func aMissingKeychainItemIsNeverProbed() throws {
+        let account = "com.dylkit.missing-\(UUID().uuidString)"
+        #expect(try !SparkleKey.keychainHasItem(account: account))
+        let probe = try SparkleKey.probe(
+            .keychain(account: account), signUpdate: URL(fileURLWithPath: "/nonexistent/sign_update"),
+            archive: URL(fileURLWithPath: "/nonexistent/a.zip"), publicKey: "pub")
+        #expect(probe == .unavailable("no key"))
     }
 
     @Test func aRehearsalSignsItsOneEnclosure() throws {

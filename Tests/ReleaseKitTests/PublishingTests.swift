@@ -33,6 +33,17 @@ private func item(_ version: String, build: Int) -> String {
 }
 
 @Suite struct AppcastTests {
+    /// generate_appcast percent-encodes the archive name in the URL; the file on disk and the Blob pathname keep it raw.
+    @Test func enclosureNamesWithASpaceDecodeToTheFile() {
+        let prefix = "https://abc.public.blob.vercel-storage.com/releases/v1.2/"
+        let url = AppcastItem.enclosureURL(prefix: prefix, fileName: "Gattey Photos-1.2.zip")
+        #expect(url == prefix + "Gattey%20Photos-1.2.zip")
+        var item = AppcastItem(build: 1)
+        item.enclosureURL = url
+        #expect(item.enclosureFileName == "Gattey Photos-1.2.zip")
+        #expect(AppcastItem.enclosureURL(prefix: prefix, fileName: "Sample-1.2.zip") == prefix + "Sample-1.2.zip")
+    }
+
     @Test func parsesThePublishDateAndHardwareRequirements() throws {
         let xml = sparkleFeed(
             """

@@ -35,6 +35,9 @@ rm -rf "$work"
 cp -R "$kit/Tests/Fixtures/SampleApp" "$work"
 cd "$work"
 sed -i '' "s|.package(path: \"../../..\")|.package(path: \"$kit\")|" Package.swift
+# A name with a space: generate_appcast percent-encodes it in the enclosure URL, and the zip on disk keeps it raw.
+sed -i '' 's/^name = "Sample"$/name = "Sample App"/' DylApp.toml
+grep -qxF 'name = "Sample App"' DylApp.toml || fail "couldn't rename the app to Sample App"
 
 # Sparkle's private key file is the base64 Ed25519 seed; SUPublicEDKey is the base64 public key.
 openssl genpkey -algorithm ed25519 -out key.pem
@@ -116,7 +119,7 @@ grep -qF "no Sparkle private key matches" "$keys/err" || fail "appcast with anot
 "$release_kit" appcast --ed-key-file ed.key
 
 assets="$(sed -n 's/^assets = "\(.*\)"/\1/p' DylApp.toml)"
-download="$assets/releases/v$version/Sample-$version.zip"
+download="$assets/releases/v$version/Sample%20App-$version.zip"
 grep -qF "url=\"$download\"" build/release/appcast.xml || fail "the staged appcast's enclosure isn't $download"
 [[ -f build/release/release.json ]] || fail "appcast wrote no build/release/release.json"
 [[ "$(plutil -extract download raw -o - build/release/release.json)" == "$download" ]] ||
@@ -125,7 +128,7 @@ grep -qF "\"version\" : \"$version\"" build/release/history.json || fail "histor
 grep -qF "/releases" build/release/appcast.xml || fail "the staged appcast doesn't link /releases"
 
 uploads="$("$release_kit" publish --dry-run)"
-grep -qxF "releases/v$version/Sample-$version.zip" <<<"$uploads" || fail "publish --dry-run lists: $uploads"
+grep -qxF "releases/v$version/Sample App-$version.zip" <<<"$uploads" || fail "publish --dry-run lists: $uploads"
 [[ -z "$(git tag -l "v$version")" ]] || fail "publish --dry-run tagged v$version"
 
 # A rehearsal without the app's key runs to publish --dry-run, and a real publish refuses what it signed.

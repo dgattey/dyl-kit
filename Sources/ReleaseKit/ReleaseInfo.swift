@@ -17,8 +17,15 @@ public enum ReleaseInfo {
         for body in [prBody, commitBody].compactMap(\.self) {
             if let bump = releaseType(in: body) { return (body, bump) }
         }
-        let tried = prBody == nil ? "the merge commit message" : "the PR body or the merge commit message"
-        throw ToolError("neither \(tried) checks exactly one box under `# Release info` (Major, Minor or Patch)")
+        let box = "exactly one of Major, Minor or Patch under `# Release info`"
+        guard prBody != nil else {
+            throw ToolError(
+                "the merge commit message doesn't check \(box), and no PR body was read to check instead; pass "
+                    + "--pr <number> with GitHub access, or the bump with --type")
+        }
+        throw ToolError(
+            "the PR body and the merge commit message each check none or several boxes; check \(box) in the PR, "
+                + "or pass the bump with --type")
     }
 
     /// One release for several merges, newest first: the largest bump, and each merge's notes under one

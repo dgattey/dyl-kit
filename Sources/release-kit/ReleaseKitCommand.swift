@@ -79,12 +79,19 @@ extension ReleaseKitCommand {
             abstract: "Write the notes, appcast and release.json, verify the EdDSA signature, and check the release.")
 
         @OptionGroup var options: RootOption
-        @Option(help: "The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, a local key file, or the Keychain.")
+        @Option(
+            help: """
+                The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, then the first of the repo's key \
+                files, ~/.config/<slug>/sparkle_ed.key and the Keychain account <bundle-id> whose key matches the \
+                app's SUPublicEDKey. Sparkle's shared ed25519 account is never used.
+                """)
         var edKeyFile: String?
+        @Flag(help: "Sign with a fresh throwaway key to rehearse; only publish --dry-run takes the result.")
+        var throwawayKey = false
 
         func run() async throws {
             let pipeline = ReleasePipeline(workspace: try options.workspace())
-            print(try await pipeline.appcast(edKeyFile: try pipeline.resolveEdKey(explicit: edKeyFile)).path)
+            print(try await pipeline.appcast(explicitKey: edKeyFile, throwaway: throwawayKey).path)
         }
     }
 
@@ -114,12 +121,19 @@ extension ReleaseKitCommand {
 
     struct Publish: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.")
+            abstract: "Tag v<version>, push the tag, and upload the zip, appcast and release.json to Vercel Blob.",
+            discussion: """
+                With --dry-run, after version, bundle, sign and appcast, it makes publish's checks and lists the \
+                uploads, and tags, pushes and uploads nothing, so the whole release runs locally.
+                """)
 
         @OptionGroup var options: RootOption
+        @Flag(help: "Check and list what publish would tag and upload, without tagging, pushing or uploading.")
+        var dryRun = false
 
         func run() async throws {
-            try await ReleasePipeline(workspace: try options.workspace()).publish()
+            let pathnames = try await ReleasePipeline(workspace: try options.workspace()).publish(dryRun: dryRun)
+            if dryRun { for pathname in pathnames { print(pathname) } }
         }
     }
 

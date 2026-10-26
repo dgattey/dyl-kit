@@ -32,8 +32,14 @@ public struct CheckReport: Sendable {
 /// workflows, the staged appcast in `build/release/` and, when given, what's published).
 public struct ReleaseChecks: Sendable {
     public let workspace: Workspace
+    /// The public key of `appcast --throwaway-key`'s key, which the staged appcast is checked against instead, with a
+    /// warning that only `publish --dry-run` accepts it.
+    public var throwawayPublicKey: String?
 
-    public init(workspace: Workspace) { self.workspace = workspace }
+    public init(workspace: Workspace, throwawayPublicKey: String? = nil) {
+        self.workspace = workspace
+        self.throwawayPublicKey = throwawayPublicKey
+    }
 
     private var manifest: DylAppManifest { workspace.manifest }
 
@@ -67,6 +73,7 @@ public struct ReleaseChecks: Sendable {
         check("site_deploy", checkSiteDeploy)
         check("site_package_manager", checkSitePackageManager)
         check("releases_page", checkReleasesPage)
+        check("site_typescript", checkSiteTypeScript)
         check("dylkit_version", checkPinsMatch)
         check("local_values_ignored", checkLocalValuesIgnored)
         check("release_notes", checkReleaseNotesFiles)
@@ -93,7 +100,12 @@ public struct ReleaseChecks: Sendable {
     private func checkPublicKey(_ findings: inout [CheckFinding]) {
         let file = manifest.release.sparklePublicKey
         guard let key = publicKey else {
-            findings.append(error("sparkle_public_key", file, "missing; run scripts/generate-sparkle-key.sh"))
+            let tool = ".build/artifacts/sparkle/Sparkle/bin/generate_keys --account \(manifest.app.bundleId)"
+            findings.append(
+                error(
+                    "sparkle_public_key", file,
+                    "missing; after `swift build`, run `\(tool)` to give the app its own key, then "
+                        + "`\(tool) -p > \(file)` (adopt-dylkit step 2)"))
             return
         }
         if Data(base64Encoded: key)?.count != 32 {
@@ -184,7 +196,7 @@ public struct ReleaseChecks: Sendable {
     private func checkStagedAppcast(_ findings: inout [CheckFinding]) {
         let appcastPath = relative(stagedAppcast)
         guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.newest else { return }
-        guard let name = item.enclosureURL?.split(separator: "/").last.map(String.init) else {
+        guard let name = item.enclosureFileName else {
             findings.append(error("appcast_signature", appcastPath, "newest item has no enclosure URL"))
             return
         }
@@ -192,8 +204,13 @@ public struct ReleaseChecks: Sendable {
             findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't staged next to it"))
             return
         }
-        guard let publicKey else { return }
+        guard let publicKey = throwawayPublicKey ?? publicKey else { return }
         switch EdSignature.check(item, archive: data, publicKey: publicKey) {
+        case .valid where throwawayPublicKey != nil:
+            findings.append(
+                CheckFinding(
+                    rule: "appcast_signature", severity: .warning, file: appcastPath,
+                    message: "signed with a throwaway key for a rehearsal; only `publish --dry-run` accepts it"))
         case .valid: break
         case .invalid(let reason): findings.append(error("appcast_signature", appcastPath, "\(name): \(reason)"))
         case .unverifiable:
@@ -301,10 +318,10 @@ public struct ReleaseChecks: Sendable {
 
     /// Vercel deploys the site from its root directory and skips commits its `ignoreCommand` says didn't touch it.
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
-    /// `file:` packages and, for `@dylkit/web`, DylApp.toml. It diffs from the last deployed commit, so a
-    /// site change in a skipped commit still deploys with the next one. A branch's first deploy, which has no last
-    /// commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
-    /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
+    /// `file:` packages, the repo root's `package.json` and, for `@dylkit/web`, DylApp.toml. It diffs from the last
+    /// deployed commit, so a site change in a skipped commit still deploys with the next one. A branch's first deploy,
+    /// which has no last commit, always builds, and so does one whose last commit Vercel's clone lacks after a
+    /// force-push or rebase: `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
@@ -359,7 +376,7 @@ public struct ReleaseChecks: Sendable {
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
             workspace.url(siteRoot).appending(path: String(path)).standardized.path
         }
-        var needed = [manifest.release.artifactsDir]
+        var needed = [manifest.release.artifactsDir, "package.json"]
         for match in package.matches(of: /"(?!@dylkit\/web")[^"]+"\s*:\s*"file:([^"]+)"/) {
             needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
         }
@@ -374,16 +391,36 @@ public struct ReleaseChecks: Sendable {
 
     /// Sites install with pnpm: `packageManager` pins it and Vercel installs with it from `pnpm-lock.yaml`. Vercel
     /// falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`, so the security pins there
-    /// would stop applying.
+    /// would stop applying. Vercel's CLI enables corepack from the clone root's `package.json`, not the Root
+    /// Directory's, so the repo root holds the same pin; without it Vercel's bundled pnpm can't read the lockfile.
+    /// pnpm run at the repo root writes a `pnpm-lock.yaml` there recording its own version, which the site's lockfile
+    /// already records, so apps ignore it rather than keep a second copy that goes stale when the pin moves.
     private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
         let file = "\(siteRoot)/package.json"
         let fields = (try? JSONSerialization.jsonObject(with: Data(package.utf8))) as? [String: Any] ?? [:]
-        if (fields["packageManager"] as? String)?.hasPrefix("pnpm@") != true {
+        let wrongPin = "doesn't pin DylKit's pnpm; set \"packageManager\" to \"\(Self.pnpmPin)\""
+        if fields["packageManager"] as? String != Self.pnpmPin {
+            findings.append(error("site_package_manager", file, wrongPin))
+        }
+        if let root = read("package.json") {
+            let rootFields = (try? JSONSerialization.jsonObject(with: Data(root.utf8))) as? [String: Any] ?? [:]
+            if rootFields["packageManager"] as? String != Self.pnpmPin {
+                findings.append(error("site_package_manager", "package.json", wrongPin))
+            }
+        } else {
             findings.append(
                 error(
-                    "site_package_manager", file,
-                    "doesn't pin pnpm; copy \"packageManager\" from DylKit's SampleApp server/package.json"))
+                    "site_package_manager", "package.json",
+                    "is missing, so Vercel's CLI can't find the pnpm pin and installs with its own pnpm; add one "
+                        + "holding only \"private\": true and \"packageManager\": \"\(Self.pnpmPin)\""))
+        }
+        if isTracked("pnpm-lock.yaml") {
+            findings.append(
+                error(
+                    "site_package_manager", "pnpm-lock.yaml",
+                    "only records the pnpm version, which \(siteRoot)/pnpm-lock.yaml already does; `git rm` it and "
+                        + "add /pnpm-lock.yaml to .gitignore"))
         }
         if fields["overrides"] != nil {
             findings.append(
@@ -405,6 +442,23 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
+    /// `@dylkit/web` ships TypeScript and exposes its pages and routes as subpath exports, which only `bundler`
+    /// resolution type-checks. A site with no `tsconfig.json` gets one from `next build` with `node` resolution, so it
+    /// fails its first build.
+    private func checkSiteTypeScript(_ findings: inout [CheckFinding]) {
+        guard let (siteRoot, package) = site, package.contains("\"@dylkit/web\"") else { return }
+        let file = "\(siteRoot)/tsconfig.json"
+        let fix = "set \"moduleResolution\": \"bundler\" so @dylkit/web/app, /config and /routes resolve"
+        guard let config = read(file) else {
+            findings.append(error("site_typescript", file, "is missing; copy DylKit's SampleApp server/tsconfig.json"))
+            return
+        }
+        let resolution = config.firstMatch(of: /"moduleResolution"\s*:\s*"([^"]*)"/).map { String($0.1) }
+        guard resolution?.lowercased() != "bundler" else { return }
+        let current = resolution.map { "\"\($0)\"" } ?? "no"
+        findings.append(error("site_typescript", file, "has \(current) moduleResolution; \(fix)"))
+    }
+
     /// Sparkle's full-notes link and the end of every update's notes point at `/releases`, the only place a user more
     /// than ten releases behind can read what they skipped, so a `@dylkit/web` site must serve it.
     private func checkReleasesPage(_ findings: inout [CheckFinding]) {
@@ -424,15 +478,21 @@ public struct ReleaseChecks: Sendable {
 
     private struct PackageResolved: Decodable {
         struct Pin: Decodable {
-            struct State: Decodable { var version: String? }
+            struct State: Decodable {
+                var version: String?
+                var branch: String?
+                var revision: String?
+            }
             var identity: String
             var state: State
         }
         var pins: [Pin]
     }
 
-    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different releases. A DylKit
-    /// pinned to a branch or revision has no version to compare.
+    /// SwiftPM, the site's package.json and the app's workflow each pin DylKit, so they can drift onto different
+    /// releases, or, while an app runs a DylKit PR, onto different commits: a revision pin needs `app.yml@<sha>` and
+    /// the tarball the PR's prerelease job uploaded for that commit, `-pr.<number>.<short sha>`. A branch pin has no
+    /// one commit to compare.
     private func checkPinsMatch(_ findings: inout [CheckFinding]) {
         let callers = workflows.compactMap { workflow in
             workflow.text.firstMatch(of: /uses:\s*dgattey\/dyl-kit\/\.github\/workflows\/app\.yml@([^\s#]+)/)
@@ -449,26 +509,54 @@ public struct ReleaseChecks: Sendable {
                 error("dylkit_version", workflow.path, "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it"))
         }
         guard
-            let pinned = read("Package.resolved")
+            let state = read("Package.resolved")
                 .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) })?
-                .pins.first(where: { $0.identity == "dyl-kit" })?.state.version
+                .pins.first(where: { $0.identity == "dyl-kit" })?.state
         else { return }
-        for caller in callers where caller.ref != "v\(pinned)" {
+        let tarball = site.flatMap { site in
+            site.package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/)
+                .map { (file: "\(site.root)/package.json", url: String($0.1), version: String($0.2)) }
+        }
+        if let pinned = state.version {
+            for caller in callers where caller.ref != "v\(pinned)" {
+                findings.append(
+                    error(
+                        "dylkit_version", caller.path,
+                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); "
+                            + "use @v\(pinned)"))
+            }
+            guard let tarball, tarball.version != pinned else { return }
+            let url = tarball.url.replacingOccurrences(of: tarball.version, with: pinned)
             findings.append(
                 error(
-                    "dylkit_version", caller.path,
-                    "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit \(pinned); use @v\(pinned)"))
+                    "dylkit_version", tarball.file,
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit \(pinned); "
+                        + "depend on \"\(url)\""))
+        } else if state.branch == nil, let revision = state.revision {
+            let short = String(revision.prefix(7))
+            for caller in callers where caller.ref != revision {
+                findings.append(
+                    error(
+                        "dylkit_version", caller.path,
+                        "calls \(Self.appWorkflow)@\(caller.ref) but Package.resolved pins DylKit at \(short); "
+                            + "use @\(revision)"))
+            }
+            guard let tarball else { return }
+            let commit = tarball.version.firstMatch(of: /-pr\.\d+\.([0-9a-f]{7,40})$/).map { String($0.1) }
+            guard commit.map({ !revision.hasPrefix($0) }) ?? true else { return }
+            findings.append(
+                error(
+                    "dylkit_version", tarball.file,
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on the "
+                        + "-pr.<number>.\(short) tarball its PR's prerelease job uploaded"))
         }
-        guard let (siteRoot, package) = site,
-            let match = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"([^"]*\/dylkit-web-([^"\/]+)\.tgz)"/),
-            match.2 != pinned
-        else { return }
-        let url = match.1.replacingOccurrences(of: match.2, with: pinned)
-        findings.append(
-            error(
-                "dylkit_version", "\(siteRoot)/package.json",
-                "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
+
+    /// The pnpm every site and its repo root pin, as SampleApp does. The hash is the npm registry's integrity for that
+    /// pnpm tarball, so corepack refuses a download that doesn't match it.
+    static let pnpmPin =
+        "pnpm@12.9.1+sha512.06b055fff5cd20dc12781de173ced3310ce0951bf2ec620211a16045d5444d5c93a663210764ef29a653a610459"
+        + "ba0368f0e74f84d80c54723cf95aae7bc0d6d"
 
     /// The reusable workflow that checks each app's PRs and releases its merges.
     static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
@@ -480,16 +568,20 @@ public struct ReleaseChecks: Sendable {
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {
         guard let file = manifest.localValues?.file else { return }
-        let root = workspace.root
-        let tracked = (try? Shell.run(
-            ["git", "ls-files", "--error-unmatch", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
         let ignored = (try? Shell.run(
-            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
-        if tracked {
+            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: workspace.root, quiet: true,
+            allowFailure: true)) == 0
+        if isTracked(file) {
             findings.append(error("local_values_ignored", file, "is committed; `git rm --cached` it and rotate its values"))
         } else if !ignored {
             findings.append(error("local_values_ignored", file, "isn't in .gitignore"))
         }
+    }
+
+    private func isTracked(_ file: String) -> Bool {
+        (try? Shell.run(
+            ["git", "ls-files", "--error-unmatch", "--", file], cwd: workspace.root, quiet: true,
+            allowFailure: true)) == 0
     }
 
     static let pullRequestTemplate = ".github/pull_request_template.md"
@@ -533,7 +625,8 @@ public struct ReleaseChecks: Sendable {
                     "build_number_monotonic", file, "build \(item.build) isn't above the published build \(published.build)"
                 ))
         }
-        let expectedURL = staged.downloadPrefix + staged.archive.lastPathComponent
+        let expectedURL = AppcastItem.enclosureURL(
+            prefix: staged.downloadPrefix, fileName: staged.archive.lastPathComponent)
         if item.enclosureURL != expectedURL {
             findings.append(
                 error("staged_release", file, "enclosure is \(item.enclosureURL ?? "missing"), expected \(expectedURL)")

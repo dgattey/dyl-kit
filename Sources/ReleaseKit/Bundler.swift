@@ -20,6 +20,7 @@ public struct Bundler: Sendable {
     )
         throws -> URL
     {
+        try HostPlatform.requireMacOS("bundling \(workspace.manifest.app.name)")
         let manifest = workspace.manifest
         let product = manifest.build.product
         let fileManager = FileManager.default
@@ -180,7 +181,7 @@ public struct Bundler: Sendable {
                 || modificationDate(script) > modificationDate(icns)
             if stale {
                 Log.step("generating icons with \(generator)")
-                try Shell.run(["swift", script.path, workspace.root.path], cwd: workspace.root)
+                try Shell.runQuietly(["swift", script.path, workspace.root.path], cwd: workspace.root)
             }
         }
         return [iconBundle, buildDir.appending(path: "Assets.xcassets")].first {

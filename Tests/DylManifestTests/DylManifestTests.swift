@@ -73,6 +73,15 @@ struct DylAppManifestTests {
         #expect(manifest.release.assets == "https://store.public.blob.vercel-storage.com")
     }
 
+    @Test func slugIsSafeInPaths() {
+        func slug(_ name: String) -> String {
+            DylAppManifest.App(name: name, bundleId: "a.b", platforms: .init(macos: "14.0"), category: "").slug
+        }
+        #expect(slug("Gattey Photos") == "gattey-photos")
+        #expect(slug("Scone OS") == "scone-os")
+        #expect(slug("  Dyl's Kit 2!  ") == "dyl-s-kit-2")
+    }
+
     @Test func reportsTheLineOfAnError() {
         do {
             _ = try DylAppManifest.decode("[app]\nname = \"a\"\nname = \"b\"\n", path: "DylApp.toml")

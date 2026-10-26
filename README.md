@@ -42,10 +42,10 @@ Then, in the app repo:
 - Three files are copied once from `Tests/Fixtures/SampleApp/` at adoption and then belong to the app: `.github/workflows/dylkit.yml`, which runs DylKit's PR check and release and passes the app's secrets with `secrets: inherit`; `.github/pull_request_template.md`, whose Release info box and `# Release notes` section that check reads; and `.cursor/rules/changelog-release-notes.mdc`, which tells agents how to write those notes. `release_notes` in `swift run devkit checks` fails without the rule or the template section.
 - A release's notes come from the merged PR's `# Release notes`, falling back to `# What changed?` only when it's missing or empty, without comments or anything after a `---` rule. They're what people read in the update dialog and on the download page, so the PR check rejects notes with file paths, code names, flags, CSS selectors, backticks or more than five bullets; the rule asks for three. `swift run release-kit notes --check --body-file <body.md>` runs the same check locally.
 - `swift run devkit <command>`, `swift run release-kit <step>` and `swift run dyl-lint` run DylKit's tools from the app repo. SwiftPM builds them from the resolved dependency, so the app holds no copy of them. The site's commands are the app's own scripts in `server/`, run with pnpm.
-- `server/` installs with pnpm: `packageManager` pins the same pnpm as SampleApp's `server/package.json`, `pnpm-workspace.yaml` holds pnpm's settings (`allowBuilds`, `overrides`), `pnpm-lock.yaml` is the only lockfile, and `.node-version` pins Node for CI. The Vercel project keeps its default install command and sets `ENABLE_EXPERIMENTAL_COREPACK=1`, so Vercel installs with the pinned pnpm. `site_package_manager` in `swift run devkit checks` fails on a site without that pin or lockfile, with another lockfile, or with npm's `overrides`, which pnpm ignores.
+- `server/` installs with pnpm: `packageManager` holds the exact pin from SampleApp's `server/package.json`, whose hash is the npm registry's integrity for that pnpm, `pnpm-workspace.yaml` holds pnpm's settings (`allowBuilds`, `overrides`), `pnpm-lock.yaml` is the only lockfile, and `.node-version` pins Node for CI. The repo root's `package.json` holds only `"private": true` and the same `packageManager`, because Vercel's CLI reads the pin from the clone root rather than the Root Directory, and `.gitignore` lists `/pnpm-lock.yaml`, which pnpm writes there to record its own version. The Vercel project keeps its default install command and sets `ENABLE_EXPERIMENTAL_COREPACK=1`, so Vercel installs with the pinned pnpm. `site_package_manager` in `swift run devkit checks` fails when either pin isn't that exact value, on a site without its lockfile, with another lockfile or with npm's `overrides`, which pnpm ignores, and on a committed root `pnpm-lock.yaml`.
 - `.swiftlint.yml` holds only the app's own `included` paths and rules, with no `parent_config`. `swift run devkit checks` finds DylKit through SwiftPM, URL or `.package(path:)` alike, and passes its `lint/swiftlint.yml` as the parent.
 - `mise.toml` pins SwiftLint (`swiftlint = "<version>"` under `[tools]`). `swift run devkit checks` fails on a missing or different version, and CI installs it with `jdx/mise-action`.
-- The download site is `@dylkit/web`. `withDylKit` reads `DylApp.toml` and the screenshots' sizes when Next loads its config, and Next inlines them into the build, so nothing reads them at request time. Its pages and routes are one-line re-exports, and it serves the latest release from the app's Blob store:
+- The download site is `@dylkit/web`. `withDylKit` reads `DylApp.toml` and the screenshots' sizes when Next loads its config, and Next inlines them into the build, so nothing reads them at request time. Its pages and routes are one-line re-exports, which `server/tsconfig.json`'s `"moduleResolution": "bundler"` resolves (`site_typescript` checks it), and it serves the latest release from the app's Blob store:
 
 ```ts
 // next.config.ts
@@ -87,7 +87,7 @@ features = [{ title = "…", body = "…" }]
 
 An app that wants its own layout writes `app/page.tsx` from the same pieces `@dylkit/web` exports: `SitePage`, `Hero` (with its own `visual`, `title` or `lead`), `Section`, `Showcase`, `Gallery`, `Screenshot`, `DeviceFrame`, `Features` and `Feature` (with any `glyph`), and `ReleaseNotes`. The kit's CSS is in `@layer dylkit`, so the app's own CSS and CSS Modules override it without fighting specificity, and an app restyles the whole page by setting the theme tokens (`--canvas`, `--paper`, `--ink`, `--ink-muted`, `--line`, `--shadow`) on `:root`.
 
-`server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml` too, since the build reads it: `git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml`.
+`server/vercel.json`'s `ignoreCommand` must watch `../DylApp.toml`, which the build reads, and `../package.json`, whose pnpm pin Vercel installs with: `git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ../DylApp.toml ../package.json`.
 
 Sites commit no icons. Each release renders them from the app's `.icon` and uploads them to the store's `icons/`, and the icon routes serve them. Other sites can embed `/icon.png` (1024 px) and `/apple-touch-icon.png` (180 px, opaque), so keep those paths and sizes. `[site] favicon = "dark"` puts the dark favicon in the tab.
 
@@ -98,6 +98,8 @@ The dev loop and releasing are in the `apple-dev-loop` and `apple-release` skill
 Each app releases to its own public Vercel Blob store, `[release] assets` in `DylApp.toml`. The repo's `BLOB_READ_WRITE_TOKEN` secret lets release-kit upload, and the site reads the public URLs with no token. The store holds each release's zip under `releases/v<version>/`, the newest release's `appcast.xml` and `release.json` at its root, and `history.json`, every release's notes, which each release appends to. The forge only gets the pushed tag.
 
 The appcast holds only the newest build, so Sparkle offers it to every install however far behind, with the last ten versions' notes and a link to `/releases` for the rest. That page shows every release as a card, from `history.json`; the home page shows the newest three and links to it. For an app with releases from before it, run `swift run release-kit history --appcast <older appcast.xml> --github <owner/name>` once with `GITHUB_TOKEN` set, check `build/release/history.json`, then `swift run release-kit history --publish` with `BLOB_READ_WRITE_TOKEN`. `adopt-dylkit` has the setup steps.
+
+To rehearse a release on macOS, run `swift run release-kit version --pr <number>`, then `bundle`, `sign`, `appcast` (`appcast --throwaway-key` on a Mac without the app's Sparkle key) and `publish --dry-run`. Run locally, `version` reads the PR's `# Release info` with the `origin` remote and `gh`'s login, or takes `--type`. `appcast` reads the published feeds and signs with the first Sparkle key it finds that matches the app's `SUPublicEDKey`, checked before `generate_appcast` runs; `apple-release` lists where it looks. `--throwaway-key` signs with a fresh key instead, which `publish --dry-run` accepts and a real `publish` refuses. `publish --dry-run` makes publish's checks and lists the tag and every upload, and tags, pushes and uploads nothing. `bundle` and `sign` need Xcode, so on Linux only `version`, `check` and `notes` run.
 
 ### Dock tile plug-in
 
@@ -132,7 +134,7 @@ For cloud agents and teammates, add `dgattey/dyl-kit` to the team's plugin marke
 swift build && swift test         # Tests/Fixtures/SampleApp stands in for an app
 swift run dyl-lint Sources
 cd web && pnpm install && pnpm test
-scripts/release-e2e.sh            # version, bundle, sign, appcast and check SampleApp with a throwaway Ed key
+scripts/release-e2e.sh            # version, bundle, sign, appcast and publish --dry-run SampleApp with a throwaway Ed key
 ```
 
 CI runs the same on every PR. Docs-only changes skip CI.
@@ -142,3 +144,16 @@ SampleApp depends on DylKit with `.package(path: "../../..")`, and SwiftPM names
 ## Releasing DylKit
 
 Merging a PR to `main` releases DylKit like an app, minus the app. The PR's `# Release info` box picks the bump, and the `release` workflow tags the merge commit and uploads the `@dylkit/web` tarball to `releases/v<version>/` in DylKit's Blob store. When PRs merge while a release runs, GitHub cancels all but the newest one's run, so a release also ships any earlier merges without a tag, with the largest of their bumps and all of their notes; apps release the same way. The tag is the only version: `web/package.json` stays at `0.0.0`, and the plugin manifest has none, because Cursor updates plugins from the branch's commits. Apps bump the package dependency, the tarball URL and the workflow ref together. DylKit's own PRs run the same `app.yml` Release info and Release notes checks apps call, and follow the same `.cursor/rules/changelog-release-notes.mdc`.
+
+### Running a PR in an app before it releases
+
+CI's `prerelease` job packs each commit of a DylKit PR as `@dylkit/web` `<last tag>-pr.<number>.<short sha>`, uploads it to `releases/pr-<number>/` in the same store without tagging anything, and fails unless the URL then serves it. It runs after the `swift` and `web` jobs, a few minutes after the push, and a newer push cancels the older commit's run, so only commits CI finished get a tarball. Its run summary names the three pins that select that commit:
+
+```swift
+.package(
+    url: "https://github.com/dgattey/dyl-kit",
+    revision: "<sha>"
+)
+```
+
+plus `uses: dgattey/dyl-kit/.github/workflows/app.yml@<sha>` in `dylkit.yml` and the tarball URL in `server/package.json`. With a revision pin in `Package.resolved`, `dylkit_version` fails a workflow ref other than that full SHA and a tarball without its `.<short sha>` suffix. Move all three to the release once it ships.

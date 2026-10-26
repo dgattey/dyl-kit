@@ -27,6 +27,20 @@ public struct AppcastItem: Equatable, Sendable {
     /// `shortVersionString`, falling back to the title like Sparkle does.
     public var displayVersion: String { shortVersion ?? title }
 
+    /// The archive's file name, decoded from the enclosure URL, which percent-encodes it: `Gattey Photos-1.2.zip` on
+    /// disk and in the Blob pathname is `Gattey%20Photos-1.2.zip` in the URL.
+    public var enclosureFileName: String? {
+        guard let last = enclosureURL?.split(separator: "/").last else { return nil }
+        return String(last).removingPercentEncoding
+    }
+
+    /// The enclosure URL for the archive named `fileName` under `prefix`, encoded the way `generate_appcast` does.
+    public static func enclosureURL(prefix: String, fileName: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove("/")
+        return prefix + (fileName.addingPercentEncoding(withAllowedCharacters: allowed) ?? fileName)
+    }
+
     public init(build: Int) { self.build = build }
 }
 

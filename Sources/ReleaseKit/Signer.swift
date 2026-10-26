@@ -17,6 +17,7 @@ public struct Signer: Sendable {
 
     /// - Blocking: runs `xattr` and `codesign`.
     public func sign(_ app: URL) throws {
+        try HostPlatform.requireMacOS("signing \(app.lastPathComponent)")
         let fileManager = FileManager.default
         let macOS = app.appending(path: "Contents/MacOS")
         let resourceBundles = (try? fileManager.contentsOfDirectory(at: macOS, includingPropertiesForKeys: nil)) ?? []

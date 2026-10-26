@@ -190,7 +190,14 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(try ReleaseInfo.source(prBody: minor, commitBody: patch).bump == .minor)
         #expect(try ReleaseInfo.source(prBody: nil, commitBody: patch).bump == .patch)
         #expect(try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: patch).bump == .patch)
-        #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4") }
+        let neither = #expect(throws: ToolError.self) {
+            try ReleaseInfo.source(prBody: "- [ ] Major", commitBody: "Merge #4")
+        }
+        #expect(
+            neither?.description == "the PR body and the merge commit message each check none or several boxes; check "
+                + "exactly one of Major, Minor or Patch under `# Release info` in the PR, or pass the bump with --type")
+        let noBody = #expect(throws: ToolError.self) { try ReleaseInfo.source(prBody: nil, commitBody: "Merge #4") }
+        #expect(noBody?.description.hasPrefix("the merge commit message doesn't check exactly one") == true)
     }
 
     @Test func foldedMergesTakeTheLargestBumpAndEveryMergesNotesNewestFirst() {
@@ -498,8 +505,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
     private func scratchWorkspace(_ extra: [String: String] = [:]) throws -> Workspace {
         let root = FileManager.default.temporaryDirectory.appending(path: "dylkit-checks-\(UUID().uuidString)")
         let appFiles = [
-            "DylApp.toml", "Package.swift", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
-            "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
+            "DylApp.toml", "Package.swift", "package.json", "sparkle-public-key.txt", "Sample.entitlements", "server/package.json",
+            "server/pnpm-lock.yaml", "server/pnpm-workspace.yaml", "server/tsconfig.json", "server/vercel.json", "server/app/releases/page.tsx", ".github/pull_request_template.md",
             ".github/workflows/dylkit.yml",
             ".github/workflows/verify.yml", ".cursor/rules/changelog-release-notes.mdc",
         ]
@@ -547,6 +554,51 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
             appcast: pipeline.stagedAppcast, archive: pipeline.stagingDir.appending(path: "Sample-1.0.9.zip"),
             downloadPrefix: Self.downloadPrefix, published: published)
         return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
+    }
+
+    #if canImport(CryptoKit)
+    /// `appcast --throwaway-key` checks its rehearsal against the throwaway key, with a warning; `check` alone still
+    /// fails it against the app's key.
+    @Test func aThrowawaySignedAppcastPassesOnlyItsOwnRehearsal() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let pipeline = ReleasePipeline(workspace: workspace)
+        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
+        let archive = Data("zip".utf8)
+        try archive.write(to: pipeline.stagingDir.appending(path: "Sample-1.0.9.zip"))
+        let key = try SparkleKey.throwaway()
+        let unsigned = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
+            + #"<enclosure url="\#(Self.downloadPrefix)Sample-1.0.9.zip" length="3"/></item>"#
+        let item = try SparkleKey.addingSignature(try SparkleKey.sign(archive, privateKey: key.privateKey), to: unsigned)
+        try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
+
+        #expect(errors(ReleaseChecks(workspace: workspace).run())["appcast_signature"]?.count == 1)
+        let rehearsal = ReleaseChecks(workspace: workspace, throwawayPublicKey: key.publicKey).run()
+        #expect(errors(rehearsal)["appcast_signature"] == nil)
+        #expect(rehearsal.findings.contains { $0.rule == "appcast_signature" && $0.message.contains("throwaway") })
+    }
+    #endif
+
+    /// An app name with a space: the enclosure URL is percent-encoded, and both checks find the staged zip.
+    @Test func anArchiveNameWithASpacePassesBothChecks() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let pipeline = ReleasePipeline(workspace: workspace)
+        try FileManager.default.createDirectory(at: pipeline.stagingDir, withIntermediateDirectories: true)
+        let archive = pipeline.stagingDir.appending(path: "Sample App-1.0.9.zip")
+        try Data("zip".utf8).write(to: archive)
+        func failures(_ url: String) throws -> [String: [String]] {
+            let item = #"<item><title>1.0.9</title><sparkle:version>24</sparkle:version>"#
+                + #"<enclosure url="\#(url)" length="3"/></item>"#
+            try Data(sparkleFeed(item).utf8).write(to: pipeline.stagedAppcast)
+            let staged = ReleaseChecks.StagedRelease(
+                appcast: pipeline.stagedAppcast, archive: archive, downloadPrefix: Self.downloadPrefix, published: [])
+            return errors(ReleaseChecks(workspace: workspace).run(staged: staged))
+        }
+        let encoded = try failures(Self.downloadPrefix + "Sample%20App-1.0.9.zip")
+        #expect(encoded["staged_release"] == nil)
+        #expect(encoded["appcast_signature"]?.allSatisfy { !$0.contains("isn't staged") } ?? true)
+        #expect(try failures(Self.downloadPrefix + "Sample-1.0.9.zip")["staged_release"]?.count == 1)
     }
 
     /// A re-run of a release that went out stages its build and version again; any other build at or below the
@@ -627,7 +679,8 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["releases_page"] == ["server/app/releases/page.tsx"])
     }
 
-    /// Vercel's ignoreCommand must still deploy release commits and DylApp.toml, which withDylKit reads.
+    /// Vercel's ignoreCommand must still deploy release commits, the root package.json's pnpm pin, and DylApp.toml,
+    /// which withDylKit reads.
     @Test func siteDeploySkipsOnlyWhatTheSiteDoesntRead() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
@@ -636,7 +689,7 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         try Data(config.utf8).write(to: workspace.url("server/vercel.json"))
 
         #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_deploy"] == [
-            "server/vercel.json", "server/vercel.json",
+            "server/vercel.json", "server/vercel.json", "server/vercel.json",
         ])
     }
 
@@ -782,36 +835,140 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(errorFiles(report)["site_package_manager"] == [
             "server/package.json", "server/package.json", "server/package-lock.json", "server/pnpm-lock.yaml",
         ])
-        #expect(errors(report)["site_package_manager"]?.first?.contains("SampleApp server/package.json") == true)
+        #expect(errors(report)["site_package_manager"]?.first?.contains(ReleaseChecks.pnpmPin) == true)
     }
 
-    /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside
-    /// dylkit.yml, which would release twice.
+    /// Vercel's CLI enables corepack from the clone root's package.json, so without the site's pin there it installs
+    /// with its bundled pnpm, which can't read a newer pnpm's lockfile. A hash that isn't pnpm's published one fails
+    /// corepack's download, so both pins must be DylKit's exactly.
+    @Test func bothPinsAreDylKitsPnpm() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        let wrong = String(ReleaseChecks.pnpmPin.dropLast(64)) + String(repeating: "0", count: 64)
+        for file in ["package.json", "server/package.json"] {
+            let url = workspace.url(file)
+            let text = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(
+                of: ReleaseChecks.pnpmPin, with: wrong)
+            try Data(text.utf8).write(to: url)
+        }
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
+            "server/package.json", "package.json",
+        ])
+        #expect(
+            errors(ReleaseChecks(workspace: workspace).run())["site_package_manager"]?.first
+                == #"doesn't pin DylKit's pnpm; set "packageManager" to "\#(ReleaseChecks.pnpmPin)""#)
+
+        try FileManager.default.removeItem(at: workspace.url("package.json"))
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
+            "server/package.json", "package.json",
+        ])
+    }
+
+    /// Only bundler resolution type-checks @dylkit/web's subpath exports, and next build writes `node` into a site with
+    /// no tsconfig.json.
+    @Test func theSiteResolvesTheWebPackagesSubpaths() throws {
+        let workspace = try scratchWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        func ruleErrors() -> [String]? { errors(ReleaseChecks(workspace: workspace).run())["site_typescript"] }
+        #expect(ruleErrors() == nil)
+        let config = workspace.url("server/tsconfig.json")
+        let text = try String(contentsOf: config, encoding: .utf8)
+        try Data(text.replacingOccurrences(of: #""bundler""#, with: #""node""#).utf8).write(to: config)
+        #expect(
+            ruleErrors() == [
+                #"has "node" moduleResolution; set "moduleResolution": "bundler" so @dylkit/web/app, /config and "#
+                    + "/routes resolve"
+            ])
+        try FileManager.default.removeItem(at: config)
+        #expect(ruleErrors() == ["is missing; copy DylKit's SampleApp server/tsconfig.json"])
+    }
+
+    /// pnpm run at the repo root writes a lockfile there that only records its own version; apps ignore it.
+    @Test func theRepoRootsPnpmLockfileStaysUncommitted() throws {
+        let workspace = try scratchWorkspace(["pnpm-lock.yaml": "lockfileVersion: '9.0'\n"])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: workspace.root)
+        func ruleErrors() throws -> [String]? {
+            errorFiles(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["site_package_manager"]
+        }
+        #expect(try ruleErrors() == nil)
+        _ = try Shell.capture(["git", "add", "pnpm-lock.yaml"], cwd: workspace.root)
+        #expect(try ruleErrors() == ["pnpm-lock.yaml"])
+    }
+
+    /// SampleApp and DylKit's own site are what apps copy the pin from, and what the check holds them to.
+    @Test func everyPnpmPinIsTheChecksPin() throws {
+        for url in [
+            appRoot.appending(path: "package.json"), appRoot.appending(path: "server/package.json"),
+            packageRoot.appending(path: "web/package.json"),
+        ] {
+            let fields = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+            #expect(fields?["packageManager"] as? String == ReleaseChecks.pnpmPin, "\(url.path)")
+        }
+    }
+
+    /// The fixture's site and workflow pin the current release. A 0.2 app that migrates keeps no synced workflow
+    /// beside dylkit.yml, which would release twice.
     @Test func everyPinMatchesTheResolvedDylKit() throws {
+        let workflow = try String(contentsOf: appRoot.appending(path: ".github/workflows/dylkit.yml"), encoding: .utf8)
+        let current = try #require(workflow.firstMatch(of: /app\.yml@v(\d+)\.(\d+)\.(\d+)/))
+        let pinned = "\(current.1).\(current.2).\(current.3)"
+        let next = "\(current.1).\(current.2).\(Int(current.3)! + 1)"
         func messages(_ state: String, _ extra: [String: String] = [:]) throws -> [String]? {
             let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": \#(state) }], "version": 3 }"#
             let workspace = try scratchWorkspace(extra.merging(["Package.resolved": resolved]) { $1 })
             defer { try? FileManager.default.removeItem(at: workspace.root) }
             return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
         }
-        #expect(try messages(#"{ "version": "0.3.0" }"#) == nil)
-        #expect(try messages(#"{ "branch": "main" }"#) == nil)
+        #expect(try messages(#"{ "version": "\#(pinned)" }"#) == nil)
+        #expect(try messages(#"{ "branch": "main", "revision": "\#(String(repeating: "e", count: 40))" }"#) == nil)
         #expect(
-            try messages(#"{ "version": "0.3.1" }"#) == [
-                "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.3.0 but Package.resolved pins DylKit 0.3.1; "
-                    + "use @v0.3.1",
-                "@dylkit/web is 0.3.0 but Package.resolved pins DylKit 0.3.1; depend on "
-                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.3.1/dylkit-web-0.3.1.tgz\"",
+            try messages(#"{ "version": "\#(next)" }"#) == [
+                "calls dgattey/dyl-kit/.github/workflows/app.yml@v\(pinned) but Package.resolved pins DylKit \(next); "
+                    + "use @v\(next)",
+                "@dylkit/web is \(pinned) but Package.resolved pins DylKit \(next); depend on "
+                    + "\"https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v\(next)/"
+                    + "dylkit-web-\(next).tgz\"",
             ])
         let synced = "# Written by `devkit sync` from DylKit. Change DylKit's copy, not this one.\nname: release\n"
         #expect(
             try messages(
-                #"{ "version": "0.3.0" }"#,
+                #"{ "version": "\#(pinned)" }"#,
                 [".github/workflows/dylkit.yml": "name: dylkit\n", ".github/workflows/release.yml": synced]) == [
                     "nothing calls dgattey/dyl-kit/.github/workflows/app.yml; copy .github/workflows/dylkit.yml from "
                         + "DylKit's SampleApp",
                     "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it",
                 ])
+    }
+
+    /// While an app runs a DylKit PR, SwiftPM pins a commit, and the workflow and tarball must name that commit too.
+    @Test func aRevisionPinNeedsThatCommitsWorkflowAndTarball() throws {
+        let revision = "bf26f74" + String(repeating: "0", count: 33)
+        let tarball = "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/pr-22/dylkit-web-0.6.0-pr.22"
+        func messages(workflowRef: String, tarballCommit: String?) throws -> [String]? {
+            let resolved = #"{ "pins": [{ "identity": "dyl-kit", "state": { "revision": "\#(revision)" } }] }"#
+            let workflow = "jobs:\n  dylkit:\n    uses: dgattey/dyl-kit/.github/workflows/app.yml@\(workflowRef)\n"
+            let server = try String(contentsOf: appRoot.appending(path: "server/package.json"), encoding: .utf8)
+                .replacing(
+                    /"@dylkit\/web": "[^"]*"/,
+                    with: "\"@dylkit/web\": \"\(tarballCommit.map { "\(tarball).\($0).tgz" } ?? "\(tarball).tgz")\"")
+            let workspace = try scratchWorkspace([
+                "Package.resolved": resolved, ".github/workflows/dylkit.yml": workflow, "server/package.json": server,
+            ])
+            defer { try? FileManager.default.removeItem(at: workspace.root) }
+            return errors(ReleaseChecks(workspace: workspace).run())["dylkit_version"]
+        }
+        #expect(try messages(workflowRef: revision, tarballCommit: "bf26f74") == nil)
+        #expect(try messages(workflowRef: revision, tarballCommit: revision) == nil)
+        #expect(
+            try messages(workflowRef: "v0.6.0", tarballCommit: "3a9e7aa") == [
+                "calls dgattey/dyl-kit/.github/workflows/app.yml@v0.6.0 but Package.resolved pins DylKit at bf26f74; "
+                    + "use @\(revision)",
+                "@dylkit/web is 0.6.0-pr.22.3a9e7aa but Package.resolved pins DylKit at bf26f74; depend on the "
+                    + "-pr.<number>.bf26f74 tarball its PR's prerelease job uploaded",
+            ])
+        let untagged = try messages(workflowRef: revision, tarballCommit: nil)
+        #expect(untagged?.first?.hasPrefix("@dylkit/web is 0.6.0-pr.22 ") == true)
     }
 
     @Test func localValuesFileMustBeIgnoredAndUntracked() throws {

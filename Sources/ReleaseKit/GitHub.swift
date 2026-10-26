@@ -21,12 +21,41 @@ struct GitHub: Sendable {
             throw ToolError("GITHUB_REPOSITORY isn't set")
         }
         guard let token = environment[Self.tokenVariable], !token.isEmpty else {
-            throw ToolError("\(Self.tokenVariable) isn't set")
+            throw ToolError("\(Self.tokenVariable) isn't set; set it, or sign in with `gh auth login`")
         }
         self.repo = repo
         self.token = token
         api = environment["GITHUB_API_URL"] ?? "https://api.github.com"
         self.transport = transport
+    }
+
+    /// GitHub Actions sets the repo and token. Run locally, `environment` lacks them, so the repo comes from `root`'s
+    /// `origin` remote and the token from `gh auth token`.
+    ///
+    /// - Blocking: runs git and gh.
+    static func filling(_ environment: [String: String], from root: URL) -> [String: String] {
+        var environment = environment
+        if environment["GITHUB_REPOSITORY", default: ""].isEmpty,
+            let remote = try? Shell.capture(["git", "remote", "get-url", "origin"], cwd: root, allowFailure: true),
+            let repo = repository(fromRemote: remote)
+        {
+            environment["GITHUB_REPOSITORY"] = repo
+        }
+        if environment[tokenVariable, default: ""].isEmpty, Shell.which("gh") != nil,
+            let token = try? Shell.capture(["gh", "auth", "token"], cwd: root, allowFailure: true), !token.isEmpty
+        {
+            environment[tokenVariable] = token
+        }
+        return environment
+    }
+
+    /// `owner/name` from a github.com remote URL, HTTPS or SSH, with or without `.git`.
+    static func repository(fromRemote url: String) -> String? {
+        let pattern = #/
+            (?: https?://(?:[^@/]+@)?github\.com/ | (?:ssh://)?git@github\.com[:/] )
+            ([^/\s]+/[^/\s]+?) (?:\.git)? /?
+            /#
+        return url.trimmingCharacters(in: .whitespacesAndNewlines).wholeMatch(of: pattern).map { String($0.1) }
     }
 
     private struct Pull: Decodable {

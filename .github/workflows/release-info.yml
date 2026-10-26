@@ -10,8 +10,9 @@ on:
 
 jobs:
   release-info:
+    # Keyed by the calling workflow too, so a second caller's run can't cancel this one and leave it cancelled.
     concurrency:
-      group: release-info-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: release-info-${{ github.workflow }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     # Pinned for the image's preinstalled swiftc, which the notes check compiles with.
     runs-on: ubuntu-24.04

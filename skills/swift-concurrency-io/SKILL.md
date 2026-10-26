@@ -5,7 +5,7 @@ description: Keep blocking work off the main actor and structure async code the 
 
 # Swift concurrency and I/O
 
-`dyl-lint` and SwiftLint enforce the mechanical rules (`main_actor_blocking_io`, `blocking_semaphore`, `gcd_main_hop`, `task_in_defer`, `polling_timer`, `lock_or_unchecked_sendable`, `urlsession_shared` and the rest). When one fires, fix the shape of the code; don't reach for `lint:allow` unless the hit is verifiably benign, and then write the reason.
+`dyl-lint` and SwiftLint enforce the mechanical rules. When one fires, fix the shape of the code; don't reach for `lint:allow` unless the hit is verifiably benign, and then write the reason.
 
 ## Shape
 

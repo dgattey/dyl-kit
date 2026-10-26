@@ -17,8 +17,14 @@ public struct Checks: Sendable {
     }
 
     /// - Blocking: runs SwiftLint and reads every source file.
-    public func run() -> Bool {
-        var passed = true
+    public func run() -> Bool { failures().isEmpty }
+
+    /// Runs every tier, printing as it goes, and returns one line per failure: a tier that failed, or a release
+    /// check's error.
+    ///
+    /// - Blocking: runs SwiftLint and reads every source file.
+    func failures() -> [String] {
+        var found: [String] = []
         Log.step("manifest: \(DylAppManifest.fileName) OK")
 
         switch swiftLint().flatMap({ swiftlint in lintConfigs().map { (swiftlint, $0) } }) {
@@ -26,26 +32,26 @@ public struct Checks: Sendable {
             let status = try? Shell.run(
                 [swiftlint, "lint", "--strict", "--quiet"] + configs.flatMap { ["--config", $0] },
                 cwd: workspace.root, allowFailure: true)
-            if status != 0 { passed = false }
+            if status != 0 { found.append("swiftlint failed") }
             Log.step("swiftlint: \(status == 0 ? "OK" : "failed")")
         case .failure(let problem):
             Log.step("swiftlint: failed: \(problem)")
-            passed = false
+            found.append("swiftlint failed: \(problem)")
         }
 
         let files = Linter.parsedFiles(under: lintRoots.map { workspace.url($0).path })
         let lint = Linter.lint(files)
         for finding in lint.findings { print(finding) }
-        if lint.errorCount > 0 { passed = false }
+        if lint.errorCount > 0 { found.append("dyl-lint found \(lint.errorCount) errors") }
         Log.step(
             "dyl-lint: \(files.count) files, \(lint.errorCount) errors, \(lint.warningCount) warnings, "
                 + "\(lint.allowedCount) lint:allow")
 
         let release = ReleaseChecks(workspace: workspace).run()
         release.print()
-        if !release.passed { passed = false }
+        found += release.findings.filter { $0.severity == .error }.map(\.description)
 
-        return passed
+        return found
     }
 
     /// The `swiftlint` that `mise.toml` pins. A missing, broken or different linter fails the checks rather than
@@ -118,12 +124,21 @@ public struct Checks: Sendable {
         return nil
     }
 
-    /// `checks`, then build and test the app. The site has its own ubuntu job.
+    /// `checks`, then build and test the app even when the checks failed, so an app still missing setup such as its
+    /// Sparkle key gets a build and test result. Fails at the end, listing every failure. The site has its own ubuntu
+    /// job.
     ///
     /// - Blocking: runs `swift`.
     public func verify() throws {
-        guard run() else { throw ToolError("checks failed") }
-        try Shell.run(["swift", "build"], cwd: workspace.root)
-        try Shell.run(["swift", "test"], cwd: workspace.root)
+        var problems = failures()
+        if try Shell.run(["swift", "build"], cwd: workspace.root, allowFailure: true) != 0 {
+            problems.append("swift build failed")
+        } else if try Shell.run(["swift", "test"], cwd: workspace.root, allowFailure: true) != 0 {
+            problems.append("swift test failed")
+        }
+        guard !problems.isEmpty else { return }
+        Log.step("verify failed:")
+        for problem in problems { FileHandle.standardError.write(Data("  \(problem)\n".utf8)) }
+        throw ToolError("\(problems.count) problem\(problems.count == 1 ? "" : "s"); see the list above")
     }
 }

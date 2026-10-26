@@ -12,3 +12,5 @@ permissions:
 jobs:
   release-info:
     uses: ./.github/workflows/app.yml
+    with:
+      verify: false

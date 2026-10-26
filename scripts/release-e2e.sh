@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/release-e2e.sh [work-dir]
-# Runs a first release of Tests/Fixtures/SampleApp end to end with a throwaway Ed key: version, bundle, sign,
+# Runs a first release of Tests/Fixtures/SampleApp end to end with a freshly generated Ed key: version, bundle, sign,
 # appcast. Then it asserts what Sparkle relies on: an enclosure on the Blob store's download for the tag (in the
 # appcast and release.json), the pinned designated requirement, a strict verify of the whole bundle, and nested XPC
 # services that keep Sparkle's own entitlements. It also checks the six site icons bundle writes, that recoloring the
@@ -131,13 +131,13 @@ uploads="$("$release_kit" publish --dry-run)"
 grep -qxF "releases/v$version/Sample App-$version.zip" <<<"$uploads" || fail "publish --dry-run lists: $uploads"
 [[ -z "$(git tag -l "v$version")" ]] || fail "publish --dry-run tagged v$version"
 
-# A rehearsal without the app's key runs to publish --dry-run, and a real publish refuses what it signed.
-"$release_kit" appcast --throwaway-key >/dev/null
-"$release_kit" publish --dry-run >/dev/null 2>"$keys/err" || fail "publish --dry-run refused the rehearsal: $(cat "$keys/err")"
-grep -qF "throwaway" "$keys/err" || fail "publish --dry-run didn't say the appcast has a throwaway key"
-if "$release_kit" publish 2>"$keys/err"; then fail "publish shipped an appcast signed with a throwaway key"; fi
+# publish refuses a zip the staged appcast's signature doesn't cover.
+zip="build/release/Sample App-$version.zip"
+cp "$zip" "$keys/release.zip"
+printf 'x' >>"$zip"
+if "$release_kit" publish --dry-run 2>"$keys/err"; then fail "publish --dry-run accepted a zip its signature doesn't cover"; fi
 grep -qF "doesn't verify against the app's SUPublicEDKey" "$keys/err" || fail "publish said: $(cat "$keys/err")"
-[[ -z "$(git tag -l "v$version")" ]] || fail "the refused publish tagged v$version"
+mv "$keys/release.zip" "$zip"
 
 bundle_id="$(sed -n 's/^bundle-id = "\(.*\)"/\1/p' DylApp.toml | head -1)"
 app="$(ls -d build/release/stage/*.app)"

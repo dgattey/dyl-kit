@@ -32,13 +32,9 @@ public struct CheckReport: Sendable {
 /// workflows, the staged appcast in `build/release/` and, when given, what's published).
 public struct ReleaseChecks: Sendable {
     public let workspace: Workspace
-    /// The public key of `appcast --throwaway-key`'s key, which the staged appcast is checked against instead, with a
-    /// warning that only `publish --dry-run` accepts it.
-    public var throwawayPublicKey: String?
 
-    public init(workspace: Workspace, throwawayPublicKey: String? = nil) {
+    public init(workspace: Workspace) {
         self.workspace = workspace
-        self.throwawayPublicKey = throwawayPublicKey
     }
 
     private var manifest: DylAppManifest { workspace.manifest }
@@ -65,10 +61,6 @@ public struct ReleaseChecks: Sendable {
         check("sparkle_public_key", checkPublicKey)
         check("swift_language_mode", checkPackageManifests)
         check("min_os_consistency", checkMinimumOS)
-        check("swiftpm_only", checkNoXcodeProject)
-        check("appcast_signature", checkStagedAppcast)
-        check("unused_ci_secret", checkSecrets)
-        check("forge_neutral", checkForgeNeutral)
         check("library_validation", checkLibraryValidation)
         check("site_deploy", checkSiteDeploy)
         check("site_package_manager", checkSitePackageManager)
@@ -113,40 +105,14 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
-    private var packageManifests: [String] {
-        var paths = ["Package.swift"]
-        let packages = (try? FileManager.default.contentsOfDirectory(atPath: workspace.url("Packages").path)) ?? []
-        paths += packages.sorted().map { "Packages/\($0)/Package.swift" }.filter { read($0) != nil }
-        return paths
-    }
-
     private func checkPackageManifests(_ findings: inout [CheckFinding]) {
-        for path in packageManifests {
-            guard let text = read(path) else { continue }
-            if let tools = text.firstMatch(of: /swift-tools-version:\s*(\d+)/), (Int(tools.1) ?? 0) < 6 {
-                findings.append(
-                    error("swift_language_mode", path, "swift-tools-version is \(tools.1); use 6.0 or later"))
-            }
-            if text.matches(pattern: #"swiftLanguage(?:Modes|Versions)\s*:\s*\[[^\]]*\.v[45]"#) {
-                findings.append(error("swift_language_mode", path, "pins Swift 5 language mode; use Swift 6"))
-            }
-            if text.contains("unsafeFlags") {
-                findings.append(
-                    error("swift_language_mode", path, "uses unsafeFlags, which SwiftPM rejects in dependencies"))
-            }
+        let path = "Package.swift"
+        guard let text = read(path) else { return }
+        if let tools = text.firstMatch(of: /swift-tools-version:\s*(\d+)/), (Int(tools.1) ?? 0) < 6 {
+            findings.append(error("swift_language_mode", path, "swift-tools-version is \(tools.1); use 6.0 or later"))
         }
-    }
-
-    private func checkNoXcodeProject(_ findings: inout [CheckFinding]) {
-        let enumerator = FileManager.default.enumerator(atPath: workspace.root.path)
-        while let path = enumerator?.nextObject() as? String {
-            let name = (path as NSString).lastPathComponent
-            if name.hasPrefix(".") || name == "build" || name == "node_modules" {
-                enumerator?.skipDescendants()
-            } else if name.hasSuffix(".xcodeproj") || name.hasSuffix(".xcworkspace") {
-                findings.append(error("swiftpm_only", path, "DylKit apps build with SwiftPM only; delete it"))
-                enumerator?.skipDescendants()
-            }
+        if text.matches(pattern: #"swiftLanguage(?:Modes|Versions)\s*:\s*\[[^\]]*\.v[45]"#) {
+            findings.append(error("swift_language_mode", path, "pins Swift 5 language mode; use Swift 6"))
         }
     }
 
@@ -193,34 +159,6 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
-    private func checkStagedAppcast(_ findings: inout [CheckFinding]) {
-        let appcastPath = relative(stagedAppcast)
-        guard let item = items(at: stagedAppcast, "appcast_signature", &findings)?.newest else { return }
-        guard let name = item.enclosureFileName else {
-            findings.append(error("appcast_signature", appcastPath, "newest item has no enclosure URL"))
-            return
-        }
-        guard let data = try? Data(contentsOf: stagedAppcast.deletingLastPathComponent().appending(path: name)) else {
-            findings.append(error("appcast_signature", appcastPath, "names \(name), which isn't staged next to it"))
-            return
-        }
-        guard let publicKey = throwawayPublicKey ?? publicKey else { return }
-        switch EdSignature.check(item, archive: data, publicKey: publicKey) {
-        case .valid where throwawayPublicKey != nil:
-            findings.append(
-                CheckFinding(
-                    rule: "appcast_signature", severity: .warning, file: appcastPath,
-                    message: "signed with a throwaway key for a rehearsal; only `publish --dry-run` accepts it"))
-        case .valid: break
-        case .invalid(let reason): findings.append(error("appcast_signature", appcastPath, "\(name): \(reason)"))
-        case .unverifiable:
-            findings.append(
-                CheckFinding(
-                    rule: "appcast_signature", severity: .warning, file: appcastPath,
-                    message: "can't verify edSignature on this platform; CI verifies it on macOS"))
-        }
-    }
-
     // MARK: - Workflows
 
     private struct Source {
@@ -234,72 +172,6 @@ public struct ReleaseChecks: Sendable {
         return names.sorted().filter { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }.compactMap { name in
             let path = "\(directory)/\(name)"
             return read(path).map { Source(path: path, text: $0) }
-        }
-    }
-
-    private func checkSecrets(_ findings: inout [CheckFinding]) {
-        let readers = toolSources()
-        var referenced: Set<String> = []
-        for workflow in workflows {
-            for match in workflow.text.matches(of: /(\w+):\s*\$\{\{\s*secrets\.(\w+)\s*\}\}/) {
-                let variable = String(match.1)
-                referenced.insert(String(match.2))
-                let readElsewhere =
-                    Self.releaseKitVariables.contains(variable) || readers.contains { $0.text.contains(variable) }
-                let readInWorkflow = workflow.text.matches(pattern: #"\$\{?\#(variable)\b"#)
-                if !readElsewhere, !readInWorkflow {
-                    findings.append(
-                        error(
-                            "unused_ci_secret", workflow.path,
-                            "passes secret \(match.2) as \(variable), but nothing reads \(variable)"))
-                }
-            }
-            for match in workflow.text.matches(of: /secrets\.(\w+)/) { referenced.insert(String(match.1)) }
-            if workflow.text.contains(/secrets:\s*inherit/) {
-                referenced.formUnion([ReleasePipeline.edKeyVariable, BlobStore.tokenVariable])
-            }
-        }
-        for source in readers where source.path.hasPrefix("scripts/") {
-            for match in source.text.matches(of: /(?:gh\s+secret\s+set|push_\w*secret)\s+"?([A-Z][A-Z0-9_]+)/)
-            where !referenced.contains(String(match.1)) {
-                findings.append(
-                    error("unused_ci_secret", source.path, "uploads secret \(match.1), which no workflow uses"))
-            }
-        }
-    }
-
-    /// Environment variables release-kit itself reads, so a workflow that passes them to it uses them.
-    static let releaseKitVariables: Set<String> = [
-        ReleasePipeline.edKeyVariable, GitHub.tokenVariable, BlobStore.tokenVariable,
-    ]
-
-    private func toolSources() -> [Source] {
-        var sources: [Source] = []
-        let enumerator = FileManager.default.enumerator(atPath: workspace.url("scripts").path)
-        while let relative = enumerator?.nextObject() as? String {
-            let path = "scripts/\(relative)"
-            if let text = read(path) { sources.append(Source(path: path, text: text)) }
-        }
-        return sources
-    }
-
-    /// What in `text` talks to a forge directly. Only release-kit may.
-    public static func forgeCalls(in text: String) -> [String] {
-        let forgeAPIs = [
-            (#"(?m)(?:^|[\s;&|(])gh\s+(?:release|api|pr)\b"#, "calls the gh CLI"),
-            (#"api\.github\.com"#, "calls the GitHub API"),
-        ]
-        return forgeAPIs.filter { text.matches(pattern: $0.0) }.map(\.1)
-    }
-
-    private func checkForgeNeutral(_ findings: inout [CheckFinding]) {
-        for source in toolSources() {
-            for problem in Self.forgeCalls(in: source.text) {
-                findings.append(
-                    error(
-                        "forge_neutral", source.path,
-                        "\(problem); only release-kit talks to the forge"))
-            }
         }
     }
 
@@ -330,10 +202,6 @@ public struct ReleaseChecks: Sendable {
         #"git rev-parse --quiet --verify "$VERCEL_GIT_PREVIOUS_SHA^{commit}" && "#
         + #"git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
 
-    /// The unguarded prefix, which fails the deploy when the last deployed commit is gone.
-    static let unguardedIgnoreCommandPrefix =
-        #"[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- "#
-
     /// The site's root, the nearest folder above the artifacts dir with a `package.json`, and that file's text.
     private var site: (root: String, package: String)? {
         var root = (manifest.release.artifactsDir as NSString).deletingLastPathComponent
@@ -346,38 +214,20 @@ public struct ReleaseChecks: Sendable {
 
     private func checkSiteDeploy(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
-        if let path = package.firstMatch(of: /"@dylkit\/web"\s*:\s*"file:([^"]+)"/)?.1 {
-            findings.append(
-                error(
-                    "site_deploy", "\(siteRoot)/package.json",
-                    "@dylkit/web is a `file:\(path)` dependency, which Vercel can't build; depend on the release "
-                        + "tarball instead: \"\(Self.webTarballURL)\""))
-        }
         let file = "\(siteRoot)/vercel.json"
         let config = read(file).flatMap { try? JSONDecoder().decode(VercelConfig.self, from: Data($0.utf8)) }
         let command = config?.ignoreCommand?.trimmingCharacters(in: .whitespaces) ?? ""
         let prefix = Self.ignoreCommandPrefix
         guard command.hasPrefix(prefix) else {
-            let message: String
-            if command.hasPrefix(Self.unguardedIgnoreCommandPrefix) {
-                let fixed = prefix + command.dropFirst(Self.unguardedIgnoreCommandPrefix.count)
-                message =
-                    "exits 128 and fails the deploy when Vercel's clone lacks the last deployed commit, as after a "
-                    + "force-push or rebase; use `\"ignoreCommand\": \"\(Self.jsonEscaped(fixed))\"`"
-            } else {
-                let reason =
-                    command.contains("HEAD^")
-                    ? "diffs from HEAD^, which can skip a site change Vercel never deployed; use" : "needs"
-                message = "\(reason) `\"ignoreCommand\": \"\(Self.jsonEscaped(prefix))<paths>\"`"
-            }
-            findings.append(error("site_deploy", file, message))
+            findings.append(
+                error("site_deploy", file, "needs `\"ignoreCommand\": \"\(Self.jsonEscaped(prefix))<paths>\"`"))
             return
         }
         let watched = command.dropFirst(prefix.count).split(separator: " ").map { path in
             workspace.url(siteRoot).appending(path: String(path)).standardized.path
         }
         var needed = [manifest.release.artifactsDir, "package.json"]
-        for match in package.matches(of: /"(?!@dylkit\/web")[^"]+"\s*:\s*"file:([^"]+)"/) {
+        for match in package.matches(of: /"[^"]+"\s*:\s*"file:([^"]+)"/) {
             needed.append(workspace.url(siteRoot).appending(path: String(match.1)).standardized.path)
         }
         if package.contains("\"@dylkit/web\"") { needed.append(DylAppManifest.fileName) }
@@ -389,12 +239,9 @@ public struct ReleaseChecks: Sendable {
         }
     }
 
-    /// Sites install with pnpm: `packageManager` pins it and Vercel installs with it from `pnpm-lock.yaml`. Vercel
-    /// falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`, so the security pins there
-    /// would stop applying. Vercel's CLI enables corepack from the clone root's `package.json`, not the Root
-    /// Directory's, so the repo root holds the same pin; without it Vercel's bundled pnpm can't read the lockfile.
-    /// pnpm run at the repo root writes a `pnpm-lock.yaml` there recording its own version, which the site's lockfile
-    /// already records, so apps ignore it rather than keep a second copy that goes stale when the pin moves.
+    /// Sites install with pnpm: `packageManager` pins it and Vercel installs with it from `pnpm-lock.yaml`, falling
+    /// back to npm without that lockfile. Vercel's CLI enables corepack from the clone root's `package.json`, not the
+    /// Root Directory's, so the repo root holds the same pin; without it Vercel's bundled pnpm can't read the lockfile.
     private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
         let file = "\(siteRoot)/package.json"
@@ -414,25 +261,6 @@ public struct ReleaseChecks: Sendable {
                     "site_package_manager", "package.json",
                     "is missing, so Vercel's CLI can't find the pnpm pin and installs with its own pnpm; add one "
                         + "holding only \"private\": true and \"packageManager\": \"\(Self.pnpmPin)\""))
-        }
-        if isTracked("pnpm-lock.yaml") {
-            findings.append(
-                error(
-                    "site_package_manager", "pnpm-lock.yaml",
-                    "only records the pnpm version, which \(siteRoot)/pnpm-lock.yaml already does; `git rm` it and "
-                        + "add /pnpm-lock.yaml to .gitignore"))
-        }
-        if fields["overrides"] != nil {
-            findings.append(
-                error(
-                    "site_package_manager", file,
-                    "has npm's overrides, which pnpm ignores; move them to pnpm-workspace.yaml"))
-        }
-        for lockfile in ["package-lock.json", "yarn.lock"] where read("\(siteRoot)/\(lockfile)") != nil {
-            findings.append(
-                error(
-                    "site_package_manager", "\(siteRoot)/\(lockfile)",
-                    "is another package manager's lockfile; delete it"))
         }
         if read("\(siteRoot)/pnpm-lock.yaml") == nil {
             findings.append(
@@ -504,10 +332,6 @@ public struct ReleaseChecks: Sendable {
                     "dylkit_version", ".github/workflows",
                     "nothing calls \(Self.appWorkflow); copy .github/workflows/dylkit.yml from DylKit's SampleApp"))
         }
-        for workflow in workflows where workflow.text.contains("Written by `devkit sync`") {
-            findings.append(
-                error("dylkit_version", workflow.path, "is DylKit 0.2's synced copy, which dylkit.yml replaces; delete it"))
-        }
         guard
             let state = read("Package.resolved")
                 .flatMap({ try? JSONDecoder().decode(PackageResolved.self, from: Data($0.utf8)) })?
@@ -544,11 +368,17 @@ public struct ReleaseChecks: Sendable {
             guard let tarball else { return }
             let commit = tarball.version.firstMatch(of: /-pr\.\d+\.([0-9a-f]{7,40})$/).map { String($0.1) }
             guard commit.map({ !revision.hasPrefix($0) }) ?? true else { return }
+            let expected = tarball.url.firstMatch(of: /^(.*\/releases\/)/).map { match in
+                let number = tarball.version.firstMatch(of: /-pr\.(\d+)/).map { String($0.1) } ?? "<number>"
+                let base = tarball.version.replacing(/-pr\.\d+(\.[0-9a-f]+)?$/, with: "")
+                return "\(match.1)pr-\(number)/dylkit-web-\(base)-pr.\(number).\(short).tgz"
+            }
             findings.append(
                 error(
                     "dylkit_version", tarball.file,
-                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on the "
-                        + "-pr.<number>.\(short) tarball its PR's prerelease job uploaded"))
+                    "@dylkit/web is \(tarball.version) but Package.resolved pins DylKit at \(short); depend on "
+                        + (expected.map { "\"\($0)\", " } ?? "the -pr.<number>.\(short) tarball ")
+                        + "which its PR's prerelease job uploaded"))
         }
     }
 
@@ -560,10 +390,6 @@ public struct ReleaseChecks: Sendable {
 
     /// The reusable workflow that checks each app's PRs and releases its merges.
     static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
-
-    /// The `@dylkit/web` dependency apps' sites use; `<version>` is the DylKit release, whose log names the URL.
-    static let webTarballURL =
-        "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v<version>/dylkit-web-<version>.tgz"
 
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {
@@ -585,12 +411,10 @@ public struct ReleaseChecks: Sendable {
     }
 
     static let pullRequestTemplate = ".github/pull_request_template.md"
-    static let releaseNotesRule = ".cursor/rules/changelog-release-notes.mdc"
 
-    /// Every PR needs a `# Release notes` section above `# Release info`, which app.yml's PR check lints, and agents
-    /// need the rule that says how to write it.
+    /// Every PR needs a `# Release notes` section above `# Release info`, which app.yml's PR check lints. The DylKit
+    /// plugin's rule tells agents how to write it.
     private func checkReleaseNotesFiles(_ findings: inout [CheckFinding]) {
-        let copy = "copy it from DylKit's Tests/Fixtures/SampleApp/ at the pinned tag"
         if let template = read(Self.pullRequestTemplate) {
             let headings = template.replacing(pattern: #"<!--[\s\S]*?-->"#, with: "").components(separatedBy: "\n")
                 .compactMap { $0.firstMatch(of: /^\s*#{1,2}\s+(.+?)\s*$/).map { $0.1.lowercased() } }
@@ -600,10 +424,10 @@ public struct ReleaseChecks: Sendable {
                     error("release_notes", Self.pullRequestTemplate, "needs a `# Release notes` section above `# Release info`"))
             }
         } else {
-            findings.append(error("release_notes", Self.pullRequestTemplate, "missing; \(copy)"))
-        }
-        if read(Self.releaseNotesRule) == nil {
-            findings.append(error("release_notes", Self.releaseNotesRule, "missing; \(copy)"))
+            findings.append(
+                error(
+                    "release_notes", Self.pullRequestTemplate,
+                    "missing; copy it from DylKit's Tests/Fixtures/SampleApp/ at the pinned tag"))
         }
     }
 

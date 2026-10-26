@@ -224,16 +224,11 @@ extension View {
         }
     }
 
-    /// A thin material under the palette's surface tint, which the sidebar and the form's cards sit on.
+    /// A thin material, which the sidebar and the form's cards sit on.
     @ViewBuilder
-    fileprivate func windowBackground(_ tint: Color) -> some View {
+    fileprivate func windowBackground() -> some View {
         if #available(macOS 15, *) {
-            containerBackground(for: .window) {
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                    tint
-                }
-            }
+            containerBackground(.ultraThinMaterial, for: .window)
         } else {
             self
         }
@@ -270,7 +265,7 @@ public struct SettingsWindow: Scene {
         Window("Settings", id: Self.id) {
             content
                 .palette(palette)
-                .windowBackground(palette.surfaceTint)
+                .windowBackground()
                 .background(NonRestorableWindow())
         }
         .windowResizability(.contentSize)

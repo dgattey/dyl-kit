@@ -10,14 +10,12 @@ import AppKit
 /// The main window of a DylKit app: the palette and its accent tint, devkit's `--appearance` and `--window-size`
 /// launch overrides (read from `LaunchOverrides.current`, so the app passes nothing), the updater's launch check once
 /// the window is on screen, and "Check for Updates…" in the app menu next to the app's own commands. The toolbar
-/// style and resizability are the app's; the defaults are a unified toolbar without a title that never shrinks
-/// below its content.
+/// style is the app's, a unified toolbar without a title by default, and the window never shrinks below its content.
 public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToolbarStyle>: Scene {
     private let title: String
     private let palette: any ThemePalette
     private let defaultSize: CGSize
     private let toolbarStyle: Toolbar
-    private let resizability: WindowResizability
     private let content: Content
     private let commands: AppCommands
 
@@ -26,7 +24,6 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
         palette: any ThemePalette,
         defaultSize: CGSize,
         toolbarStyle: Toolbar,
-        resizability: WindowResizability = .contentMinSize,
         @ViewBuilder content: () -> Content,
         @CommandsBuilder commands: () -> AppCommands
     ) {
@@ -34,7 +31,6 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
         self.palette = palette
         self.defaultSize = defaultSize
         self.toolbarStyle = toolbarStyle
-        self.resizability = resizability
         self.content = content()
         self.commands = commands()
     }
@@ -47,7 +43,7 @@ public struct AppWindow<Content: View, AppCommands: Commands, Toolbar: WindowToo
         }
         .windowToolbarStyle(toolbarStyle)
         .defaultSize(LaunchOverrides.current.windowSize ?? defaultSize)
-        .windowResizability(resizability)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             commands
@@ -60,13 +56,12 @@ extension AppWindow where Toolbar == UnifiedWindowToolbarStyle {
         _ title: String,
         palette: any ThemePalette,
         defaultSize: CGSize,
-        resizability: WindowResizability = .contentMinSize,
         @ViewBuilder content: () -> Content,
         @CommandsBuilder commands: () -> AppCommands
     ) {
         self.init(
             title, palette: palette, defaultSize: defaultSize, toolbarStyle: .unified(showsTitle: false),
-            resizability: resizability, content: content, commands: commands)
+            content: content, commands: commands)
     }
 }
 #else

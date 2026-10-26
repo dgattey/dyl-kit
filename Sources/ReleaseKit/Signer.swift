@@ -100,16 +100,7 @@ public struct Signer: Sendable {
 
     /// - Blocking: runs `codesign`.
     private static func designatedRequirement(of app: URL) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["codesign", "-d", "-r-", app.path]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let output = String(decoding: data, as: UTF8.self)
+        let output = try Shell.capture(["codesign", "-d", "-r-", app.path], includeStderr: true, allowFailure: true)
         return output.split(separator: "\n").first { $0.hasPrefix("designated") }.map(String.init) ?? output
     }
 }

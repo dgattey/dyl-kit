@@ -81,17 +81,14 @@ extension ReleaseKitCommand {
         @OptionGroup var options: RootOption
         @Option(
             help: """
-                The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, then the first of the repo's key \
-                files, ~/.config/<slug>/sparkle_ed.key and the Keychain account <bundle-id> whose key matches the \
-                app's SUPublicEDKey. Sparkle's shared ed25519 account is never used.
+                The Sparkle private key; defaults to SPARKLE_ED_PRIVATE_KEY_BASE64, then the Keychain account \
+                <bundle-id>. Either must match the app's SUPublicEDKey. Sparkle's shared ed25519 account is never used.
                 """)
         var edKeyFile: String?
-        @Flag(help: "Sign with a fresh throwaway key to rehearse; only publish --dry-run takes the result.")
-        var throwawayKey = false
 
         func run() async throws {
             let pipeline = ReleasePipeline(workspace: try options.workspace())
-            print(try await pipeline.appcast(explicitKey: edKeyFile, throwaway: throwawayKey).path)
+            print(try await pipeline.appcast(explicitKey: edKeyFile).path)
         }
     }
 

@@ -9,7 +9,7 @@ Every DylKit app builds the same way. READMEs and other skills link here instead
 
 ## Shape
 
-- SwiftPM only: the app is an executable target in the repo's `Package.swift`, and `DylApp.toml` holds the bundle, signing and release settings. There's no `.xcodeproj` or `.xcworkspace`, and `swiftpm_only` fails if one appears. Xcode is only the toolchain (`actool`, `simctl`, the SDKs); nobody opens a project in it.
+- SwiftPM only: the app is an executable target in the repo's `Package.swift`, and `DylApp.toml` holds the bundle, signing and release settings. There's no `.xcodeproj` or `.xcworkspace`. Xcode is only the toolchain (`actool`, `simctl`, the SDKs); nobody opens a project in it.
 - Asset catalogs, Core Data models and mapping models go in `[build] resources`, and the bundler compiles them into the main bundle with `actool`, `momc` and `mapc`. The app's target must `exclude:` them, or SwiftPM also copies them raw. Other SwiftPM resources ship as resource `.bundle`s, each with an `Info.plist`.
 - The icon is a committed Icon Composer `.icon` in `[build] icon`, or `[build] icon-generator`, a script that writes one into `build/`. Each release also renders the download site's icons from it.
 - `[build] dock-tile-plugin` names a dynamic library product that every build ships as the app's `NSDockTilePlugIn`. DylKit's README has the rules, including where the plug-in reads the app's preferences.
@@ -31,9 +31,9 @@ Run everything from the app repo through `swift run devkit …`, which builds `d
 | Rebuild and reopen behind the frontmost app | `swift run devkit relaunch` (add `--configuration release` for a Release build) |
 | Screenshot the main window into `build/captures/` | `swift run devkit capture --appearance dark` |
 | iOS Simulator, headless, with a screenshot | `swift run devkit ios --run --capture` (add `--simulator "<iPad name>"` for an iPad) |
-| Unit tests | `swift test`. Test targets depend on `DylTestSupport` for ViewInspector and `AppDirectories.withTemporarySupportFolder`, so tests never read or write the real support folder |
+| Unit tests | `swift test`. Tests never read or write the real support folder |
 | Lint tiers 1–3 | `swift run devkit checks` |
-| What macOS CI runs: checks, build, then all tests | `swift run devkit verify` |
+| What every PR's `verify` job runs: checks, build, then all tests, failing at the end with every problem | `swift run devkit verify` |
 | Bump DylKit | The three pins in `adopt-dylkit`'s Upgrading DylKit, then `swift run devkit checks` |
 | Download site | `pnpm dev` or `pnpm build` in `server/` |
 

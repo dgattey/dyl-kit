@@ -1,7 +1,7 @@
 import Foundation
 
-/// The notes a release shows its readers, taken from the merged PR's body, and the rules they follow (DylKit's
-/// `.cursor/rules/changelog-release-notes.mdc`). Foundation only, so an app's PR check can compile it with `swiftc`
+/// The notes a release shows its readers, taken from the merged PR's body, and the rules they follow (the DylKit
+/// plugin's `rules/changelog-release-notes.mdc`). Foundation only, so an app's PR check can compile it with `swiftc`
 /// alone instead of resolving DylKit's package.
 public enum ReleaseNotes {
     /// Where notes come from, in order: `# Release notes`, then `# What changed?`, then headings older bodies used.

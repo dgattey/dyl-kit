@@ -287,9 +287,15 @@ private struct Reader {
         return DylAppManifest.DockTilePlugin(product: product, principalClass: principalClass)
     }
 
+    /// An inline table or a `[header]` table of strings.
     func stringMap(_ key: String) throws(ManifestError) -> [String: String]? {
-        guard let value = document[key] else { return nil }
-        guard case .table(let entries) = value else { throw fail(key, "`\(key)` must be an inline table") }
+        let entries: [String: TOMLValue]
+        switch document[key] {
+        case .table(let inline): entries = inline
+        case nil where document.lines[key] != nil: entries = document.children(of: key)
+        case nil: return nil
+        default: throw fail(key, "`\(key)` must be a table")
+        }
         var result: [String: String] = [:]
         for (name, entry) in entries {
             guard case .string(let string) = entry else { throw fail(key, "`\(key).\(name)` must be a string") }

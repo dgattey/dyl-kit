@@ -103,6 +103,7 @@ jobs:
             -H "x-vercel-blob-access: public" -H "x-content-type: application/gzip" -H "x-add-random-suffix: 0" \
             -H "x-allow-overwrite: 1" \
             "https://vercel.com/api/blob/?pathname=releases/pr-$PR_NUMBER/dylkit-web-$version.tgz" | jq -r .url)"
+          echo "$url"
           printf '%s\n' "### Run PR #$PR_NUMBER in an app" "" \
             "- \`Package.swift\`: \`.package(url: \"https://github.com/dgattey/dyl-kit\", revision: \"$SHA\")\`" \
             "- \`.github/workflows/dylkit.yml\`: \`uses: dgattey/dyl-kit/.github/workflows/app.yml@$SHA\`" \

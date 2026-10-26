@@ -24,6 +24,7 @@ unsigned_edits() {
 }
 
 swift build --package-path "$kit" --product release-kit -q
+swift build --package-path "$kit" --product devkit -q
 release_kit="$kit/.build/debug/release-kit"
 
 rm -rf "$work"
@@ -40,6 +41,9 @@ printf 'build/\n.build/\ned.key\n' >.gitignore
 git init -q
 git add -A
 git -c user.name=release-e2e -c user.email=release-e2e@invalid commit -qm "Sample"
+
+# SampleApp is the end state adopt-dylkit describes, so every check an app's PR runs passes on it.
+"$kit/.build/debug/devkit" checks
 
 version="$("$release_kit" version --type minor | sed -n 's/^version=//p')"
 unsigned_edits "$release_kit" bundle

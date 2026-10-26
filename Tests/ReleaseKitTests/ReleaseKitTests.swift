@@ -783,24 +783,57 @@ private let appModules = ["DemoDomain", "DemoStore", "DemoUI", "DemoApp"]
         #expect(errorFiles(report)["site_package_manager"] == [
             "server/package.json", "server/package.json", "server/package-lock.json", "server/pnpm-lock.yaml",
         ])
-        #expect(errors(report)["site_package_manager"]?.first?.contains("SampleApp server/package.json") == true)
+        #expect(errors(report)["site_package_manager"]?.first?.contains(ReleaseChecks.pnpmPin) == true)
     }
 
     /// Vercel's CLI enables corepack from the clone root's package.json, so without the site's pin there it installs
-    /// with its bundled pnpm, which can't read a newer pnpm's lockfile.
-    @Test func theRepoRootPinsTheSitesPnpm() throws {
+    /// with its bundled pnpm, which can't read a newer pnpm's lockfile. A hash that isn't pnpm's published one fails
+    /// corepack's download, so both pins must be DylKit's exactly.
+    @Test func bothPinsAreDylKitsPnpm() throws {
         let workspace = try scratchWorkspace()
         defer { try? FileManager.default.removeItem(at: workspace.root) }
-        let root = workspace.url("package.json")
-        try Data(#"{ "private": true, "packageManager": "pnpm@10.0.0" }"#.utf8).write(to: root)
-        let site = try String(contentsOf: workspace.url("server/package.json"), encoding: .utf8)
-        let pin = try #require(site.firstMatch(of: /"packageManager": "([^"]+)"/)?.1)
-        #expect(errors(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
-            #"doesn't pin server/package.json's "packageManager"; set it to "\#(pin)""#
+        let wrong = String(ReleaseChecks.pnpmPin.dropLast(64)) + String(repeating: "0", count: 64)
+        for file in ["package.json", "server/package.json"] {
+            let url = workspace.url(file)
+            let text = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(
+                of: ReleaseChecks.pnpmPin, with: wrong)
+            try Data(text.utf8).write(to: url)
+        }
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
+            "server/package.json", "package.json",
         ])
+        #expect(
+            errors(ReleaseChecks(workspace: workspace).run())["site_package_manager"]?.first
+                == #"doesn't pin DylKit's pnpm; set "packageManager" to "\#(ReleaseChecks.pnpmPin)""#)
 
-        try FileManager.default.removeItem(at: root)
-        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == ["package.json"])
+        try FileManager.default.removeItem(at: workspace.url("package.json"))
+        #expect(errorFiles(ReleaseChecks(workspace: workspace).run())["site_package_manager"] == [
+            "server/package.json", "package.json",
+        ])
+    }
+
+    /// pnpm run at the repo root writes a lockfile there that only records its own version; apps ignore it.
+    @Test func theRepoRootsPnpmLockfileStaysUncommitted() throws {
+        let workspace = try scratchWorkspace(["pnpm-lock.yaml": "lockfileVersion: '9.0'\n"])
+        defer { try? FileManager.default.removeItem(at: workspace.root) }
+        _ = try Shell.capture(["git", "init", "--quiet"], cwd: workspace.root)
+        func ruleErrors() throws -> [String]? {
+            errorFiles(ReleaseChecks(workspace: try Workspace.locate(workspace.root.path)).run())["site_package_manager"]
+        }
+        #expect(try ruleErrors() == nil)
+        _ = try Shell.capture(["git", "add", "pnpm-lock.yaml"], cwd: workspace.root)
+        #expect(try ruleErrors() == ["pnpm-lock.yaml"])
+    }
+
+    /// SampleApp and DylKit's own site are what apps copy the pin from, and what the check holds them to.
+    @Test func everyPnpmPinIsTheChecksPin() throws {
+        for url in [
+            appRoot.appending(path: "package.json"), appRoot.appending(path: "server/package.json"),
+            packageRoot.appending(path: "web/package.json"),
+        ] {
+            let fields = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+            #expect(fields?["packageManager"] as? String == ReleaseChecks.pnpmPin, "\(url.path)")
+        }
     }
 
     /// The fixture's site and workflow pin DylKit 0.3.0. A 0.2 app that migrates keeps no synced workflow beside

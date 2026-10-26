@@ -303,8 +303,8 @@ public struct ReleaseChecks: Sendable {
     /// That command must still deploy changes to the artifacts dir and to what the site builds from outside its root:
     /// `file:` packages, the repo root's `package.json` and, for `@dylkit/web`, DylApp.toml. It diffs from the last
     /// deployed commit, so a site change in a skipped commit still deploys with the next one. A branch's first deploy,
-    /// which has no last commit, always builds, and so does one whose last commit Vercel's clone lacks after a force-push or rebase:
-    /// `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
+    /// which has no last commit, always builds, and so does one whose last commit Vercel's clone lacks after a
+    /// force-push or rebase: `rev-parse` exits 1 there, where `git diff` exits 128 and Vercel fails the deploy.
     private struct VercelConfig: Decodable {
         var ignoreCommand: String?
     }
@@ -376,31 +376,34 @@ public struct ReleaseChecks: Sendable {
     /// falls back to npm without that lockfile, and pnpm silently ignores npm's `overrides`, so the security pins there
     /// would stop applying. Vercel's CLI enables corepack from the clone root's `package.json`, not the Root
     /// Directory's, so the repo root holds the same pin; without it Vercel's bundled pnpm can't read the lockfile.
+    /// pnpm run at the repo root writes a `pnpm-lock.yaml` there recording its own version, which the site's lockfile
+    /// already records, so apps ignore it rather than keep a second copy that goes stale when the pin moves.
     private func checkSitePackageManager(_ findings: inout [CheckFinding]) {
         guard let (siteRoot, package) = site else { return }
         let file = "\(siteRoot)/package.json"
         let fields = (try? JSONSerialization.jsonObject(with: Data(package.utf8))) as? [String: Any] ?? [:]
-        let pin = fields["packageManager"] as? String
-        if pin?.hasPrefix("pnpm@") != true {
-            findings.append(
-                error(
-                    "site_package_manager", file,
-                    "doesn't pin pnpm; copy \"packageManager\" from DylKit's SampleApp server/package.json"))
+        let wrongPin = "doesn't pin DylKit's pnpm; set \"packageManager\" to \"\(Self.pnpmPin)\""
+        if fields["packageManager"] as? String != Self.pnpmPin {
+            findings.append(error("site_package_manager", file, wrongPin))
         }
         if let root = read("package.json") {
             let rootFields = (try? JSONSerialization.jsonObject(with: Data(root.utf8))) as? [String: Any] ?? [:]
-            if let pin, pin.hasPrefix("pnpm@"), rootFields["packageManager"] as? String != pin {
-                findings.append(
-                    error(
-                        "site_package_manager", "package.json",
-                        "doesn't pin \(file)'s \"packageManager\"; set it to \"\(pin)\""))
+            if rootFields["packageManager"] as? String != Self.pnpmPin {
+                findings.append(error("site_package_manager", "package.json", wrongPin))
             }
         } else {
             findings.append(
                 error(
                     "site_package_manager", "package.json",
                     "is missing, so Vercel's CLI can't find the pnpm pin and installs with its own pnpm; add one "
-                        + "with \"private\": true and \(file)'s \"packageManager\", as in DylKit's SampleApp"))
+                        + "holding only \"private\": true and \"packageManager\": \"\(Self.pnpmPin)\""))
+        }
+        if isTracked("pnpm-lock.yaml") {
+            findings.append(
+                error(
+                    "site_package_manager", "pnpm-lock.yaml",
+                    "only records the pnpm version, which \(siteRoot)/pnpm-lock.yaml already does; `git rm` it and "
+                        + "add /pnpm-lock.yaml to .gitignore"))
         }
         if fields["overrides"] != nil {
             findings.append(
@@ -487,6 +490,12 @@ public struct ReleaseChecks: Sendable {
                 "@dylkit/web is \(match.2) but Package.resolved pins DylKit \(pinned); depend on \"\(url)\""))
     }
 
+    /// The pnpm every site and its repo root pin, as SampleApp does. The hash is the npm registry's integrity for that
+    /// pnpm tarball, so corepack refuses a download that doesn't match it.
+    static let pnpmPin =
+        "pnpm@12.9.1+sha512.06b055fff5cd20dc12781de173ced3310ce0951bf2ec620211a16045d5444d5c93a663210764ef29a653a610459"
+        + "ba0368f0e74f84d80c54723cf95aae7bc0d6d"
+
     /// The reusable workflow that checks each app's PRs and releases its merges.
     static let appWorkflow = "dgattey/dyl-kit/.github/workflows/app.yml"
 
@@ -497,16 +506,20 @@ public struct ReleaseChecks: Sendable {
     /// Local values are credentials; their file must never be committed.
     private func checkLocalValuesIgnored(_ findings: inout [CheckFinding]) {
         guard let file = manifest.localValues?.file else { return }
-        let root = workspace.root
-        let tracked = (try? Shell.run(
-            ["git", "ls-files", "--error-unmatch", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
         let ignored = (try? Shell.run(
-            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: root, quiet: true, allowFailure: true)) == 0
-        if tracked {
+            ["git", "check-ignore", "-q", "--no-index", "--", file], cwd: workspace.root, quiet: true,
+            allowFailure: true)) == 0
+        if isTracked(file) {
             findings.append(error("local_values_ignored", file, "is committed; `git rm --cached` it and rotate its values"))
         } else if !ignored {
             findings.append(error("local_values_ignored", file, "isn't in .gitignore"))
         }
+    }
+
+    private func isTracked(_ file: String) -> Bool {
+        (try? Shell.run(
+            ["git", "ls-files", "--error-unmatch", "--", file], cwd: workspace.root, quiet: true,
+            allowFailure: true)) == 0
     }
 
     static let pullRequestTemplate = ".github/pull_request_template.md"

@@ -1,0 +1,26 @@
+# Scratch proof of the required_checks warning with the default Actions token; delete with dgattey/rules-check-base-ceba.
+name: scratch-required-checks
+
+on:
+  pull_request:
+    branches: [dgattey/rules-check-base-ceba]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        repo: [dgattey/saga, dgattey/gattey-photos, dgattey/scone-os, dgattey/dyl-kit, bad-token]
+    name: required_checks ${{ matrix.repo }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: release-kit check on SampleApp against the repo's rules
+        env:
+          GITHUB_TOKEN: ${{ matrix.repo == 'bad-token' && 'not-a-token' || github.token }}
+          GITHUB_REPOSITORY: ${{ matrix.repo == 'bad-token' && 'dgattey/saga' || matrix.repo }}
+        run: swift run release-kit check --root Tests/Fixtures/SampleApp

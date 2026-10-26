@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths-ignore: ['**.md', 'skills/**', '.cursor-plugin/**']
   pull_request:
+    branches-ignore: ['dgattey/rules-check-base-ceba']
     paths-ignore: ['**.md', 'skills/**', '.cursor-plugin/**']
 
 concurrency:
